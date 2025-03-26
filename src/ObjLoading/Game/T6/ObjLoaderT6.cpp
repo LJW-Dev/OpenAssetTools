@@ -40,6 +40,13 @@
 #include "Weapon/RawLoaderWeaponT6.h"
 #include "ZBarrier/GdtLoaderZBarrierT6.h"
 #include "ZBarrier/RawLoaderZBarrierT6.h"
+#include "ComWorld/LoaderComWorldT6.h"
+#include "MapEnts/LoaderMapEntsT6.h"
+#include "GfxWorld/LoaderGfxWorldT6.h"
+#include "GameWorldMp/LoaderGameWorldMpT6.h"
+#include "ClipMap/LoaderClipMapT6.h"
+#include "SkinnedVerts/LoaderSkinnedVertsT6.h"
+#include "LightDef/LoaderLightDefT6.h"
 
 #include <format>
 #include <memory>
@@ -404,13 +411,13 @@ namespace T6
             collection.AddAssetCreator(CreateImageLoader(memory, searchPath));
             collection.AddAssetCreator(CreateSoundBankLoader(memory, searchPath));
             // collection.AddAssetCreator(std::make_unique<AssetLoaderSoundPatch>(memory));
-            // collection.AddAssetCreator(std::make_unique<AssetLoaderClipMapPvs>(memory));
-            // collection.AddAssetCreator(std::make_unique<AssetLoaderComWorld>(memory));
+            collection.AddAssetCreator(CreateClipMapLoader(memory, searchPath, zone));
+            collection.AddAssetCreator(CreateComWorldLoader(memory, searchPath));
             // collection.AddAssetCreator(std::make_unique<AssetLoaderGameWorldSp>(memory));
-            // collection.AddAssetCreator(std::make_unique<AssetLoaderGameWorldMp>(memory));
-            // collection.AddAssetCreator(std::make_unique<AssetLoaderMapEnts>(memory));
-            // collection.AddAssetCreator(std::make_unique<AssetLoaderGfxWorld>(memory));
-            // collection.AddAssetCreator(std::make_unique<AssetLoaderLightDef>(memory));
+            collection.AddAssetCreator(CreateGameWorldMpLoader(memory, searchPath, zone));
+            collection.AddAssetCreator(CreateMapEntsLoader(memory, searchPath));
+            collection.AddAssetCreator(CreateGfxWorldLoader(memory, searchPath));
+            collection.AddAssetCreator(CreateLightDefLoader(memory, searchPath));
             // collection.AddAssetCreator(std::make_unique<AssetLoaderFont>(memory));
             collection.AddAssetCreator(CreateFontIconLoader(memory, searchPath));
             // collection.AddAssetCreator(std::make_unique<AssetLoaderMenuList>(memory));
@@ -439,7 +446,7 @@ namespace T6
             // collection.AddAssetCreator(std::make_unique<AssetLoaderMemoryBlock>(memory));
             // collection.AddAssetCreator(std::make_unique<AssetLoaderAddonMapEnts>(memory));
             // collection.AddAssetCreator(std::make_unique<AssetLoaderTracer>(memory));
-            // collection.AddAssetCreator(std::make_unique<AssetLoaderSkinnedVerts>(memory));
+            collection.AddAssetCreator(CreateSkinnedVertsLoader(memory, searchPath));
             collection.AddAssetCreator(CreateQdbLoader(memory, searchPath));
             collection.AddAssetCreator(CreateSlugLoader(memory, searchPath));
             // collection.AddAssetCreator(std::make_unique<AssetLoaderFootstepTable>(memory));

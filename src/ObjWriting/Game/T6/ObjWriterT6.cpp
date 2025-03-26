@@ -23,6 +23,13 @@
 #include "AssetDumpers/AssetDumperWeaponCamo.h"
 #include "AssetDumpers/AssetDumperXModel.h"
 #include "AssetDumpers/AssetDumperZBarrier.h"
+#include "AssetDumpers/AssetDumperSkinnedVertsDef.h"
+#include "AssetDumpers/AssetDumperGfxLightDefT6.h"
+#include "AssetDumpers/AssetDumperGameWorldMp.h"
+#include "AssetDumpers/AssetDumperClipMap.h"
+#include "AssetDumpers/AssetDumperGfxWorld.h"
+#include "AssetDumpers/AssetDumperComWorld.h"
+#include "AssetDumpers/AssetDumperMapEntsT6.h"
 #include "Game/T6/GameAssetPoolT6.h"
 #include "ObjWriting.h"
 
@@ -49,13 +56,13 @@ bool ObjWriter::DumpZone(AssetDumpingContext& context) const
     DUMP_ASSET_POOL(AssetDumperGfxImage, m_image, ASSET_TYPE_IMAGE)
     DUMP_ASSET_POOL(AssetDumperSndBank, m_sound_bank, ASSET_TYPE_SOUND)
     // DUMP_ASSET_POOL(AssetDumperSndPatch, m_sound_patch, ASSET_TYPE_SOUND_PATCH)
-    // DUMP_ASSET_POOL(AssetDumperClipMap, m_clip_map, ASSET_TYPE_CLIPMAP_PVS)
-    // DUMP_ASSET_POOL(AssetDumperComWorld, m_com_world, ASSET_TYPE_COMWORLD)
+    DUMP_ASSET_POOL(AssetDumperClipMap, m_clip_map, ASSET_TYPE_CLIPMAP_PVS)
+    DUMP_ASSET_POOL(AssetDumperComWorld, m_com_world, ASSET_TYPE_COMWORLD)
     // DUMP_ASSET_POOL(AssetDumperGameWorldSp, m_game_world_sp, ASSET_TYPE_GAMEWORLD_SP)
-    // DUMP_ASSET_POOL(AssetDumperGameWorldMp, m_game_world_mp, ASSET_TYPE_GAMEWORLD_MP)
-    // DUMP_ASSET_POOL(AssetDumperMapEnts, m_map_ents, ASSET_TYPE_MAP_ENTS)
-    // DUMP_ASSET_POOL(AssetDumperGfxWorld, m_gfx_world, ASSET_TYPE_GFXWORLD)
-    // DUMP_ASSET_POOL(AssetDumperGfxLightDef, m_gfx_light_def, ASSET_TYPE_LIGHT_DEF)
+    DUMP_ASSET_POOL(AssetDumperGameWorldMp, m_game_world_mp, ASSET_TYPE_GAMEWORLD_MP)
+    DUMP_ASSET_POOL(AssetDumperMapEntsT6, m_map_ents, ASSET_TYPE_MAP_ENTS)
+    DUMP_ASSET_POOL(AssetDumperGfxWorld, m_gfx_world, ASSET_TYPE_GFXWORLD)
+    DUMP_ASSET_POOL(AssetDumperGfxLightDefT6, m_gfx_light_def, ASSET_TYPE_LIGHT_DEF)
     // DUMP_ASSET_POOL(AssetDumperFont, m_font, ASSET_TYPE_FONT)
     DUMP_ASSET_POOL(AssetDumperFontIcon, m_font_icon, ASSET_TYPE_FONTICON)
     // DUMP_ASSET_POOL(AssetDumperMenuList, m_menu_list, ASSET_TYPE_MENULIST)
@@ -81,7 +88,7 @@ bool ObjWriter::DumpZone(AssetDumpingContext& context) const
     // DUMP_ASSET_POOL(AssetDumperMemoryBlock, m_memory_block, ASSET_TYPE_MEMORYBLOCK)
     // DUMP_ASSET_POOL(AssetDumperAddonMapEnts, m_addon_map_ents, ASSET_TYPE_ADDON_MAP_ENTS)
     DUMP_ASSET_POOL(AssetDumperTracer, m_tracer, ASSET_TYPE_TRACER)
-    // DUMP_ASSET_POOL(AssetDumperSkinnedVertsDef, m_skinned_verts, ASSET_TYPE_SKINNEDVERTS)
+    DUMP_ASSET_POOL(AssetDumperSkinnedVertsDef, m_skinned_verts, ASSET_TYPE_SKINNEDVERTS)
     DUMP_ASSET_POOL(AssetDumperQdb, m_qdb, ASSET_TYPE_QDB)
     DUMP_ASSET_POOL(AssetDumperSlug, m_slug, ASSET_TYPE_SLUG)
     // DUMP_ASSET_POOL(AssetDumperFootstepTableDef, m_footstep_table, ASSET_TYPE_FOOTSTEP_TABLE)
