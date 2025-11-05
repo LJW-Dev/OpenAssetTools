@@ -22,6 +22,8 @@ function ObjLoading:link(links)
 	links:linkto(zlib)
 	links:linkto(libtomcrypt)
 	links:linkto(ufbx)
+	links:linkto(ZoneLoading)
+	links:linkto(ZoneWriting)
 end
 
 function ObjLoading:use()
@@ -66,4 +68,6 @@ function ObjLoading:project()
 		json:include(includes)
 		libtomcrypt:include(includes)
 		ufbx:include(includes)
+		ZoneLoading:include(includes)
+		ZoneWriting:include(includes)
 end

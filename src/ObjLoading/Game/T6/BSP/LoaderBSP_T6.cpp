@@ -3,6 +3,8 @@
 #include "BSPCreator.h"
 #include "BSPUtil.h"
 #include "Linker/BSPLinker.h"
+#include "ZoneLoading.h"
+#include "ZoneWriting.h"
 
 namespace
 {
@@ -32,16 +34,11 @@ namespace
 
         bool FinalizeZone(AssetCreationContext& context) override
         {
-            std::unique_ptr<BSPData> bsp = BSP::createBSPData(m_zone.m_name, m_search_path);
-            if (bsp == nullptr)
-                return false;
+            const std::string fastFilePath = "";
+            auto t5Zone = ZoneLoading::LoadZone(fastFilePath, std::nullopt);
+            auto t5AssetPool = t5Zone.value()->m_pools.get();
 
-            BSPLinker linker(m_memory, m_search_path, context);
-            bool result = linker.linkBSP(bsp.get());
-            if (!result)
-                con::error("BSP link has failed.");
-
-            return result;
+            return true;
         }
 
     private:
