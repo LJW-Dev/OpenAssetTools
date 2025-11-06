@@ -9,34 +9,34 @@
 
 namespace BSP
 {
-    FootstepTableDef* BSPLinker::addEmptyFootstepTableAsset(std::string assetName)
+    T6::FootstepTableDef* BSPLinker::addEmptyFootstepTableAsset(std::string assetName)
     {
         if (assetName.length() == 0)
             return nullptr;
 
-        FootstepTableDef* footstepTable = m_memory.Alloc<FootstepTableDef>();
+        T6::FootstepTableDef* footstepTable = m_memory.Alloc<T6::FootstepTableDef>();
         footstepTable->name = m_memory.Dup(assetName.c_str());
         memset(footstepTable->sndAliasTable, 0, sizeof(footstepTable->sndAliasTable));
 
-        m_context.AddAsset<AssetFootstepTable>(assetName, footstepTable);
+        m_context.AddAsset<T6::AssetFootstepTable>(assetName, footstepTable);
 
         return footstepTable;
     }
 
-    bool BSPLinker::addDefaultRequiredAssets(BSPData* bsp)
+    bool BSPLinker::addDefaultRequiredAssets(std::string& bspName)
     {
-        if (m_context.LoadDependency<AssetScript>("maps/mp/" + bsp->name + ".gsc") == nullptr)
+        if (m_context.LoadDependency<T6::AssetScript>("maps/mp/" + bspName + ".gsc") == nullptr)
             return false;
-        if (m_context.LoadDependency<AssetScript>("maps/mp/" + bsp->name + "_amb.gsc") == nullptr)
+        if (m_context.LoadDependency<T6::AssetScript>("maps/mp/" + bspName + "_amb.gsc") == nullptr)
             return false;
-        if (m_context.LoadDependency<AssetScript>("maps/mp/" + bsp->name + "_fx.gsc") == nullptr)
+        if (m_context.LoadDependency<T6::AssetScript>("maps/mp/" + bspName + "_fx.gsc") == nullptr)
             return false;
 
-        if (m_context.LoadDependency<AssetScript>("clientscripts/mp/" + bsp->name + ".csc") == nullptr)
+        if (m_context.LoadDependency<T6::AssetScript>("clientscripts/mp/" + bspName + ".csc") == nullptr)
             return false;
-        if (m_context.LoadDependency<AssetScript>("clientscripts/mp/" + bsp->name + "_amb.csc") == nullptr)
+        if (m_context.LoadDependency<T6::AssetScript>("clientscripts/mp/" + bspName + "_amb.csc") == nullptr)
             return false;
-        if (m_context.LoadDependency<AssetScript>("clientscripts/mp/" + bsp->name + "_fx.csc") == nullptr)
+        if (m_context.LoadDependency<T6::AssetScript>("clientscripts/mp/" + bspName + "_fx.csc") == nullptr)
             return false;
 
         addEmptyFootstepTableAsset("default_1st_person");
@@ -46,7 +46,7 @@ namespace BSP
         addEmptyFootstepTableAsset("default_3rd_person_loud");
         addEmptyFootstepTableAsset("default_ai");
 
-        if (m_context.LoadDependency<AssetRawFile>("animtrees/fxanim_props.atr") == nullptr)
+        if (m_context.LoadDependency<T6::AssetRawFile>("animtrees/fxanim_props.atr") == nullptr)
             return false;
 
         return true;
@@ -59,9 +59,9 @@ namespace BSP
     {
     }
 
-    bool BSPLinker::linkBSP(BSPData* bsp)
+    bool BSPLinker::linkBSP(ZoneAssetPools* T5AssetPool, std::string& bspName)
     {
-        if (!addDefaultRequiredAssets(bsp))
+        if (!addDefaultRequiredAssets(bspName))
             return false;
 
         ComWorldLinker comWorldLinker(m_memory, m_search_path, m_context);
@@ -71,35 +71,23 @@ namespace BSP
         MapEntsLinker mapEntsLinker(m_memory, m_search_path, m_context);
         SkinnedVertsLinker skinnedVertsLinker(m_memory, m_search_path, m_context);
 
-        ComWorld* comWorld = comWorldLinker.linkComWorld(bsp);
-        if (comWorld == nullptr)
+        if (comWorldLinker.linkComWorld(T5AssetPool, bspName) == false)
             return false;
-        m_context.AddAsset<AssetComWorld>(comWorld->name, comWorld);
 
-        MapEnts* mapEnts = mapEntsLinker.linkMapEnts(bsp);
-        if (mapEnts == nullptr)
+        if (mapEntsLinker.linkMapEnts(T5AssetPool, bspName) == false)
             return false;
-        m_context.AddAsset<AssetMapEnts>(mapEnts->name, mapEnts);
 
-        GameWorldMp* gameWorldMp = gameWorldMpLinker.linkGameWorldMp(bsp);
-        if (gameWorldMp == nullptr)
+        if (gameWorldMpLinker.linkGameWorldMp(T5AssetPool, bspName) == false)
             return false;
-        m_context.AddAsset<AssetGameWorldMp>(gameWorldMp->name, gameWorldMp);
 
-        SkinnedVertsDef* skinnedVerts = skinnedVertsLinker.linkSkinnedVerts(bsp);
-        if (skinnedVerts == nullptr)
+        if (gfxWorldLinker.linkGfxWorld(T5AssetPool, bspName) == false)
             return false;
-        m_context.AddAsset<AssetSkinnedVerts>(skinnedVerts->name, skinnedVerts);
 
-        GfxWorld* gfxWorld = gfxWorldLinker.linkGfxWorld(bsp); // requires mapents asset
-        if (gfxWorld == nullptr)
+        if (clipMapLinker.linkClipMap(T5AssetPool, bspName) == false)
             return false;
-        m_context.AddAsset<AssetGfxWorld>(gfxWorld->name, gfxWorld);
 
-        clipMap_t* clipMap = clipMapLinker.linkClipMap(bsp); // requires gfxworld and mapents asset
-        if (clipMap == nullptr)
+        if (skinnedVertsLinker.linkSkinnedVerts(T5AssetPool, bspName) == false) // requires GfxWorld asset
             return false;
-        m_context.AddAsset<AssetClipMap>(clipMap->name, clipMap);
 
         return true;
     }

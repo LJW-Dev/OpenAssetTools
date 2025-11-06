@@ -11,7 +11,7 @@ namespace BSP
     {
     public:
         MapEntsLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-        MapEnts* linkMapEnts(BSPData* bsp);
+        bool linkMapEnts(ZoneAssetPools* T5AssetPool, std::string& bspName);
 
     private:
         MemoryManager& m_memory;

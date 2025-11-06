@@ -11,9 +11,10 @@ namespace BSP
     {
     public:
         ComWorldLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-        ComWorld* linkComWorld(BSPData* bsp);
+        bool linkComWorld(ZoneAssetPools* T5AssetPool, std::string& bspName);
 
     private:
+        bool linkLightDef(ZoneAssetPools* T5AssetPool, T5::GfxLightDef* T5GfxLightDef);
         MemoryManager& m_memory;
         ISearchPath& m_search_path;
         AssetCreationContext& m_context;

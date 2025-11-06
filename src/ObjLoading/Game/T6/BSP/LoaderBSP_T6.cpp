@@ -38,6 +38,8 @@ namespace
             auto t5Zone = ZoneLoading::LoadZone(fastFilePath, std::nullopt);
             auto t5AssetPool = t5Zone.value()->m_pools.get();
 
+            std::string bspName = "maps/mp/" + t5Zone.value()->m_name + ".d3dbsp";
+
             return true;
         }
 

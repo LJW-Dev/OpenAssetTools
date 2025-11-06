@@ -12,29 +12,33 @@ namespace BSP
     {
     public:
         ClipMapLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-        clipMap_t* linkClipMap(BSPData* bsp);
+        bool linkClipMap(ZoneAssetPools* T5AssetPool, std::string& bspName);
 
     private:
+        void loadPlanes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadMaterials(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadBrushSides(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadLeafBrushNodes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadLeafBrushes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadBrushVerts(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadUinds(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadBrushes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        bool loadStaticModels(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadNodes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadLeafs(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadVerts(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadTris(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadWalkableEdges(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadPartitions(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadAaBbs(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadSubModels(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadClusters(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadBoxHulls(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadDynEnts(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+        void loadConstraints(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);
+
         MemoryManager& m_memory;
         ISearchPath& m_search_path;
         AssetCreationContext& m_context;
-
-        void loadBoxData(clipMap_t* clipMap);
-        void loadVisibility(clipMap_t* clipMap);
-        void loadDynEnts(clipMap_t* clipMap);
-        void loadRopesAndConstraints(clipMap_t* clipMap);
-        void loadSubModelCollision(clipMap_t* clipMap, BSPData* bsp);
-        void loadXModelCollision(clipMap_t* clipMap);
-
-        std::vector<cplane_s> planeVec;
-        std::vector<cNode_t> nodeVec;
-        std::vector<cLeaf_s> leafVec;
-        std::vector<CollisionAabbTree> AABBTreeVec;
-        size_t highestLeafObjectCount = 0;
-        void addAABBTreeFromLeaf(clipMap_t* clipMap, BSPTree* tree, size_t* out_parentCount, size_t* out_parentStartIndex);
-        int16_t loadBSPNode(clipMap_t* clipMap, BSPTree* tree);
-        void loadBSPTree(clipMap_t* clipMap, BSPData* bsp);
-        bool loadPartitions(clipMap_t* clipMap, BSPData* bsp);
-        bool loadWorldCollision(clipMap_t* clipMap, BSPData* bsp);
     };
 } // namespace BSP
