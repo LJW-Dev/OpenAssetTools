@@ -1,8 +1,12 @@
-#include "MapEntsLinker.h"
+#include "MapEntsCompiler.h"
 
-#include "../BSPUtil.h"
+#include "Utils/Logging/Log.h"
 
+#include <cassert>
+#include <memory>
 #include <nlohmann/json.hpp>
+#include <string>
+#include <vector>
 using namespace nlohmann;
 
 namespace
@@ -60,30 +64,33 @@ namespace
         }
     }
 
-    std::string loadMapEnts() {}
+    std::string getFileNameForBSPAsset(std::string& assetName)
+    {
+        return std::format("BSP/{}", assetName);
+    }
 } // namespace
 
 namespace BSP
 {
-    MapEntsLinker::MapEntsLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+    MapEntsCompiler::MapEntsCompiler(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
         : m_memory(memory),
           m_search_path(searchPath),
           m_context(context)
     {
     }
 
-    MapEnts* MapEntsLinker::linkMapEnts(BSPData* bsp)
+    bool MapEntsCompiler::linkMapEnts(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& bspName, std::string& T5BSPName)
     {
         try
         {
             json entJs;
             std::string entityFileName = "entities.json";
-            std::string entityFilePath = BSPUtil::getFileNameForBSPAsset(entityFileName);
+            std::string entityFilePath = getFileNameForBSPAsset(entityFileName);
             const auto entFile = m_search_path.Open(entityFilePath);
             if (!entFile.IsOpen())
             {
                 con::warn("Can't find entity file {}, using default entities instead", entityFilePath);
-                entJs = json::parse(BSPLinkingConstants::DEFAULT_MAP_ENTS_STRING);
+                entJs = json::parse(CBSPLinkingConstants::DEFAULT_MAP_ENTS_STRING);
             }
             else
             {
@@ -91,30 +98,30 @@ namespace BSP
             }
             std::string entityString;
             if (!parseMapEntsJSON(entJs["entities"], entityString))
-                return nullptr;
+                return false;
 
             json spawnJs;
             std::string spawnFileName = "spawns.json";
-            std::string spawnFilePath = BSPUtil::getFileNameForBSPAsset(spawnFileName);
+            std::string spawnFilePath = getFileNameForBSPAsset(spawnFileName);
             const auto spawnFile = m_search_path.Open(spawnFilePath);
             if (!spawnFile.IsOpen())
             {
                 con::warn("Cant find spawn file {}, setting spawns to 0 0 0", spawnFilePath);
-                spawnJs = json::parse(BSPLinkingConstants::DEFAULT_SPAWN_POINT_STRING);
+                spawnJs = json::parse(CBSPLinkingConstants::DEFAULT_SPAWN_POINT_STRING);
             }
             else
             {
                 spawnJs = json::parse(*spawnFile.m_stream);
             }
-            size_t defenderNameCount = std::extent<decltype(BSPGameConstants::DEFENDER_SPAWN_POINT_NAMES)>::value;
-            size_t attackerNameCount = std::extent<decltype(BSPGameConstants::ATTACKER_SPAWN_POINT_NAMES)>::value;
-            size_t ffaNameCount = std::extent<decltype(BSPGameConstants::FFA_SPAWN_POINT_NAMES)>::value;
-            parseSpawnpointJSON(spawnJs["attackers"], entityString, BSPGameConstants::DEFENDER_SPAWN_POINT_NAMES, defenderNameCount);
-            parseSpawnpointJSON(spawnJs["defenders"], entityString, BSPGameConstants::ATTACKER_SPAWN_POINT_NAMES, attackerNameCount);
-            parseSpawnpointJSON(spawnJs["FFA"], entityString, BSPGameConstants::FFA_SPAWN_POINT_NAMES, ffaNameCount);
+            size_t defenderNameCount = std::extent<decltype(CBSPGameConstants::DEFENDER_SPAWN_POINT_NAMES)>::value;
+            size_t attackerNameCount = std::extent<decltype(CBSPGameConstants::ATTACKER_SPAWN_POINT_NAMES)>::value;
+            size_t ffaNameCount = std::extent<decltype(CBSPGameConstants::FFA_SPAWN_POINT_NAMES)>::value;
+            parseSpawnpointJSON(spawnJs["attackers"], entityString, CBSPGameConstants::DEFENDER_SPAWN_POINT_NAMES, defenderNameCount);
+            parseSpawnpointJSON(spawnJs["defenders"], entityString, CBSPGameConstants::ATTACKER_SPAWN_POINT_NAMES, attackerNameCount);
+            parseSpawnpointJSON(spawnJs["FFA"], entityString, CBSPGameConstants::FFA_SPAWN_POINT_NAMES, ffaNameCount);
 
-            MapEnts* mapEnts = m_memory.Alloc<MapEnts>();
-            mapEnts->name = m_memory.Dup(bsp->bspName.c_str());
+            T6::MapEnts* mapEnts = m_memory.Alloc<T6::MapEnts>();
+            mapEnts->name = m_memory.Dup(bspName.c_str());
 
             mapEnts->entityString = m_memory.Dup(entityString.c_str());
             mapEnts->numEntityChars = static_cast<int>(entityString.length() + 1); // numEntityChars includes the null character
@@ -127,12 +134,14 @@ namespace BSP
             mapEnts->trigger.slabCount = 0;
             mapEnts->trigger.slabs = nullptr;
 
-            return mapEnts;
+            m_context.AddAsset<T6::AssetMapEnts>(mapEnts->name, mapEnts);
+
+            return true;
         }
         catch (const json::exception& e)
         {
             con::error("JSON error when parsing map ents and spawns: {}", e.what());
-            return nullptr;
+            return false;
         }
     }
 } // namespace BSP

@@ -1,12 +1,9 @@
 #pragma once
 
 #include "Asset/IAssetCreator.h"
-#include "Game/T5/T5.h"
-#include "Game/T6/T6.h"
+#include "Compiler.h"
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
-#include "ZoneLoading.h"
-#include "ZoneWriting.h"
 
 namespace BSP
 {

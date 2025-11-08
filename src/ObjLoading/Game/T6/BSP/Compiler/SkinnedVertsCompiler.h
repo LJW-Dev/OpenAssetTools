@@ -1,16 +1,17 @@
 #pragma once
 
 #include "Asset/IAssetCreator.h"
+#include "Compiler.h"
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
 
 namespace BSP
 {
-    class BSPCompilerExternal
+    class SkinnedVertsCompiler
     {
     public:
-        BSPCompilerExternal(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-        bool compileT5BSPIntoT6Zone(std::string& T6MapName);
+        SkinnedVertsCompiler(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
+        bool linkSkinnedVerts(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& bspName, std::string& T5BSPName);
 
     private:
         MemoryManager& m_memory;

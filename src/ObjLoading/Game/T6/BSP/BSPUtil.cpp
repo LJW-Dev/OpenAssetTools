@@ -5,6 +5,8 @@
 #include <cmath>
 #include <format>
 
+using namespace T6;
+
 namespace BSP
 {
     std::string BSPUtil::getFileNameForBSPAsset(std::string& assetName)

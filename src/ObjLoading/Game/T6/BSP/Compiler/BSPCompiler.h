@@ -17,6 +17,8 @@ namespace BSP
         bool compileT5MapIntoZone(std::string& T6MapName);
 
     private:
+        T6::FootstepTableDef* addEmptyFootstepTableAsset(std::string assetName);
+        bool addDefaultRequiredAssets(std::string& bspName);
         MemoryManager& m_memory;
         ISearchPath& m_search_path;
         AssetCreationContext& m_context;

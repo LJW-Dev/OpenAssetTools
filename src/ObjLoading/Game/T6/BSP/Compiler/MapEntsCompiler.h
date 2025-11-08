@@ -1,17 +1,17 @@
 #pragma once
 
-#include "../BSP.h"
 #include "Asset/IAssetCreator.h"
+#include "Compiler.h"
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
 
 namespace BSP
 {
-    class MapEntsLinker
+    class MapEntsCompiler
     {
     public:
-        MapEntsLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-        MapEnts* linkMapEnts(BSPData* bsp);
+        MapEntsCompiler(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
+        bool linkMapEnts(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& bspName, std::string& T5BSPName);
 
     private:
         MemoryManager& m_memory;

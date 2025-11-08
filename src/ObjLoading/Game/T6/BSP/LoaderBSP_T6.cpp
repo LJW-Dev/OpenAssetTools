@@ -1,9 +1,6 @@
 #include "LoaderBSP_T6.h"
 
-#include "BSPCompilerExternal.h"
-#include "BSPCreator.h"
-#include "BSPUtil.h"
-#include "Linker/BSPLinker.h"
+#include "Compiler/BSPCompiler.h"
 
 namespace
 {
@@ -33,22 +30,8 @@ namespace
 
         bool FinalizeZone(AssetCreationContext& context) override
         {
-            std::unique_ptr<BSPData> bsp = BSP::createBSPData(m_zone.m_name, m_search_path);
-            if (bsp == nullptr)
-                return false;
-
-            BSPLinker linker(m_memory, m_search_path, context);
-            bool result = linker.linkBSP(bsp.get());
-            if (!result)
-            {
-                con::error("BSP link has failed.");
-                return false;
-            }
-            else
-            {
-                BSPCompilerExternal t5BSPCompiler(m_memory, m_search_path, context);
-                return t5BSPCompiler.compileT5BSPIntoT6Zone(m_zone.m_name);
-            }
+            BSPCompiler t5BSPCompiler(m_memory, m_search_path, context);
+            return t5BSPCompiler.compileT5MapIntoZone(m_zone.m_name);
         }
 
     private:

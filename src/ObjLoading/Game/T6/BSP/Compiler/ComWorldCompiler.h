@@ -1,17 +1,17 @@
 #pragma once
 
-#include "../BSP.h"
 #include "Asset/IAssetCreator.h"
+#include "Compiler.h"
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
 
 namespace BSP
 {
-    class GameWorldMpLinker
+    class ComWorldCompiler
     {
     public:
-        GameWorldMpLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-        GameWorldMp* linkGameWorldMp(BSPData* bsp);
+        ComWorldCompiler(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
+        bool linkComWorld(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& bspName, std::string& T5BSPName);
 
     private:
         MemoryManager& m_memory;
