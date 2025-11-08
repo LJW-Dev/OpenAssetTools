@@ -11,7 +11,7 @@ namespace BSP
     {
     public:
         SkinnedVertsLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-        bool linkSkinnedVerts(ZoneAssetPools* T5AssetPool, std::string& bspName);
+        bool linkSkinnedVerts(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& bspName, std::string& T5BSPName);
 
     private:
         MemoryManager& m_memory;

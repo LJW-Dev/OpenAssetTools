@@ -34,13 +34,23 @@ namespace
 
         bool FinalizeZone(AssetCreationContext& context) override
         {
-            const std::string fastFilePath = "";
+            const std::string fastFilePath = "C:\\Users\\LJ\\Documents\\zombie_tutorial7.ff";
             auto t5Zone = ZoneLoading::LoadZone(fastFilePath, std::nullopt);
+
+            if (!t5Zone)
+            {
+                con::error("Unable to open T5 FastFile {}.", fastFilePath);
+                return false;
+            }
+
             auto t5AssetPool = t5Zone.value()->m_pools.get();
 
-            std::string bspName = "maps/mp/" + t5Zone.value()->m_name + ".d3dbsp";
+            std::string mapName = m_zone.m_name;
 
-            return true;
+            std::string T5BSPName = "maps/" + t5Zone.value()->m_name + ".d3dbsp";
+
+            BSPLinker linker(m_memory, m_search_path, context);
+            return linker.linkBSP(t5AssetPool, mapName, T5BSPName);
         }
 
     private:

@@ -11,7 +11,7 @@ namespace BSP
     {
     public:
         GameWorldMpLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-        bool linkGameWorldMp(ZoneAssetPools* T5AssetPool, std::string& bspName);
+        bool linkGameWorldMp(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& bspName, std::string& T5BSPName);
 
     private:
         MemoryManager& m_memory;

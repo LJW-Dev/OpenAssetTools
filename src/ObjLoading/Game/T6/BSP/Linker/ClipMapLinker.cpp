@@ -2,11 +2,6 @@
 
 #include "../BSPUtil.h"
 
-namespace
-{
-
-} // namespace
-
 namespace BSP
 {
     ClipMapLinker::ClipMapLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
@@ -19,15 +14,20 @@ namespace BSP
     void ClipMapLinker::loadPlanes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
     {
         T6ClipMap->info.planeCount = T5ClipMap->planeCount;
-        T6ClipMap->info.planes = m_memory.Alloc<T6::cplane_s>(T5ClipMap->planeCount);
 
-        static_assert(sizeof(T6::cplane_s) == sizeof(T5::cplane_s));
-
-        memcpy(T6ClipMap->info.planes, T5ClipMap->planes, sizeof(T5::cplane_s) * T5ClipMap->planeCount);
+        if (T5ClipMap->planeCount == 0)
+            T6ClipMap->info.planes = nullptr;
+        else
+        {
+            T6ClipMap->info.planes = m_memory.Alloc<T6::cplane_s>(T5ClipMap->planeCount);
+            static_assert(sizeof(T6::cplane_s) == sizeof(T5::cplane_s));
+            memcpy(T6ClipMap->info.planes, T5ClipMap->planes, sizeof(T5::cplane_s) * T5ClipMap->planeCount);
+        }
     }
 
     void ClipMapLinker::loadMaterials(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
     {
+        /*
         T6ClipMap->info.numMaterials = T5ClipMap->numMaterials;
         T6ClipMap->info.materials = m_memory.Alloc<T6::ClipMaterial>(T5ClipMap->numMaterials);
 
@@ -40,53 +40,109 @@ namespace BSP
             T6material->surfaceFlags = T5material->surfaceFlags;
             T6material->contentFlags = T5material->contentFlags;
         }
+        */
+
+        T6ClipMap->info.numMaterials = 1;
+        T6ClipMap->info.materials = m_memory.Alloc<T6::ClipMaterial>(T6ClipMap->info.numMaterials);
+        T6ClipMap->info.materials[0].name = m_memory.Dup(BSPLinkingConstants::MISSING_IMAGE_NAME);
+        T6ClipMap->info.materials[0].contentFlags = BSPEditableConstants::MATERIAL_CONTENT_FLAGS;
+        T6ClipMap->info.materials[0].surfaceFlags = BSPEditableConstants::MATERIAL_SURFACE_FLAGS;
     }
 
-    void ClipMapLinker::loadBrushSides(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
+    void ClipMapLinker::loadBrushSides(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap) // planes
     {
         T6ClipMap->info.numBrushSides = T5ClipMap->numBrushSides;
-        T6ClipMap->info.brushsides = m_memory.Alloc<T6::cbrushside_t>(T5ClipMap->numBrushSides);
-
-        for (unsigned int sideIdx = 0; sideIdx < T5ClipMap->numBrushSides; sideIdx++)
+        if (T5ClipMap->numBrushSides == 0)
         {
-            T5::cbrushside_t* T5BrushSide = &T5ClipMap->brushsides[sideIdx];
-            T6::cbrushside_t* T6BrushSide = &T6ClipMap->info.brushsides[sideIdx];
+            T6ClipMap->info.brushsides = nullptr;
+        }
+        else
+        {
+            T6ClipMap->info.brushsides = m_memory.Alloc<T6::cbrushside_t>(T5ClipMap->numBrushSides);
 
-            T6BrushSide->cflags = T5BrushSide->cflags;
-            T6BrushSide->sflags = T5BrushSide->sflags;
-            T6BrushSide->plane = m_memory.Alloc<T6::cplane_s>();
+            for (unsigned int sideIdx = 0; sideIdx < T5ClipMap->numBrushSides; sideIdx++)
+            {
+                T5::cbrushside_t* T5BrushSide = &T5ClipMap->brushsides[sideIdx];
+                T6::cbrushside_t* T6BrushSide = &T6ClipMap->info.brushsides[sideIdx];
 
-            static_assert(sizeof(T6::cplane_s) == sizeof(T5::cplane_s));
-            memcpy(T6BrushSide->plane, T5BrushSide->plane, sizeof(T5::cplane_s));
+                T6BrushSide->cflags = T5BrushSide->cflags;
+                T6BrushSide->sflags = T5BrushSide->sflags;
+
+                if (T5BrushSide->plane == nullptr)
+                {
+                    T6BrushSide->plane = nullptr;
+                }
+                else
+                {
+                    int foundIdx = -1;
+                    for (int idx = 0; idx < T5ClipMap->planeCount; idx++)
+                    {
+                        if (T5BrushSide->plane == &T5ClipMap->planes[idx])
+                        {
+                            foundIdx = idx;
+                            break;
+                        }
+                    }
+                    assert(foundIdx != -1);
+                    T6BrushSide->plane = &T6ClipMap->info.planes[foundIdx];
+                }
+
+                /*
+                T6BrushSide->plane = m_memory.Alloc<T6::cplane_s>();
+                static_assert(sizeof(T6::cplane_s) == sizeof(T5::cplane_s));
+                memcpy(T6BrushSide->plane, T5BrushSide->plane, sizeof(T5::cplane_s));
+                */
+            }
         }
     }
 
-    void ClipMapLinker::loadLeafBrushNodes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
+    void ClipMapLinker::loadLeafBrushNodes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap) // leafbrushes
     {
         T6ClipMap->info.leafbrushNodesCount = T5ClipMap->leafbrushNodesCount;
-        T6ClipMap->info.leafbrushNodes = m_memory.Alloc<T6::cLeafBrushNode_s>(T5ClipMap->leafbrushNodesCount);
-
-        for (unsigned int nodeIdx = 0; nodeIdx < T5ClipMap->leafbrushNodesCount; nodeIdx++)
+        if (T5ClipMap->leafbrushNodesCount == 0)
         {
-            T5::cLeafBrushNode_s* T5BrushNode = &T5ClipMap->leafbrushNodes[nodeIdx];
-            T6::cLeafBrushNode_s* T6BrushNode = &T6ClipMap->info.leafbrushNodes[nodeIdx];
+            T6ClipMap->info.leafbrushNodes = nullptr;
+        }
+        else
+        {
+            T6ClipMap->info.leafbrushNodes = m_memory.Alloc<T6::cLeafBrushNode_s>(T5ClipMap->leafbrushNodesCount);
 
-            T6BrushNode->axis = T5BrushNode->axis;
-            T6BrushNode->leafBrushCount = T5BrushNode->leafBrushCount;
-            T6BrushNode->contents = T5BrushNode->contents;
+            for (unsigned int nodeIdx = 0; nodeIdx < T5ClipMap->leafbrushNodesCount; nodeIdx++)
+            {
+                T5::cLeafBrushNode_s* T5BrushNode = &T5ClipMap->leafbrushNodes[nodeIdx];
+                T6::cLeafBrushNode_s* T6BrushNode = &T6ClipMap->info.leafbrushNodes[nodeIdx];
 
-            if (T6BrushNode->leafBrushCount > 0)
-            {
-                static_assert(sizeof(uint16_t) == sizeof(T6::LeafBrush));
-                T6BrushNode->data.leaf.brushes = m_memory.Alloc<T6::LeafBrush>(T5BrushNode->leafBrushCount);
-                memcpy(T6BrushNode->data.leaf.brushes, T5BrushNode->data.leaf.brushes, sizeof(uint16_t) * T5BrushNode->leafBrushCount);
-            }
-            else
-            {
-                T6BrushNode->data.children.dist = T5BrushNode->data.children.dist;
-                T6BrushNode->data.children.range = T5BrushNode->data.children.range;
-                T6BrushNode->data.children.childOffset[0] = T5BrushNode->data.children.childOffset[0];
-                T6BrushNode->data.children.childOffset[1] = T5BrushNode->data.children.childOffset[1];
+                T6BrushNode->axis = T5BrushNode->axis;
+                T6BrushNode->leafBrushCount = T5BrushNode->leafBrushCount;
+                T6BrushNode->contents = T5BrushNode->contents;
+
+                if (T6BrushNode->leafBrushCount > 0)
+                {
+                    int foundIdx = -1;
+                    for (int idx = 0; idx < T5ClipMap->numLeafBrushes; idx++)
+                    {
+                        if (T5BrushNode->data.leaf.brushes == &T5ClipMap->leafbrushes[idx])
+                        {
+                            foundIdx = idx;
+                            break;
+                        }
+                    }
+                    if (foundIdx != -1)
+                        T6BrushNode->data.leaf.brushes = &T6ClipMap->info.leafbrushes[foundIdx];
+                    else
+                    {
+                        static_assert(sizeof(uint16_t) == sizeof(T6::LeafBrush));
+                        T6BrushNode->data.leaf.brushes = m_memory.Alloc<T6::LeafBrush>(T5BrushNode->leafBrushCount);
+                        memcpy(T6BrushNode->data.leaf.brushes, T5BrushNode->data.leaf.brushes, sizeof(uint16_t) * T5BrushNode->leafBrushCount);
+                    }
+                }
+                else
+                {
+                    T6BrushNode->data.children.dist = T5BrushNode->data.children.dist;
+                    T6BrushNode->data.children.range = T5BrushNode->data.children.range;
+                    T6BrushNode->data.children.childOffset[0] = T5BrushNode->data.children.childOffset[0];
+                    T6BrushNode->data.children.childOffset[1] = T5BrushNode->data.children.childOffset[1];
+                }
             }
         }
     }
@@ -94,86 +150,158 @@ namespace BSP
     void ClipMapLinker::loadLeafBrushes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
     {
         T6ClipMap->info.numLeafBrushes = T5ClipMap->numLeafBrushes;
-        T6ClipMap->info.leafbrushes = m_memory.Alloc<T6::LeafBrush>(T5ClipMap->numLeafBrushes);
+        if (T5ClipMap->numLeafBrushes == 0)
+        {
+            T6ClipMap->info.leafbrushes = nullptr;
+        }
+        else
+        {
+            T6ClipMap->info.leafbrushes = m_memory.Alloc<T6::LeafBrush>(T5ClipMap->numLeafBrushes);
 
-        static_assert(sizeof(uint16_t) == sizeof(T6::LeafBrush));
+            static_assert(sizeof(uint16_t) == sizeof(T6::LeafBrush));
 
-        memcpy(T6ClipMap->info.leafbrushes, T5ClipMap->leafbrushes, sizeof(uint16_t) * T5ClipMap->numLeafBrushes);
+            memcpy(T6ClipMap->info.leafbrushes, T5ClipMap->leafbrushes, sizeof(uint16_t) * T5ClipMap->numLeafBrushes);
+        }
     }
 
     void ClipMapLinker::loadBrushVerts(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
     {
         T6ClipMap->info.numBrushVerts = T5ClipMap->numBrushVerts;
-        T6ClipMap->info.brushVerts = m_memory.Alloc<T6::vec3_t>(T5ClipMap->numBrushVerts);
+        if (T5ClipMap->numBrushVerts == 0)
+        {
+            T6ClipMap->info.brushVerts = nullptr;
+        }
+        else
+        {
+            T6ClipMap->info.brushVerts = m_memory.Alloc<T6::vec3_t>(T5ClipMap->numBrushVerts);
 
-        static_assert(sizeof(T6::vec3_t) == sizeof(T5::vec3_t));
+            static_assert(sizeof(T6::vec3_t) == sizeof(T5::vec3_t));
 
-        memcpy(T6ClipMap->info.brushVerts, T5ClipMap->brushVerts, sizeof(T5::vec3_t) * T5ClipMap->numBrushVerts);
+            memcpy(T6ClipMap->info.brushVerts, T5ClipMap->brushVerts, sizeof(T5::vec3_t) * T5ClipMap->numBrushVerts);
+        }
     }
 
     void ClipMapLinker::loadUinds(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
     {
         T6ClipMap->info.nuinds = T5ClipMap->nuinds;
-        T6ClipMap->info.uinds = m_memory.Alloc<uint16_t>(T5ClipMap->nuinds);
+        if (T5ClipMap->nuinds == 0)
+        {
+            T6ClipMap->info.uinds = nullptr;
+        }
+        else
+        {
+            T6ClipMap->info.uinds = m_memory.Alloc<uint16_t>(T5ClipMap->nuinds);
 
-        memcpy(T6ClipMap->info.uinds, T5ClipMap->uinds, sizeof(uint16_t) * T5ClipMap->nuinds);
+            memcpy(T6ClipMap->info.uinds, T5ClipMap->uinds, sizeof(uint16_t) * T5ClipMap->nuinds);
+        }
     }
 
-    void ClipMapLinker::loadBrushes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
+    void ClipMapLinker::loadBrushes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap) // brushVerts, brushsides
     {
         T6ClipMap->info.numBrushes = T5ClipMap->numBrushes;
-        T6ClipMap->info.brushes = m_memory.Alloc<T6::cbrush_array_t>(T5ClipMap->numBrushes);
-
-        for (unsigned int brushIdx = 0; brushIdx < T5ClipMap->numBrushes; brushIdx++)
+        if (T5ClipMap->numBrushes == 0)
         {
-            T5::cbrush_t* T5Brush = &T5ClipMap->brushes[brushIdx];
-            T6::cbrush_array_t* T6Brush = &T6ClipMap->info.brushes[brushIdx];
+            T6ClipMap->info.brushes = nullptr;
+        }
+        else
+        {
+            T6ClipMap->info.brushes = m_memory.Alloc<T6::cbrush_array_t>(T5ClipMap->numBrushes);
 
-            T6Brush->mins.x = T5Brush->mins[0];
-            T6Brush->mins.y = T5Brush->mins[1];
-            T6Brush->mins.z = T5Brush->mins[2];
-            T6Brush->contents = T5Brush->contents;
-            T6Brush->maxs.x = T5Brush->maxs[0];
-            T6Brush->maxs.y = T5Brush->maxs[1];
-            T6Brush->maxs.z = T5Brush->maxs[2];
-
-            T6Brush->axial_cflags[0][0] = T5Brush->axial_cflags[0][0];
-            T6Brush->axial_cflags[0][1] = T5Brush->axial_cflags[0][1];
-            T6Brush->axial_cflags[0][2] = T5Brush->axial_cflags[0][2];
-            T6Brush->axial_cflags[1][0] = T5Brush->axial_cflags[1][0];
-            T6Brush->axial_cflags[1][1] = T5Brush->axial_cflags[1][1];
-            T6Brush->axial_cflags[1][2] = T5Brush->axial_cflags[1][2];
-            T6Brush->axial_sflags[0][0] = T5Brush->axial_sflags[0][0];
-            T6Brush->axial_sflags[0][1] = T5Brush->axial_sflags[0][1];
-            T6Brush->axial_sflags[0][2] = T5Brush->axial_sflags[0][2];
-            T6Brush->axial_sflags[1][0] = T5Brush->axial_sflags[1][0];
-            T6Brush->axial_sflags[1][1] = T5Brush->axial_sflags[1][1];
-            T6Brush->axial_sflags[1][2] = T5Brush->axial_sflags[1][2];
-
-            static_assert(sizeof(T6::vec3_t) == sizeof(T5::vec3_t));
-            T6Brush->numverts = T5Brush->numverts;
-            T6Brush->verts = m_memory.Alloc<T6::vec3_t>(T5Brush->numverts);
-            memcpy(T6Brush->verts, T5Brush->verts, sizeof(T5::vec3_t) * T5Brush->numverts);
-
-            T6Brush->numsides = T5Brush->numsides;
-            T6Brush->sides = m_memory.Alloc<T6::cbrushside_t>(T5Brush->numsides);
-            for (unsigned int sideIdx = 0; sideIdx < T5Brush->numsides; sideIdx++)
+            for (unsigned int brushIdx = 0; brushIdx < T5ClipMap->numBrushes; brushIdx++)
             {
-                T5::cbrushside_t* T5Side = &T5Brush->sides[sideIdx];
-                T6::cbrushside_t* T6Side = &T6Brush->sides[sideIdx];
+                T5::cbrush_t* T5Brush = &T5ClipMap->brushes[brushIdx];
+                T6::cbrush_array_t* T6Brush = &T6ClipMap->info.brushes[brushIdx];
 
-                T6Side->cflags = T5Side->cflags;
-                T6Side->sflags = T5Side->sflags;
+                T6Brush->mins.x = T5Brush->mins[0];
+                T6Brush->mins.y = T5Brush->mins[1];
+                T6Brush->mins.z = T5Brush->mins[2];
+                T6Brush->contents = T5Brush->contents;
+                T6Brush->maxs.x = T5Brush->maxs[0];
+                T6Brush->maxs.y = T5Brush->maxs[1];
+                T6Brush->maxs.z = T5Brush->maxs[2];
 
-                T6Side->plane = m_memory.Alloc<T6::cplane_s>();
-                static_assert(sizeof(T6::cplane_s) == sizeof(T5::cplane_s));
-                memcpy(T6Side->plane, T5Side->plane, sizeof(T5::cplane_s));
+                T6Brush->axial_cflags[0][0] = T5Brush->axial_cflags[0][0];
+                T6Brush->axial_cflags[0][1] = T5Brush->axial_cflags[0][1];
+                T6Brush->axial_cflags[0][2] = T5Brush->axial_cflags[0][2];
+                T6Brush->axial_cflags[1][0] = T5Brush->axial_cflags[1][0];
+                T6Brush->axial_cflags[1][1] = T5Brush->axial_cflags[1][1];
+                T6Brush->axial_cflags[1][2] = T5Brush->axial_cflags[1][2];
+                T6Brush->axial_sflags[0][0] = T5Brush->axial_sflags[0][0];
+                T6Brush->axial_sflags[0][1] = T5Brush->axial_sflags[0][1];
+                T6Brush->axial_sflags[0][2] = T5Brush->axial_sflags[0][2];
+                T6Brush->axial_sflags[1][0] = T5Brush->axial_sflags[1][0];
+                T6Brush->axial_sflags[1][1] = T5Brush->axial_sflags[1][1];
+                T6Brush->axial_sflags[1][2] = T5Brush->axial_sflags[1][2];
+
+                if (T5Brush->numverts == 0)
+                {
+                    T6Brush->verts = nullptr;
+                }
+                else
+                {
+                    int foundIdx = -1;
+                    for (int idx = 0; idx < T5ClipMap->numBrushVerts; idx++)
+                    {
+                        if (T5Brush->verts == &T5ClipMap->brushVerts[idx])
+                        {
+                            foundIdx = idx;
+                            break;
+                        }
+                    }
+                    assert(foundIdx != -1);
+                    T6Brush->verts = &T6ClipMap->info.brushVerts[foundIdx];
+                }
+                /*
+                static_assert(sizeof(T6::vec3_t) == sizeof(T5::vec3_t));
+                T6Brush->numverts = T5Brush->numverts;
+                T6Brush->verts = m_memory.Alloc<T6::vec3_t>(T5Brush->numverts);
+                memcpy(T6Brush->verts, T5Brush->verts, sizeof(T5::vec3_t) * T5Brush->numverts);
+                */
+
+                if (T5Brush->numsides == 0)
+                {
+                    T6Brush->sides = nullptr;
+                }
+                else
+                {
+                    int foundIdx = -1;
+                    for (int idx = 0; idx < T5ClipMap->numBrushSides; idx++)
+                    {
+                        if (T5Brush->sides == &T5ClipMap->brushsides[idx])
+                        {
+                            foundIdx = idx;
+                            break;
+                        }
+                    }
+                    assert(foundIdx != -1);
+                    T6Brush->sides = &T6ClipMap->info.brushsides[foundIdx];
+                }
+
+                /*
+                T6Brush->numsides = T5Brush->numsides;
+                T6Brush->sides = m_memory.Alloc<T6::cbrushside_t>(T5Brush->numsides);
+                for (unsigned int sideIdx = 0; sideIdx < T5Brush->numsides; sideIdx++)
+                {
+                    T5::cbrushside_t* T5Side = &T5Brush->sides[sideIdx];
+                    T6::cbrushside_t* T6Side = &T6Brush->sides[sideIdx];
+
+                    T6Side->cflags = T5Side->cflags;
+                    T6Side->sflags = T5Side->sflags;
+
+                    T6Side->plane = m_memory.Alloc<T6::cplane_s>();
+                    static_assert(sizeof(T6::cplane_s) == sizeof(T5::cplane_s));
+                    memcpy(T6Side->plane, T5Side->plane, sizeof(T5::cplane_s));
+                }
+                */
             }
         }
     }
 
     bool ClipMapLinker::loadStaticModels(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
     {
+        T6ClipMap->numStaticModels = 0;
+        T6ClipMap->staticModelList = nullptr;
+        /*
         T6ClipMap->numStaticModels = T5ClipMap->numStaticModels;
         T6ClipMap->staticModelList = m_memory.Alloc<T6::cStaticModel_s>(T5ClipMap->numStaticModels);
 
@@ -210,11 +338,12 @@ namespace BSP
             // new in T6
             T6model->contents = T6model->xmodel->contents;
         }
+        */
 
         return true;
     }
 
-    void ClipMapLinker::loadNodes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
+    void ClipMapLinker::loadNodes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap) // planes
     {
         T6ClipMap->numNodes = T5ClipMap->numNodes;
         T6ClipMap->nodes = m_memory.Alloc<T6::cNode_t>(T5ClipMap->numNodes);
@@ -227,8 +356,23 @@ namespace BSP
             T6Node->children[0] = T5Node->children[0];
             T6Node->children[1] = T5Node->children[1];
 
+            int foundIdx = -1;
+            for (int idx = 0; idx < T5ClipMap->planeCount; idx++)
+            {
+                if (T5Node->plane == &T5ClipMap->planes[idx])
+                {
+                    foundIdx = idx;
+                    break;
+                }
+            }
+            assert(foundIdx != -1);
+            T6Node->plane = &T6ClipMap->info.planes[foundIdx];
+
+            /*
             static_assert(sizeof(T6::cplane_s) == sizeof(T5::cplane_s));
+            T6Node->plane = m_memory.Alloc<T6::cplane_s>();
             memcpy(T6Node->plane, T5Node->plane, sizeof(T5::cplane_s));
+            */
         }
     }
 
@@ -278,6 +422,7 @@ namespace BSP
     void ClipMapLinker::loadWalkableEdges(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
     {
         size_t walkableEdgeSize = (3 * T5ClipMap->triCount + 31) / 32 * 4;
+        T6ClipMap->triEdgeIsWalkable = m_memory.Alloc<char>(walkableEdgeSize);
         memcpy(T6ClipMap->triEdgeIsWalkable, T5ClipMap->triEdgeIsWalkable, sizeof(char) * walkableEdgeSize);
     }
 
@@ -315,7 +460,8 @@ namespace BSP
             T6aabb->origin.x = T5aabb->origin[0];
             T6aabb->origin.y = T5aabb->origin[1];
             T6aabb->origin.z = T5aabb->origin[2];
-            T6aabb->materialIndex = T5aabb->materialIndex;
+            // T6aabb->materialIndex = T5aabb->materialIndex;
+            T6aabb->materialIndex = 0;
             T6aabb->childCount = T5aabb->childCount;
             T6aabb->halfSize.x = T5aabb->halfSize[0];
             T6aabb->halfSize.y = T5aabb->halfSize[1];
@@ -326,6 +472,41 @@ namespace BSP
 
     void ClipMapLinker::loadSubModels(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
     {
+        auto T6GfxWorldAsset = m_context.LoadDependency<T6::AssetGfxWorld>(T6ClipMap->name);
+        assert(T6GfxWorldAsset != nullptr);
+        T6::GfxWorld* T6GfxWorld = T6GfxWorldAsset->Asset();
+
+        assert(T6GfxWorld->modelCount == 1);
+
+        T6ClipMap->numSubModels = 1;
+        T6ClipMap->cmodels = m_memory.Alloc<T6::cmodel_t>(T6ClipMap->numSubModels);
+
+        T6::GfxBrushModel* T6GfxModel = &T6GfxWorld->models[0];
+        T6ClipMap->cmodels[0].mins.x = T6GfxModel->bounds[0].x;
+        T6ClipMap->cmodels[0].mins.y = T6GfxModel->bounds[0].y;
+        T6ClipMap->cmodels[0].mins.z = T6GfxModel->bounds[0].z;
+        T6ClipMap->cmodels[0].maxs.x = T6GfxModel->bounds[1].x;
+        T6ClipMap->cmodels[0].maxs.y = T6GfxModel->bounds[1].y;
+        T6ClipMap->cmodels[0].maxs.z = T6GfxModel->bounds[1].z;
+        T6ClipMap->cmodels[0].radius = BSPUtil::distBetweenPoints(T6ClipMap->cmodels[0].mins, T6ClipMap->cmodels[0].maxs) / 2;
+
+        // The world sub model has no leafs associated with it
+        T6ClipMap->cmodels[0].leaf.firstCollAabbIndex = 0;
+        T6ClipMap->cmodels[0].leaf.collAabbCount = 0;
+        T6ClipMap->cmodels[0].leaf.brushContents = 0;
+        T6ClipMap->cmodels[0].leaf.terrainContents = 0;
+        T6ClipMap->cmodels[0].leaf.mins.x = 0.0f;
+        T6ClipMap->cmodels[0].leaf.mins.y = 0.0f;
+        T6ClipMap->cmodels[0].leaf.mins.z = 0.0f;
+        T6ClipMap->cmodels[0].leaf.maxs.x = 0.0f;
+        T6ClipMap->cmodels[0].leaf.maxs.y = 0.0f;
+        T6ClipMap->cmodels[0].leaf.maxs.z = 0.0f;
+        T6ClipMap->cmodels[0].leaf.leafBrushNode = 0;
+        T6ClipMap->cmodels[0].leaf.cluster = 0;
+
+        T6ClipMap->cmodels[0].info = nullptr; // always set to 0
+
+        /*
         T6ClipMap->numSubModels = T5ClipMap->numSubModels;
         T6ClipMap->cmodels = m_memory.Alloc<T6::cmodel_t>(T5ClipMap->numSubModels);
 
@@ -357,6 +538,7 @@ namespace BSP
             // new in T6
             T6model->info = nullptr;
         }
+        */
     }
 
     void ClipMapLinker::loadClusters(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
@@ -370,6 +552,60 @@ namespace BSP
 
     void ClipMapLinker::loadBoxHulls(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
     {
+        // for some reason the maxs are negative, and mins are positive
+        // float box_mins = 3.4028235e38;
+        // float box_maxs = -3.4028235e38;
+        // hack: the floats above can't be safely converted to 32 bit floats, and the game requires them to be exact
+        //  so we use the hex representation and set it using int pointers.
+        unsigned int box_mins = 0x7F7FFFFF;
+        unsigned int box_maxs = 0xFF7FFFFF;
+        *(reinterpret_cast<unsigned int*>(&T6ClipMap->box_model.leaf.mins.x)) = box_mins;
+        *(reinterpret_cast<unsigned int*>(&T6ClipMap->box_model.leaf.mins.y)) = box_mins;
+        *(reinterpret_cast<unsigned int*>(&T6ClipMap->box_model.leaf.mins.z)) = box_mins;
+        *(reinterpret_cast<unsigned int*>(&T6ClipMap->box_model.leaf.maxs.x)) = box_maxs;
+        *(reinterpret_cast<unsigned int*>(&T6ClipMap->box_model.leaf.maxs.y)) = box_maxs;
+        *(reinterpret_cast<unsigned int*>(&T6ClipMap->box_model.leaf.maxs.z)) = box_maxs;
+
+        T6ClipMap->box_model.leaf.brushContents = -1;
+        T6ClipMap->box_model.leaf.terrainContents = 0;
+        T6ClipMap->box_model.leaf.cluster = 0;
+        T6ClipMap->box_model.leaf.collAabbCount = 0;
+        T6ClipMap->box_model.leaf.firstCollAabbIndex = 0;
+        T6ClipMap->box_model.leaf.leafBrushNode = 0;
+        T6ClipMap->box_model.mins.x = 0.0f;
+        T6ClipMap->box_model.mins.y = 0.0f;
+        T6ClipMap->box_model.mins.z = 0.0f;
+        T6ClipMap->box_model.maxs.x = 0.0f;
+        T6ClipMap->box_model.maxs.y = 0.0f;
+        T6ClipMap->box_model.maxs.z = 0.0f;
+        T6ClipMap->box_model.radius = 0.0f;
+        T6ClipMap->box_model.info = nullptr;
+
+        T6ClipMap->box_brush = m_memory.Alloc<T6::cbrush_t>();
+        T6ClipMap->box_brush->axial_sflags[0][0] = -1;
+        T6ClipMap->box_brush->axial_sflags[0][1] = -1;
+        T6ClipMap->box_brush->axial_sflags[0][2] = -1;
+        T6ClipMap->box_brush->axial_sflags[1][0] = -1;
+        T6ClipMap->box_brush->axial_sflags[1][1] = -1;
+        T6ClipMap->box_brush->axial_sflags[1][2] = -1;
+        T6ClipMap->box_brush->axial_cflags[0][0] = -1;
+        T6ClipMap->box_brush->axial_cflags[0][1] = -1;
+        T6ClipMap->box_brush->axial_cflags[0][2] = -1;
+        T6ClipMap->box_brush->axial_cflags[1][0] = -1;
+        T6ClipMap->box_brush->axial_cflags[1][1] = -1;
+        T6ClipMap->box_brush->axial_cflags[1][2] = -1;
+        T6ClipMap->box_brush->contents = -1;
+        T6ClipMap->box_brush->mins.x = 0.0f;
+        T6ClipMap->box_brush->mins.y = 0.0f;
+        T6ClipMap->box_brush->mins.z = 0.0f;
+        T6ClipMap->box_brush->maxs.x = 0.0f;
+        T6ClipMap->box_brush->maxs.y = 0.0f;
+        T6ClipMap->box_brush->maxs.z = 0.0f;
+        T6ClipMap->box_brush->numsides = 0;
+        T6ClipMap->box_brush->numverts = 0;
+        T6ClipMap->box_brush->sides = nullptr;
+        T6ClipMap->box_brush->verts = nullptr;
+        /*
         T6ClipMap->box_brush = m_memory.Alloc<T6::cbrush_t>();
 
         T6ClipMap->box_brush->mins.x = T5ClipMap->box_brush->mins[0];
@@ -435,6 +671,7 @@ namespace BSP
 
         // new in T6
         T6ClipMap->box_model.info = nullptr;
+        */
     }
 
     void ClipMapLinker::loadDynEnts(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap)
@@ -444,7 +681,8 @@ namespace BSP
 
         int dynEntCount = 0;
         T6ClipMap->originalDynEntCount = dynEntCount;
-        T6ClipMap->dynEntCount[0] = T6ClipMap->originalDynEntCount + 256; // the game allocs 256 empty dynents, as they may be used ingame
+        // T6ClipMap->dynEntCount[0] = T6ClipMap->originalDynEntCount + 256; // the game allocs 256 empty dynents, as they may be used ingame
+        T6ClipMap->dynEntCount[0] = T6ClipMap->originalDynEntCount; // the game allocs 256 empty dynents, as they may be used ingame
         T6ClipMap->dynEntCount[1] = 0;
         T6ClipMap->dynEntCount[2] = 0;
         T6ClipMap->dynEntCount[3] = 0;
@@ -480,9 +718,9 @@ namespace BSP
         T6ClipMap->ropes = m_memory.Alloc<T6::rope_t>(T6ClipMap->max_ropes);
     }
 
-    bool ClipMapLinker::linkClipMap(ZoneAssetPools* T5AssetPool, std::string& bspName)
+    bool ClipMapLinker::linkClipMap(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& bspName, std::string& T5BSPName)
     {
-        auto T5ClipMapAsset = T5AssetPool->GetAsset(T5::ASSET_TYPE_CLIPMAP_PVS, bspName);
+        auto T5ClipMapAsset = T5AssetPool->GetAsset(T5::ASSET_TYPE_CLIPMAP_PVS, T5BSPName);
         if (T5ClipMapAsset == nullptr)
         {
             con::error("Can't find T5 ComWorld asset.");
@@ -491,9 +729,11 @@ namespace BSP
         T5::clipMap_t* T5ClipMap = static_cast<T5::clipMap_t*>(T5ClipMapAsset->m_ptr);
         T6::clipMap_t* T6ClipMap = m_memory.Alloc<T6::clipMap_t>();
 
-        T6ClipMap->name = m_memory.Dup(T5ClipMap->name);
-        T6ClipMap->isInUse = T5ClipMap->isInUse;
-        T6ClipMap->checksum = T5ClipMap->checksum;
+        T6ClipMap->name = m_memory.Dup(bspName.c_str());
+        // T6ClipMap->isInUse = T5ClipMap->isInUse;
+        // T6ClipMap->checksum = T5ClipMap->checksum;
+        T6ClipMap->isInUse = true;
+        T6ClipMap->checksum = 0;
 
         T6ClipMap->info.brushBounds = nullptr;
         T6ClipMap->info.brushContents = nullptr;
@@ -501,15 +741,16 @@ namespace BSP
         loadPlanes(T5ClipMap, T6ClipMap);
         loadMaterials(T5ClipMap, T6ClipMap);
         loadBrushSides(T5ClipMap, T6ClipMap);
-        loadLeafBrushNodes(T5ClipMap, T6ClipMap);
         loadLeafBrushes(T5ClipMap, T6ClipMap);
+        loadLeafBrushNodes(T5ClipMap, T6ClipMap); // requires leafbrushes
         loadBrushVerts(T5ClipMap, T6ClipMap);
         loadUinds(T5ClipMap, T6ClipMap);
-        loadBrushes(T5ClipMap, T6ClipMap);
+        loadBrushes(T5ClipMap, T6ClipMap); // rerquires brushverts, brushsides
         loadStaticModels(T5ClipMap, T6ClipMap);
-        loadNodes(T5ClipMap, T6ClipMap);
+        loadNodes(T5ClipMap, T6ClipMap); // requires planes
         loadLeafs(T5ClipMap, T6ClipMap);
         loadVerts(T5ClipMap, T6ClipMap);
+        loadTris(T5ClipMap, T6ClipMap);
         loadWalkableEdges(T5ClipMap, T6ClipMap);
         loadPartitions(T5ClipMap, T6ClipMap);
         loadAaBbs(T5ClipMap, T6ClipMap);

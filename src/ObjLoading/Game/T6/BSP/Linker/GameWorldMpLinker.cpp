@@ -9,7 +9,7 @@ namespace BSP
     {
     }
 
-    bool GameWorldMpLinker::linkGameWorldMp(ZoneAssetPools* T5AssetPool, std::string& bspName)
+    bool GameWorldMpLinker::linkGameWorldMp(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& bspName, std::string& T5BSPName)
     {
         // Seems to be light changes between T5 -> t6
         // TODO: Unimplemented as pathing is not important right now

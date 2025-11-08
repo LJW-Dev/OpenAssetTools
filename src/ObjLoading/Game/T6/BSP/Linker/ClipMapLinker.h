@@ -12,7 +12,7 @@ namespace BSP
     {
     public:
         ClipMapLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-        bool linkClipMap(ZoneAssetPools* T5AssetPool, std::string& bspName);
+        bool linkClipMap(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& bspName, std::string& T5BSPName);
 
     private:
         void loadPlanes(T5::clipMap_t* T5ClipMap, T6::clipMap_t* T6ClipMap);

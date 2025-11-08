@@ -23,20 +23,20 @@ namespace BSP
         return footstepTable;
     }
 
-    bool BSPLinker::addDefaultRequiredAssets(std::string& bspName)
+    bool BSPLinker::addDefaultRequiredAssets(std::string& mapName)
     {
-        if (m_context.LoadDependency<T6::AssetScript>("maps/mp/" + bspName + ".gsc") == nullptr)
+        if (m_context.LoadDependency<T6::AssetScript>("maps/mp/" + mapName + ".gsc") == nullptr)
             return false;
-        if (m_context.LoadDependency<T6::AssetScript>("maps/mp/" + bspName + "_amb.gsc") == nullptr)
+        if (m_context.LoadDependency<T6::AssetScript>("maps/mp/" + mapName + "_amb.gsc") == nullptr)
             return false;
-        if (m_context.LoadDependency<T6::AssetScript>("maps/mp/" + bspName + "_fx.gsc") == nullptr)
+        if (m_context.LoadDependency<T6::AssetScript>("maps/mp/" + mapName + "_fx.gsc") == nullptr)
             return false;
 
-        if (m_context.LoadDependency<T6::AssetScript>("clientscripts/mp/" + bspName + ".csc") == nullptr)
+        if (m_context.LoadDependency<T6::AssetScript>("clientscripts/mp/" + mapName + ".csc") == nullptr)
             return false;
-        if (m_context.LoadDependency<T6::AssetScript>("clientscripts/mp/" + bspName + "_amb.csc") == nullptr)
+        if (m_context.LoadDependency<T6::AssetScript>("clientscripts/mp/" + mapName + "_amb.csc") == nullptr)
             return false;
-        if (m_context.LoadDependency<T6::AssetScript>("clientscripts/mp/" + bspName + "_fx.csc") == nullptr)
+        if (m_context.LoadDependency<T6::AssetScript>("clientscripts/mp/" + mapName + "_fx.csc") == nullptr)
             return false;
 
         addEmptyFootstepTableAsset("default_1st_person");
@@ -59,9 +59,11 @@ namespace BSP
     {
     }
 
-    bool BSPLinker::linkBSP(ZoneAssetPools* T5AssetPool, std::string& bspName)
+    bool BSPLinker::linkBSP(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& T5BSPName)
     {
-        if (!addDefaultRequiredAssets(bspName))
+        std::string bspName = "maps/mp/" + mapName + ".d3dbsp";
+
+        if (!addDefaultRequiredAssets(mapName))
             return false;
 
         ComWorldLinker comWorldLinker(m_memory, m_search_path, m_context);
@@ -71,22 +73,22 @@ namespace BSP
         MapEntsLinker mapEntsLinker(m_memory, m_search_path, m_context);
         SkinnedVertsLinker skinnedVertsLinker(m_memory, m_search_path, m_context);
 
-        if (comWorldLinker.linkComWorld(T5AssetPool, bspName) == false)
+        if (comWorldLinker.linkComWorld(T5AssetPool, mapName, bspName, T5BSPName) == false)
             return false;
 
-        if (mapEntsLinker.linkMapEnts(T5AssetPool, bspName) == false)
+        if (mapEntsLinker.linkMapEnts(T5AssetPool, mapName, bspName, T5BSPName) == false)
             return false;
 
-        if (gameWorldMpLinker.linkGameWorldMp(T5AssetPool, bspName) == false)
+        if (gameWorldMpLinker.linkGameWorldMp(T5AssetPool, mapName, bspName, T5BSPName) == false)
             return false;
 
-        if (gfxWorldLinker.linkGfxWorld(T5AssetPool, bspName) == false)
+        if (gfxWorldLinker.linkGfxWorld(T5AssetPool, mapName, bspName, T5BSPName) == false)
             return false;
 
-        if (clipMapLinker.linkClipMap(T5AssetPool, bspName) == false)
+        if (clipMapLinker.linkClipMap(T5AssetPool, mapName, bspName, T5BSPName) == false)
             return false;
 
-        if (skinnedVertsLinker.linkSkinnedVerts(T5AssetPool, bspName) == false) // requires GfxWorld asset
+        if (skinnedVertsLinker.linkSkinnedVerts(T5AssetPool, mapName, bspName, T5BSPName) == false) // requires GfxWorld asset
             return false;
 
         return true;

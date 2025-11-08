@@ -11,7 +11,7 @@ namespace BSP
     {
     public:
         BSPLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-        bool linkBSP(ZoneAssetPools* T5AssetPool, std::string& bspName);
+        bool linkBSP(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& T5BSPName);
 
     private:
         T6::FootstepTableDef* addEmptyFootstepTableAsset(std::string assetName);

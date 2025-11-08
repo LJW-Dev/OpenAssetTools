@@ -9,7 +9,7 @@ namespace BSP
     {
     }
 
-    bool SkinnedVertsLinker::linkSkinnedVerts(ZoneAssetPools* T5AssetPool, std::string& bspName)
+    bool SkinnedVertsLinker::linkSkinnedVerts(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& bspName, std::string& T5BSPName)
     {
         // Skinned verts are new in T6
         auto gfxWorldAsset = m_context.LoadDependency<T6::AssetGfxWorld>(bspName);
