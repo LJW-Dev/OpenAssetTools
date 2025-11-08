@@ -91,16 +91,6 @@ namespace BSP
             return false;
         m_context.AddAsset<AssetSkinnedVerts>(skinnedVerts->name, skinnedVerts);
 
-        GfxWorld* gfxWorld = gfxWorldLinker.linkGfxWorld(bsp); // requires mapents asset
-        if (gfxWorld == nullptr)
-            return false;
-        m_context.AddAsset<AssetGfxWorld>(gfxWorld->name, gfxWorld);
-
-        clipMap_t* clipMap = clipMapLinker.linkClipMap(bsp); // requires gfxworld and mapents asset
-        if (clipMap == nullptr)
-            return false;
-        m_context.AddAsset<AssetClipMap>(clipMap->name, clipMap);
-
         return true;
     }
 } // namespace BSP

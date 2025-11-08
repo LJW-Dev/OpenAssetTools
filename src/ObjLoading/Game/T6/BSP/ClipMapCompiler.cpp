@@ -887,16 +887,13 @@ namespace BSP
         con::info("Adding T5 ClipMap to zone.");
 
         auto T5ClipMapAsset = T5AssetPool->GetAsset(T5::ASSET_TYPE_CLIPMAP_PVS, T5BSPName);
-        auto T6ClipMapAsset = m_context.LoadDependency<T6::AssetClipMapPvs>(bspName);
-
-        if (T5ClipMapAsset == nullptr || T6ClipMapAsset == nullptr)
+        if (T5ClipMapAsset == nullptr)
         {
-            con::error("Can't find T5 or T6 ClipMap asset.");
+            con::error("Can't find T5 ComWorld asset.");
             return false;
         }
-
         T5::clipMap_t* T5ClipMap = static_cast<T5::clipMap_t*>(T5ClipMapAsset->m_ptr);
-        T6::clipMap_t* T6ClipMap = T6ClipMapAsset->Asset();
+        T6::clipMap_t* T6ClipMap = m_memory.Alloc<T6::clipMap_t>();
 
         T6ClipMap->name = m_memory.Dup(bspName.c_str());
         // T6ClipMap->isInUse = T5ClipMap->isInUse;
@@ -940,7 +937,7 @@ namespace BSP
         // removed from T5
         //  int borderCount;
         //  CollisionBorder* borders;
-
+        m_context.AddAsset<T6::AssetClipMap>(T6ClipMap->name, T6ClipMap);
         return true;
     }
 } // namespace BSP
