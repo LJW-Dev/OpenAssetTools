@@ -177,7 +177,7 @@ namespace BSP
 
         // lightgrid (global) lighting colour
         // since lightgrids are not well understood, this colour is used for the R, G and B values right now
-        constexpr unsigned char LIGHTGRID_COLOUR = 128;
+        constexpr unsigned char LIGHTGRID_COLOUR = 255;
 
         // Sunlight values
         constexpr vec4_t SUNLIGHT_COLOR = {0.75f, 0.75f, 0.75f, 1.0f};

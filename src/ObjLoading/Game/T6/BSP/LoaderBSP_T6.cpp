@@ -1,5 +1,6 @@
 #include "LoaderBSP_T6.h"
 
+#include "BSPCompilerExternal.h"
 #include "BSPCreator.h"
 #include "BSPUtil.h"
 #include "Linker/BSPLinker.h"
@@ -39,9 +40,15 @@ namespace
             BSPLinker linker(m_memory, m_search_path, context);
             bool result = linker.linkBSP(bsp.get());
             if (!result)
+            {
                 con::error("BSP link has failed.");
-
-            return result;
+                return false;
+            }
+            else
+            {
+                BSPCompilerExternal t5BSPCompiler(m_memory, m_search_path, context);
+                return t5BSPCompiler.compileT5BSPIntoT6Zone(m_zone.m_name);
+            }
         }
 
     private:
