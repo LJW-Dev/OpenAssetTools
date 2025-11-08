@@ -1,5 +1,6 @@
 #include "BSPCompiler.h"
 
+#include "ClipMapCompiler.h"
 #include "Utils/Logging/Log.h"
 #include "Utils/Pack.h"
 
@@ -486,64 +487,6 @@ namespace BSP
         return true;
     }
 
-    void BSPCompiler::LoadSubModels(T6::clipMap_t* T6ClipMap)
-    {
-        auto T6GfxWorldAsset = m_context.LoadDependency<T6::AssetGfxWorld>(T6ClipMap->name);
-        assert(T6GfxWorldAsset != nullptr);
-        T6::GfxWorld* T6GfxWorld = T6GfxWorldAsset->Asset();
-
-        assert(T6GfxWorld->modelCount == 1);
-
-        T6ClipMap->numSubModels = 1;
-        T6ClipMap->cmodels = m_memory.Alloc<T6::cmodel_t>(T6ClipMap->numSubModels);
-
-        T6::GfxBrushModel* T6GfxModel = &T6GfxWorld->models[0];
-        T6ClipMap->cmodels[0].mins.x = T6GfxModel->bounds[0].x;
-        T6ClipMap->cmodels[0].mins.y = T6GfxModel->bounds[0].y;
-        T6ClipMap->cmodels[0].mins.z = T6GfxModel->bounds[0].z;
-        T6ClipMap->cmodels[0].maxs.x = T6GfxModel->bounds[1].x;
-        T6ClipMap->cmodels[0].maxs.y = T6GfxModel->bounds[1].y;
-        T6ClipMap->cmodels[0].maxs.z = T6GfxModel->bounds[1].z;
-        T6ClipMap->cmodels[0].radius = distBetweenPoints(T6ClipMap->cmodels[0].mins, T6ClipMap->cmodels[0].maxs) / 2;
-
-        // The world sub model has no leafs associated with it
-        T6ClipMap->cmodels[0].leaf.firstCollAabbIndex = 0;
-        T6ClipMap->cmodels[0].leaf.collAabbCount = 0;
-        T6ClipMap->cmodels[0].leaf.brushContents = 0;
-        T6ClipMap->cmodels[0].leaf.terrainContents = 0;
-        T6ClipMap->cmodels[0].leaf.mins.x = 0.0f;
-        T6ClipMap->cmodels[0].leaf.mins.y = 0.0f;
-        T6ClipMap->cmodels[0].leaf.mins.z = 0.0f;
-        T6ClipMap->cmodels[0].leaf.maxs.x = 0.0f;
-        T6ClipMap->cmodels[0].leaf.maxs.y = 0.0f;
-        T6ClipMap->cmodels[0].leaf.maxs.z = 0.0f;
-        T6ClipMap->cmodels[0].leaf.leafBrushNode = 0;
-        T6ClipMap->cmodels[0].leaf.cluster = 0;
-
-        T6ClipMap->cmodels[0].info = nullptr; // always set to 0
-    }
-
-    bool BSPCompiler::addClipMap(ZoneAssetPools* T5AssetPool, std::string& T6MapName, std::string& T6BspName, std::string& T5BSPName)
-    {
-        con::info("Adding T5 ClipMap to zone.");
-
-        auto T5ClipMapAsset = T5AssetPool->GetAsset(T5::ASSET_TYPE_CLIPMAP_PVS, T5BSPName);
-        auto T6ClipMapAsset = m_context.LoadDependency<T6::AssetClipMapPvs>(T6BspName);
-
-        if (T5ClipMapAsset == nullptr || T6ClipMapAsset == nullptr)
-        {
-            con::error("Can't find T5 or T6 ClipMap asset.");
-            return false;
-        }
-
-        T5::clipMap_t* T5ClipMap = static_cast<T5::clipMap_t*>(T5ClipMapAsset->m_ptr);
-        T6::clipMap_t* T6ClipMap = T6ClipMapAsset->Asset();
-
-        LoadSubModels(T6ClipMap);
-
-        return true;
-    }
-
     bool BSPCompiler::compileT5MapIntoZone(std::string& T6MapName)
     {
         const std::string fastFilePath = "C:\\Users\\LJ\\Documents\\zombiehouse\\zombie_house\\zombie_house.ff";
@@ -568,7 +511,8 @@ namespace BSP
         else
             con::info("Sucessfully added T5 GfxWorld to zone.");
 
-        result = addClipMap(t5AssetPool, T6MapName, T6BSPName, T5BSPName); // requires GfxWorld
+        ClipMapCompiler clipmapCompiler(m_memory, m_search_path, m_context);
+        result = clipmapCompiler.linkClipMap(t5AssetPool, T6MapName, T6BSPName, T5BSPName); // requires GfxWorld and map ents
 
         if (!result)
         {

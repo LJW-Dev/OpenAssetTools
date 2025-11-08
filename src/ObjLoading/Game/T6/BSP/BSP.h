@@ -109,19 +109,19 @@ namespace BSP
         constexpr const char* DEFAULT_SPAWN_POINT_STRING = R"({
     "attackers": [
 		{
-			"origin": "0 0 0",
+			"origin": "200 200 200",
 			"angles": "0 0 0"
 		}
     ],
 	"defenders": [
 		{
-			"origin": "0 0 0",
+			"origin": "200 200 200",
 			"angles": "0 0 0"
 		}
     ],
 	"FFA": [
 		{
-			"origin": "0 0 0",
+			"origin": "200 200 200",
 			"angles": "0 0 0"
 		}
 	]
