@@ -7,43 +7,6 @@
 #include <string>
 #include <vector>
 
-namespace
-{
-    void updateAABB(T6::vec3_t& newAABBMins, T6::vec3_t& newAABBMaxs, T6::vec3_t& AABBMins, T6::vec3_t& AABBMaxs)
-    {
-        if (AABBMins.x > newAABBMins.x)
-            AABBMins.x = newAABBMins.x;
-
-        if (newAABBMaxs.x > AABBMaxs.x)
-            AABBMaxs.x = newAABBMaxs.x;
-
-        if (AABBMins.y > newAABBMins.y)
-            AABBMins.y = newAABBMins.y;
-
-        if (newAABBMaxs.y > AABBMaxs.y)
-            AABBMaxs.y = newAABBMaxs.y;
-
-        if (AABBMins.z > newAABBMins.z)
-            AABBMins.z = newAABBMins.z;
-
-        if (newAABBMaxs.z > AABBMaxs.z)
-            AABBMaxs.z = newAABBMaxs.z;
-    }
-
-    size_t allignBy128(size_t size)
-    {
-        return ((size + 127) & 0xFFFFFF80);
-    }
-
-    float distBetweenPoints(T6::vec3_t& p1, T6::vec3_t& p2)
-    {
-        float x = p2.x - p1.x;
-        float y = p2.y - p1.y;
-        float z = p2.z - p1.z;
-        return sqrtf((x * x) + (y * y) + (z * z));
-    }
-} // namespace
-
 namespace BSP
 {
     ClipMapCompiler::ClipMapCompiler(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
@@ -530,7 +493,7 @@ namespace BSP
         T6ClipMap->cmodels[0].maxs.x = T6GfxModel->bounds[1].x;
         T6ClipMap->cmodels[0].maxs.y = T6GfxModel->bounds[1].y;
         T6ClipMap->cmodels[0].maxs.z = T6GfxModel->bounds[1].z;
-        T6ClipMap->cmodels[0].radius = distBetweenPoints(T6ClipMap->cmodels[0].mins, T6ClipMap->cmodels[0].maxs) / 2;
+        T6ClipMap->cmodels[0].radius = BSPUtil::distBetweenPoints(T6ClipMap->cmodels[0].mins, T6ClipMap->cmodels[0].maxs) / 2;
 
         // The world sub model has no leafs associated with it
         T6ClipMap->cmodels[0].leaf.firstCollAabbIndex = 0;

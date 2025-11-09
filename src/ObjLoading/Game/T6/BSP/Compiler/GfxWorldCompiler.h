@@ -18,8 +18,9 @@ namespace BSP
         bool loadMapSurfaces(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld);
         void loadXModels(T6::GfxWorld* T6GfxWorld);
         void cleanGfxWorld(T6::GfxWorld* gfxWorld);
-        void loadGfxLights(T6::GfxWorld* gfxWorld);
-        void loadLightGrid(T6::GfxWorld* gfxWorld);
+        void loadLightRegionHulls(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        void loadGfxLights(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        void loadLightGrid(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
         void loadGfxCells(T6::GfxWorld* gfxWorld);
         void loadModels(T6::GfxWorld* gfxWorld);
         bool loadReflectionProbeData(T6::GfxWorld* gfxWorld);

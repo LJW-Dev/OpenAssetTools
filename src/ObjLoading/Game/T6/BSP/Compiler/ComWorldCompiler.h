@@ -12,6 +12,7 @@ namespace BSP
     public:
         ComWorldCompiler(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
         bool linkComWorld(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& bspName, std::string& T5BSPName);
+        bool linkLightDef(ZoneAssetPools* T5AssetPool, T5::GfxLightDef* T5LightDef);
 
     private:
         MemoryManager& m_memory;

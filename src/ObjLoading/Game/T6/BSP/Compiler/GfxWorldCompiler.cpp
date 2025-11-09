@@ -8,43 +8,6 @@
 #include <string>
 #include <vector>
 
-namespace
-{
-    void updateAABB(T6::vec3_t& newAABBMins, T6::vec3_t& newAABBMaxs, T6::vec3_t& AABBMins, T6::vec3_t& AABBMaxs)
-    {
-        if (AABBMins.x > newAABBMins.x)
-            AABBMins.x = newAABBMins.x;
-
-        if (newAABBMaxs.x > AABBMaxs.x)
-            AABBMaxs.x = newAABBMaxs.x;
-
-        if (AABBMins.y > newAABBMins.y)
-            AABBMins.y = newAABBMins.y;
-
-        if (newAABBMaxs.y > AABBMaxs.y)
-            AABBMaxs.y = newAABBMaxs.y;
-
-        if (AABBMins.z > newAABBMins.z)
-            AABBMins.z = newAABBMins.z;
-
-        if (newAABBMaxs.z > AABBMaxs.z)
-            AABBMaxs.z = newAABBMaxs.z;
-    }
-
-    size_t allignBy128(size_t size)
-    {
-        return ((size + 127) & 0xFFFFFF80);
-    }
-
-    float distBetweenPoints(T6::vec3_t& p1, T6::vec3_t& p2)
-    {
-        float x = p2.x - p1.x;
-        float y = p2.y - p1.y;
-        float z = p2.z - p1.z;
-        return sqrtf((x * x) + (y * y) + (z * z));
-    }
-} // namespace
-
 namespace BSP
 {
     GfxWorldCompiler::GfxWorldCompiler(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
@@ -107,7 +70,7 @@ namespace BSP
         // 2
         // doesn't seem to matter what order the sorted surfs go in
         T6GfxWorld->dpvs.sortedSurfIndex = m_memory.Alloc<uint16_t>(surfaceCount);
-        for (int surfIdx = 0; surfIdx < StaticSurfaceCount; surfIdx++)
+        for (unsigned int surfIdx = 0; surfIdx < StaticSurfaceCount; surfIdx++)
             T6GfxWorld->dpvs.sortedSurfIndex[surfIdx] = T5GfxWorld->dpvs.sortedSurfIndex[surfIdx];
 
         // 8 - sizeof StaticSurfaceCount
@@ -128,7 +91,7 @@ namespace BSP
         // 1
         // visdata is written to by the game
         // all visdata is alligned by 128
-        size_t allignedSurfaceCount = allignBy128(StaticSurfaceCount);
+        size_t allignedSurfaceCount = BSPUtil::allignBy128(StaticSurfaceCount);
         T6GfxWorld->dpvs.surfaceVisDataCount = static_cast<unsigned int>(allignedSurfaceCount);
         T6GfxWorld->dpvs.surfaceVisData[0] = m_memory.Alloc<char>(allignedSurfaceCount);
         T6GfxWorld->dpvs.surfaceVisData[1] = m_memory.Alloc<char>(allignedSurfaceCount);
@@ -138,12 +101,12 @@ namespace BSP
         T6GfxWorld->dpvs.surfaceCastsSunShadow = m_memory.Alloc<char>(allignedSurfaceCount);
 
         T6GfxWorld->dpvs.surfaces = m_memory.Alloc<T6::GfxSurface>(surfaceCount);
-        for (int surfIdx = 0; surfIdx < surfaceCount; surfIdx++)
+        for (unsigned int surfIdx = 0; surfIdx < surfaceCount; surfIdx++)
         {
             T5::GfxSurface* T5Surface = &T5GfxWorld->dpvs.surfaces[surfIdx];
             T6::GfxSurface* T6Surface = &T6GfxWorld->dpvs.surfaces[surfIdx];
 
-            T6Surface->primaryLightIndex = CBSPEditableConstants::DEFAULT_SURFACE_LIGHT;
+            T6Surface->primaryLightIndex = T5Surface->primaryLightIndex;
             T6Surface->lightmapIndex = CBSPEditableConstants::DEFAULT_SURFACE_LIGHTMAP;
             T6Surface->reflectionProbeIndex = CBSPEditableConstants::DEFAULT_SURFACE_REFLECTION_PROBE;
             T6Surface->flags = CBSPEditableConstants::DEFAULT_SURFACE_FLAGS;
@@ -197,7 +160,7 @@ namespace BSP
 
         // visdata is written to by the game
         // all visdata is alligned by 128
-        size_t allignedModelCount = allignBy128(modelCount);
+        size_t allignedModelCount = BSPUtil::allignBy128(modelCount);
         T6GfxWorld->dpvs.smodelVisDataCount = static_cast<unsigned int>(allignedModelCount);
         T6GfxWorld->dpvs.smodelVisData[0] = m_memory.Alloc<char>(allignedModelCount);
         T6GfxWorld->dpvs.smodelVisData[1] = m_memory.Alloc<char>(allignedModelCount);
@@ -302,36 +265,118 @@ namespace BSP
         T6GfxWorld->sunLight = m_memory.Alloc<T6::GfxLight>();
     }
 
-    void GfxWorldCompiler::loadGfxLights(T6::GfxWorld* T6GfxWorld)
+    void GfxWorldCompiler::loadLightRegionHulls(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
     {
-        // there must be 2 or more lights, first is the static light and second is the sun light
-        T6GfxWorld->primaryLightCount = CBSPGameConstants::BSP_DEFAULT_LIGHT_COUNT;
-        T6GfxWorld->sunPrimaryLightIndex = CBSPGameConstants::SUN_LIGHT_INDEX;
-
-        T6GfxWorld->shadowGeom = m_memory.Alloc<T6::GfxShadowGeometry>(T6GfxWorld->primaryLightCount);
-        for (unsigned int lightIdx = 0; lightIdx < T6GfxWorld->primaryLightCount; lightIdx++)
+        T6GfxWorld->lightRegion = m_memory.Alloc<T6::GfxLightRegion>(T5GfxWorld->primaryLightCount);
+        for (unsigned int lightIdx = 0; lightIdx < T5GfxWorld->primaryLightCount; lightIdx++)
         {
+            T6GfxWorld->lightRegion[lightIdx].hullCount = T5GfxWorld->lightRegion[lightIdx].hullCount;
+            T6GfxWorld->lightRegion[lightIdx].hulls = m_memory.Alloc<T6::GfxLightRegionHull>(T5GfxWorld->lightRegion[lightIdx].hullCount);
+            for (unsigned int hullIdx = 0; hullIdx < T5GfxWorld->lightRegion[lightIdx].hullCount; hullIdx++)
+            {
+                T5::GfxLightRegionHull* T5Hull = &T5GfxWorld->lightRegion[lightIdx].hulls[hullIdx];
+                T6::GfxLightRegionHull* T6Hull = &T6GfxWorld->lightRegion[lightIdx].hulls[hullIdx];
+
+                T6Hull->kdopHalfSize[0] = T5Hull->kdopHalfSize[0];
+                T6Hull->kdopHalfSize[1] = T5Hull->kdopHalfSize[1];
+                T6Hull->kdopHalfSize[2] = T5Hull->kdopHalfSize[2];
+                T6Hull->kdopHalfSize[3] = T5Hull->kdopHalfSize[3];
+                T6Hull->kdopHalfSize[4] = T5Hull->kdopHalfSize[4];
+                T6Hull->kdopHalfSize[5] = T5Hull->kdopHalfSize[5];
+                T6Hull->kdopHalfSize[6] = T5Hull->kdopHalfSize[6];
+                T6Hull->kdopHalfSize[7] = T5Hull->kdopHalfSize[7];
+                T6Hull->kdopHalfSize[8] = T5Hull->kdopHalfSize[8];
+
+                T6Hull->kdopMidPoint[0] = T5Hull->kdopMidPoint[0];
+                T6Hull->kdopMidPoint[1] = T5Hull->kdopMidPoint[1];
+                T6Hull->kdopMidPoint[2] = T5Hull->kdopMidPoint[2];
+                T6Hull->kdopMidPoint[3] = T5Hull->kdopMidPoint[3];
+                T6Hull->kdopMidPoint[4] = T5Hull->kdopMidPoint[4];
+                T6Hull->kdopMidPoint[5] = T5Hull->kdopMidPoint[5];
+                T6Hull->kdopMidPoint[6] = T5Hull->kdopMidPoint[6];
+                T6Hull->kdopMidPoint[7] = T5Hull->kdopMidPoint[7];
+                T6Hull->kdopMidPoint[8] = T5Hull->kdopMidPoint[8];
+
+                if (T5Hull->axisCount == 0)
+                {
+                    T6Hull->axisCount = 0;
+                    T6Hull->axis = nullptr;
+                }
+                else
+                {
+                    T6Hull->axisCount = T5Hull->axisCount;
+                    T6Hull->axis = m_memory.Alloc<T6::GfxLightRegionAxis>(T5Hull->axisCount);
+                    for (unsigned int axisIdx = 0; axisIdx < T5Hull->axisCount; axisIdx++)
+                    {
+                        T6Hull->axis[axisIdx].dir.x = T5Hull->axis[axisIdx].dir[0];
+                        T6Hull->axis[axisIdx].dir.y = T5Hull->axis[axisIdx].dir[1];
+                        T6Hull->axis[axisIdx].dir.z = T5Hull->axis[axisIdx].dir[2];
+                        T6Hull->axis[axisIdx].halfSize = T5Hull->axis[axisIdx].halfSize;
+                        T6Hull->axis[axisIdx].midPoint = T5Hull->axis[axisIdx].midPoint;
+                    }
+                }
+            }
+        }
+    }
+
+    void GfxWorldCompiler::loadGfxLights(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    {
+        assert(T5GfxWorld->primaryLightCount >= 2);
+
+        T6GfxWorld->primaryLightCount = T5GfxWorld->primaryLightCount;
+        T6GfxWorld->sunPrimaryLightIndex = T5GfxWorld->sunPrimaryLightIndex;
+
+        /*
+        * // TODO: crashes relating to hulls
+        T6GfxWorld->shadowGeom = m_memory.Alloc<T6::GfxShadowGeometry>(T5GfxWorld->primaryLightCount);
+        for (unsigned int lightIdx = 0; lightIdx < T5GfxWorld->primaryLightCount; lightIdx++)
+        {
+            // TODO: smodels aren't implemented right now
             T6GfxWorld->shadowGeom[lightIdx].smodelCount = 0;
-            T6GfxWorld->shadowGeom[lightIdx].surfaceCount = 0;
             T6GfxWorld->shadowGeom[lightIdx].smodelIndex = nullptr;
-            T6GfxWorld->shadowGeom[lightIdx].sortedSurfIndex = nullptr;
+
+            if (T5GfxWorld->shadowGeom[lightIdx].surfaceCount == 0)
+            {
+                T6GfxWorld->shadowGeom[lightIdx].sortedSurfIndex = nullptr;
+                T6GfxWorld->shadowGeom[lightIdx].surfaceCount = 0;
+            }
+            else
+            {
+                T6GfxWorld->shadowGeom[lightIdx].surfaceCount = T5GfxWorld->shadowGeom[lightIdx].surfaceCount = 0;
+                T6GfxWorld->shadowGeom[lightIdx].sortedSurfIndex = m_memory.Alloc<uint16_t>(T5GfxWorld->shadowGeom[lightIdx].surfaceCount);
+                memcpy(T6GfxWorld->shadowGeom[lightIdx].sortedSurfIndex,
+                       T5GfxWorld->shadowGeom[lightIdx].sortedSurfIndex,
+                       T5GfxWorld->shadowGeom[lightIdx].surfaceCount);
+            }
         }
 
-        T6GfxWorld->lightRegion = m_memory.Alloc<T6::GfxLightRegion>(T6GfxWorld->primaryLightCount);
-        for (unsigned int lightIdx = 0; lightIdx < T6GfxWorld->primaryLightCount; lightIdx++)
+        loadLightRegionHulls(T5GfxWorld, T6GfxWorld);
+        */
+
+        T6GfxWorld->shadowGeom = m_memory.Alloc<T6::GfxShadowGeometry>(T5GfxWorld->primaryLightCount);
+        for (unsigned int lightIdx = 0; lightIdx < T5GfxWorld->primaryLightCount; lightIdx++)
+        {
+            T6GfxWorld->shadowGeom[lightIdx].smodelCount = 0;
+            T6GfxWorld->shadowGeom[lightIdx].smodelIndex = nullptr;
+            T6GfxWorld->shadowGeom[lightIdx].sortedSurfIndex = nullptr;
+            T6GfxWorld->shadowGeom[lightIdx].surfaceCount = 0;
+        }
+
+        T6GfxWorld->lightRegion = m_memory.Alloc<T6::GfxLightRegion>(T5GfxWorld->primaryLightCount);
+        for (unsigned int lightIdx = 0; lightIdx < T5GfxWorld->primaryLightCount; lightIdx++)
         {
             T6GfxWorld->lightRegion[lightIdx].hullCount = 0;
             T6GfxWorld->lightRegion[lightIdx].hulls = nullptr;
         }
 
-        unsigned int lightEntShadowVisSize = (T6GfxWorld->primaryLightCount - T6GfxWorld->sunPrimaryLightIndex - 1) * 8192;
+        unsigned int lightEntShadowVisSize = (T5GfxWorld->primaryLightCount - T5GfxWorld->sunPrimaryLightIndex - 1) * 8192;
         if (lightEntShadowVisSize != 0)
             T6GfxWorld->primaryLightEntityShadowVis = m_memory.Alloc<unsigned int>(lightEntShadowVisSize);
         else
             T6GfxWorld->primaryLightEntityShadowVis = nullptr;
     }
 
-    void GfxWorldCompiler::loadLightGrid(T6::GfxWorld* T6GfxWorld)
+    void GfxWorldCompiler::loadLightGrid(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
     {
         // there is almost no basis for the values in this code, they were chosen based on what looks correct when reverse engineering.
 
@@ -347,7 +392,7 @@ namespace BSP
 
         T6GfxWorld->lightGrid.rowAxis = 0; // default value
         T6GfxWorld->lightGrid.colAxis = 1; // default value
-        T6GfxWorld->lightGrid.sunPrimaryLightIndex = CBSPGameConstants::SUN_LIGHT_INDEX;
+        T6GfxWorld->lightGrid.sunPrimaryLightIndex = T5GfxWorld->sunPrimaryLightIndex;
         T6GfxWorld->lightGrid.offset = 0.0f; // default value
 
         // setting all rowDataStart indexes to 0 will always index the first row in rawRowData
@@ -371,8 +416,8 @@ namespace BSP
         T6::GfxLightGridEntry* entryArray = m_memory.Alloc<T6::GfxLightGridEntry>(T6GfxWorld->lightGrid.entryCount);
         for (unsigned int i = 0; i < T6GfxWorld->lightGrid.entryCount; i++)
         {
-            entryArray[i].colorsIndex = 0; // always index first colour
-            entryArray[i].primaryLightIndex = CBSPGameConstants::SUN_LIGHT_INDEX;
+            entryArray[i].colorsIndex = 0;                                      // always index first colour
+            entryArray[i].primaryLightIndex = T5GfxWorld->sunPrimaryLightIndex; // TODO - use proper light index
             entryArray[i].visibility = 0;
         }
         T6GfxWorld->lightGrid.entries = entryArray;
@@ -464,7 +509,7 @@ namespace BSP
 
         for (int surfIdx = 0; surfIdx < T6GfxWorld->surfaceCount; surfIdx++)
         {
-            updateAABB(T6GfxWorld->dpvs.surfaces[surfIdx].bounds[0], T6GfxWorld->dpvs.surfaces[surfIdx].bounds[1], T6GfxWorld->mins, T6GfxWorld->maxs);
+            BSPUtil::updateAABB(T6GfxWorld->dpvs.surfaces[surfIdx].bounds[0], T6GfxWorld->dpvs.surfaces[surfIdx].bounds[1], T6GfxWorld->mins, T6GfxWorld->maxs);
         }
     }
 
@@ -728,23 +773,27 @@ namespace BSP
         if (!loadReflectionProbeData(T6GfxWorld))
             return false;
 
-        // world bounds are based on loaded surface mins/maxs
+        // requires surfaces and vertexes
         loadWorldBounds(T6GfxWorld);
 
+        // requires world mins and maxs
         if (!loadOutdoors(T6GfxWorld))
             return false;
 
-        // gfx cells depend on surface/smodel count
+        // gfx cells depend on world mins/maxs, surface and smodel count
         loadGfxCells(T6GfxWorld);
 
-        loadLightGrid(T6GfxWorld);
+        loadGfxLights(T5GfxWorld, T6GfxWorld);
 
-        loadGfxLights(T6GfxWorld);
+        // requires lights
+        loadLightGrid(T5GfxWorld, T6GfxWorld);
 
+        // requires surfaces
         loadModels(T6GfxWorld);
 
         loadSunData(T6GfxWorld);
 
+        // requires cells and lights
         loadDynEntData(T6GfxWorld);
 
         m_context.AddAsset<T6::AssetGfxWorld>(T6GfxWorld->name, T6GfxWorld);
