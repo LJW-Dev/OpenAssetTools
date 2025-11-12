@@ -49,7 +49,7 @@ namespace BSP
 
         T6ClipMap->info.numMaterials = 1;
         T6ClipMap->info.materials = m_memory.Alloc<T6::ClipMaterial>(T6ClipMap->info.numMaterials);
-        T6ClipMap->info.materials[0].name = m_memory.Dup(CBSPLinkingConstants::MISSING_IMAGE_NAME);
+        T6ClipMap->info.materials[0].name = m_memory.Dup(CBSPLinkingConstants::MISSING_MATERIAL_NAME);
         T6ClipMap->info.materials[0].contentFlags = CBSPEditableConstants::MATERIAL_CONTENT_FLAGS;
         T6ClipMap->info.materials[0].surfaceFlags = CBSPEditableConstants::MATERIAL_SURFACE_FLAGS;
     }

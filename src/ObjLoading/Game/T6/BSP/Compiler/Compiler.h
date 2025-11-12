@@ -51,8 +51,8 @@ namespace BSP
     // These values are BSP linking constants that are required for the link to be successful
     namespace CBSPLinkingConstants
     {
-        constexpr const char* MISSING_IMAGE_NAME = ",mc/lambert1";
-        constexpr const char* COLOR_ONLY_IMAGE_NAME = ",white";
+        constexpr const char* MISSING_MATERIAL_NAME = ",mc/lambert1";
+        constexpr const char* COLOR_ONLY_MATERIAL_NAME = ",white";
 
         constexpr const char* DEAFULT_LIGHTDEF_IMAGE = "whitesquare"; // requires adding this asset to the zone folder
 
