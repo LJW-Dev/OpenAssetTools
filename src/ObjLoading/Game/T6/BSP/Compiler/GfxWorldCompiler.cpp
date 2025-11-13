@@ -371,56 +371,59 @@ namespace BSP
         T6GfxWorld->lightRegion = m_memory.Alloc<T6::GfxLightRegion>(T5GfxWorld->primaryLightCount);
         for (unsigned int lightIdx = 0; lightIdx < T5GfxWorld->primaryLightCount; lightIdx++)
         {
-            T6GfxWorld->lightRegion[lightIdx].hullCount = T5GfxWorld->lightRegion[lightIdx].hullCount;
-            T6GfxWorld->lightRegion[lightIdx].hulls = m_memory.Alloc<T6::GfxLightRegionHull>(T5GfxWorld->lightRegion[lightIdx].hullCount);
-            for (unsigned int hullIdx = 0; hullIdx < T5GfxWorld->lightRegion[lightIdx].hullCount; hullIdx++)
+            if (T5GfxWorld->lightRegion[lightIdx].hullCount == 0)
             {
-                T5::GfxLightRegionHull* T5Hull = &T5GfxWorld->lightRegion[lightIdx].hulls[hullIdx];
-                T6::GfxLightRegionHull* T6Hull = &T6GfxWorld->lightRegion[lightIdx].hulls[hullIdx];
-
-                T6Hull->kdopHalfSize[0] = T5Hull->kdopHalfSize[0];
-                T6Hull->kdopHalfSize[1] = T5Hull->kdopHalfSize[1];
-                T6Hull->kdopHalfSize[2] = T5Hull->kdopHalfSize[2];
-                T6Hull->kdopHalfSize[3] = T5Hull->kdopHalfSize[3];
-                T6Hull->kdopHalfSize[4] = T5Hull->kdopHalfSize[4];
-                T6Hull->kdopHalfSize[5] = T5Hull->kdopHalfSize[5];
-                T6Hull->kdopHalfSize[6] = T5Hull->kdopHalfSize[6];
-                T6Hull->kdopHalfSize[7] = T5Hull->kdopHalfSize[7];
-                T6Hull->kdopHalfSize[8] = T5Hull->kdopHalfSize[8];
-
-                T6Hull->kdopMidPoint[0] = T5Hull->kdopMidPoint[0];
-                T6Hull->kdopMidPoint[1] = T5Hull->kdopMidPoint[1];
-                T6Hull->kdopMidPoint[2] = T5Hull->kdopMidPoint[2];
-                T6Hull->kdopMidPoint[3] = T5Hull->kdopMidPoint[3];
-                T6Hull->kdopMidPoint[4] = T5Hull->kdopMidPoint[4];
-                T6Hull->kdopMidPoint[5] = T5Hull->kdopMidPoint[5];
-                T6Hull->kdopMidPoint[6] = T5Hull->kdopMidPoint[6];
-                T6Hull->kdopMidPoint[7] = T5Hull->kdopMidPoint[7];
-                T6Hull->kdopMidPoint[8] = T5Hull->kdopMidPoint[8];
-
-                T6Hull->axisCount = 0;
-                T6Hull->axis = nullptr;
-
-                /*
-                if (T5Hull->axisCount == 0)
+                T6GfxWorld->lightRegion[lightIdx].hullCount = 0;
+                T6GfxWorld->lightRegion[lightIdx].hulls = nullptr;
+            }
+            else
+            {
+                T6GfxWorld->lightRegion[lightIdx].hullCount = T5GfxWorld->lightRegion[lightIdx].hullCount;
+                T6GfxWorld->lightRegion[lightIdx].hulls = m_memory.Alloc<T6::GfxLightRegionHull>(T5GfxWorld->lightRegion[lightIdx].hullCount);
+                for (unsigned int hullIdx = 0; hullIdx < T5GfxWorld->lightRegion[lightIdx].hullCount; hullIdx++)
                 {
-                    T6Hull->axisCount = 0;
-                    T6Hull->axis = nullptr;
-                }
-                else
-                {
-                    T6Hull->axisCount = T5Hull->axisCount;
-                    T6Hull->axis = m_memory.Alloc<T6::GfxLightRegionAxis>(T5Hull->axisCount);
-                    for (unsigned int axisIdx = 0; axisIdx < T5Hull->axisCount; axisIdx++)
+                    T5::GfxLightRegionHull* T5Hull = &T5GfxWorld->lightRegion[lightIdx].hulls[hullIdx];
+                    T6::GfxLightRegionHull* T6Hull = &T6GfxWorld->lightRegion[lightIdx].hulls[hullIdx];
+
+                    T6Hull->kdopHalfSize[0] = T5Hull->kdopHalfSize[0];
+                    T6Hull->kdopHalfSize[1] = T5Hull->kdopHalfSize[1];
+                    T6Hull->kdopHalfSize[2] = T5Hull->kdopHalfSize[2];
+                    T6Hull->kdopHalfSize[3] = T5Hull->kdopHalfSize[3];
+                    T6Hull->kdopHalfSize[4] = T5Hull->kdopHalfSize[4];
+                    T6Hull->kdopHalfSize[5] = T5Hull->kdopHalfSize[5];
+                    T6Hull->kdopHalfSize[6] = T5Hull->kdopHalfSize[6];
+                    T6Hull->kdopHalfSize[7] = T5Hull->kdopHalfSize[7];
+                    T6Hull->kdopHalfSize[8] = T5Hull->kdopHalfSize[8];
+
+                    T6Hull->kdopMidPoint[0] = T5Hull->kdopMidPoint[0];
+                    T6Hull->kdopMidPoint[1] = T5Hull->kdopMidPoint[1];
+                    T6Hull->kdopMidPoint[2] = T5Hull->kdopMidPoint[2];
+                    T6Hull->kdopMidPoint[3] = T5Hull->kdopMidPoint[3];
+                    T6Hull->kdopMidPoint[4] = T5Hull->kdopMidPoint[4];
+                    T6Hull->kdopMidPoint[5] = T5Hull->kdopMidPoint[5];
+                    T6Hull->kdopMidPoint[6] = T5Hull->kdopMidPoint[6];
+                    T6Hull->kdopMidPoint[7] = T5Hull->kdopMidPoint[7];
+                    T6Hull->kdopMidPoint[8] = T5Hull->kdopMidPoint[8];
+
+                    if (T5Hull->axisCount == 0)
                     {
-                        T6Hull->axis[axisIdx].dir.x = T5Hull->axis[axisIdx].dir[0];
-                        T6Hull->axis[axisIdx].dir.y = T5Hull->axis[axisIdx].dir[1];
-                        T6Hull->axis[axisIdx].dir.z = T5Hull->axis[axisIdx].dir[2];
-                        T6Hull->axis[axisIdx].halfSize = T5Hull->axis[axisIdx].halfSize;
-                        T6Hull->axis[axisIdx].midPoint = T5Hull->axis[axisIdx].midPoint;
+                        T6Hull->axisCount = 0;
+                        T6Hull->axis = nullptr;
+                    }
+                    else
+                    {
+                        T6Hull->axisCount = T5Hull->axisCount;
+                        T6Hull->axis = m_memory.Alloc<T6::GfxLightRegionAxis>(T5Hull->axisCount);
+                        for (unsigned int axisIdx = 0; axisIdx < T5Hull->axisCount; axisIdx++)
+                        {
+                            T6Hull->axis[axisIdx].dir.x = T5Hull->axis[axisIdx].dir[0];
+                            T6Hull->axis[axisIdx].dir.y = T5Hull->axis[axisIdx].dir[1];
+                            T6Hull->axis[axisIdx].dir.z = T5Hull->axis[axisIdx].dir[2];
+                            T6Hull->axis[axisIdx].halfSize = T5Hull->axis[axisIdx].halfSize;
+                            T6Hull->axis[axisIdx].midPoint = T5Hull->axis[axisIdx].midPoint;
+                        }
                     }
                 }
-                */
             }
         }
     }
@@ -435,43 +438,24 @@ namespace BSP
         T6GfxWorld->shadowGeom = m_memory.Alloc<T6::GfxShadowGeometry>(T5GfxWorld->primaryLightCount);
         for (unsigned int lightIdx = 0; lightIdx < T5GfxWorld->primaryLightCount; lightIdx++)
         {
-            T6GfxWorld->shadowGeom[lightIdx].smodelCount = 0;
-            T6GfxWorld->shadowGeom[lightIdx].smodelIndex = nullptr;
-            T6GfxWorld->shadowGeom[lightIdx].sortedSurfIndex = nullptr;
-            T6GfxWorld->shadowGeom[lightIdx].surfaceCount = 0;
-        }
-        T6GfxWorld->lightRegion = m_memory.Alloc<T6::GfxLightRegion>(T5GfxWorld->primaryLightCount);
-        for (unsigned int lightIdx = 0; lightIdx < T5GfxWorld->primaryLightCount; lightIdx++)
-        {
-            T6GfxWorld->lightRegion[lightIdx].hullCount = 0;
-            T6GfxWorld->lightRegion[lightIdx].hulls = nullptr;
-        }
-
-        /*
-        * TODO: crash related to lightRegion and hulls invalid pointers
-        T6GfxWorld->shadowGeom = m_memory.Alloc<T6::GfxShadowGeometry>(T5GfxWorld->primaryLightCount);
-        for (unsigned int lightIdx = 0; lightIdx < T5GfxWorld->primaryLightCount; lightIdx++)
-        {
             // TODO: smodels aren't implemented right now
             T6GfxWorld->shadowGeom[lightIdx].smodelCount = 0;
             T6GfxWorld->shadowGeom[lightIdx].smodelIndex = nullptr;
 
             if (T5GfxWorld->shadowGeom[lightIdx].surfaceCount == 0)
             {
-                T6GfxWorld->shadowGeom[lightIdx].sortedSurfIndex = nullptr;
                 T6GfxWorld->shadowGeom[lightIdx].surfaceCount = 0;
+                T6GfxWorld->shadowGeom[lightIdx].sortedSurfIndex = nullptr;
             }
             else
             {
-                T6GfxWorld->shadowGeom[lightIdx].surfaceCount = T5GfxWorld->shadowGeom[lightIdx].surfaceCount = 0;
-                T6GfxWorld->shadowGeom[lightIdx].sortedSurfIndex = m_memory.Alloc<uint16_t>(T5GfxWorld->shadowGeom[lightIdx].surfaceCount);
-                memcpy(T6GfxWorld->shadowGeom[lightIdx].sortedSurfIndex,
-                       T5GfxWorld->shadowGeom[lightIdx].sortedSurfIndex,
-                       sizeof(uint16_t) * T5GfxWorld->shadowGeom[lightIdx].surfaceCount);
+                // sorted surf index and surfaceCount is overwritten by the game and re-initialised each frame
+                // Using T5 values results in a buffer overflow, so we set each surf count to the size of the sorted surf buffer
+                T6GfxWorld->shadowGeom[lightIdx].surfaceCount = T5GfxWorld->dpvs.staticSurfaceCount;
+                T6GfxWorld->shadowGeom[lightIdx].sortedSurfIndex = m_memory.Alloc<uint16_t>(T5GfxWorld->dpvs.staticSurfaceCount);
             }
         }
         loadLightRegionHulls(T5GfxWorld, T6GfxWorld);
-        */
 
         unsigned int lightEntShadowVisSize = (T5GfxWorld->primaryLightCount - T5GfxWorld->sunPrimaryLightIndex - 1) * 8192;
         if (lightEntShadowVisSize != 0)
@@ -875,7 +859,7 @@ namespace BSP
         T6GfxWorld->baseName = m_memory.Dup(mapName.c_str());
         T6GfxWorld->name = m_memory.Dup(bspName.c_str());
 
-        // Default values taken from official maps
+        // New in T6, taken from official T6 maps
         T6GfxWorld->lightingFlags = 0;
         T6GfxWorld->lightingQuality = 4096;
 
