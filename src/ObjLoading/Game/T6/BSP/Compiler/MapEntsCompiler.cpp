@@ -141,8 +141,6 @@ namespace BSP
             parseSpawnpointJSON(spawnJs["defenders"], entityString, CBSPGameConstants::ATTACKER_SPAWN_POINT_NAMES, attackerNameCount);
             parseSpawnpointJSON(spawnJs["FFA"], entityString, CBSPGameConstants::FFA_SPAWN_POINT_NAMES, ffaNameCount);
 
-            addLightsToEntStr(entityString, 2, 10);
-
             T6::MapEnts* mapEnts = m_memory.Alloc<T6::MapEnts>();
             mapEnts->name = m_memory.Dup(bspName.c_str());
 
