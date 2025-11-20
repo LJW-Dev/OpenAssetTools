@@ -21,7 +21,7 @@ namespace BSP
         T6::GfxLightDef* T6LightDef = m_memory.Alloc<T6::GfxLightDef>();
         T6LightDef->name = m_memory.Dup(T5LightDef->name);
         T6LightDef->lmapLookupStart = T5LightDef->lmapLookupStart;
-        T6LightDef->attenuation.samplerState = T5LightDef->attenuation.samplerState;
+        T6LightDef->attenuation.samplerState = 115; // T6 is always 115
 
         // auto T6LightDefImage = m_context.LoadDependency<T6::AssetImage>(T5LightDef->attenuation.image->name);
         auto T6LightDefImage = m_context.LoadDependency<T6::AssetImage>(CBSPLinkingConstants::DEAFULT_LIGHTDEF_IMAGE);
@@ -43,17 +43,109 @@ namespace BSP
             return false;
         }
         T5::ComWorld* T5ComWorld = static_cast<T5::ComWorld*>(T5ComWorldAsset->m_ptr);
-
         T6::ComWorld* T6ComWorld = m_memory.Alloc<T6::ComWorld>();
+
         T6ComWorld->name = m_memory.Dup(bspName.c_str());
-        T6ComWorld->isInUse = T5ComWorld->isInUse;
+        T6ComWorld->isInUse = true;
         T6ComWorld->primaryLightCount = T5ComWorld->primaryLightCount;
         T6ComWorld->primaryLights = m_memory.Alloc<T6::ComPrimaryLight>(T5ComWorld->primaryLightCount);
 
+        bool eee = true;
         for (unsigned int lightIdx = 0; lightIdx < T5ComWorld->primaryLightCount; lightIdx++)
         {
             T5::ComPrimaryLight* T5Light = &T5ComWorld->primaryLights[lightIdx];
             T6::ComPrimaryLight* T6Light = &T6ComWorld->primaryLights[lightIdx];
+
+            /*
+            if (lightIdx == 0)
+            {
+            }
+            else if (lightIdx == 1)
+            {
+                T6Light->type = T6::GFX_LIGHT_TYPE_DIR;
+                T6Light->diffuseColor.x = T5Light->diffuseColor[0];
+                T6Light->diffuseColor.y = T5Light->diffuseColor[1];
+                T6Light->diffuseColor.z = T5Light->diffuseColor[2];
+                T6Light->diffuseColor.w = T5Light->diffuseColor[3];
+                T6Light->color.x = T5Light->color[0];
+                T6Light->color.y = T5Light->color[1];
+                T6Light->color.z = T5Light->color[2];
+                T6Light->dir.x = T5Light->dir[0];
+                T6Light->dir.y = T5Light->dir[1];
+                T6Light->dir.z = T5Light->dir[2];
+            }
+            else
+            {
+                T6Light->aAbB.x = 1.0f;
+                T6Light->aAbB.y = 0.3984375f;
+                T6Light->aAbB.z = 1.0f;
+                T6Light->aAbB.w = 0.3984375f;
+                T6Light->angle.x = 0.0f;
+                T6Light->angle.y = 0.0f;
+                T6Light->angle.z = 0.4363323152065277f;
+                T6Light->angle.w = 0.0f;
+                T6Light->canUseShadowMap = 0;
+                T6Light->color.x = 16.0f;
+                T6Light->color.y = 16.0f;
+                T6Light->color.z = 16.0f;
+                T6Light->cookieControl0.x = 0.0f;
+                T6Light->cookieControl0.y = 0.0f;
+                T6Light->cookieControl0.z = 5.0f;
+                T6Light->cookieControl0.w = 4.0f;
+                T6Light->cookieControl1.x = 0.0f;
+                T6Light->cookieControl1.y = 0.0f;
+                T6Light->cookieControl1.z = 0.15625f;
+                T6Light->cookieControl1.w = 0.10000000149011612f;
+                T6Light->cookieControl2.x = 0.0;
+                T6Light->cookieControl2.y = 0.0;
+                T6Light->cookieControl2.z = 0.0;
+                T6Light->cookieControl2.w = 0.0;
+                T6Light->cosHalfFovOuter = 0.8870108127593994f;
+                T6Light->cosHalfFovInner = 0.9152581095695496f;
+                T6Light->cosHalfFovExpanded = 0.8870108127593994f;
+                T6Light->cullDist = 1000;
+                T6Light->dAttenuation = 160000.0f;
+                T6Light->defName = m_memory.Dup("gobo_caustics_rgb");
+                T6Light->diffuseColor.x = 16.0f;
+                T6Light->diffuseColor.y = 16.0f;
+                T6Light->diffuseColor.z = 16.0f;
+                T6Light->diffuseColor.w = 0.0f;
+                T6Light->dir.x = 0.6047161817550659f;
+                T6Light->dir.y = -0.31152045726776123f;
+                T6Light->dir.z = 0.7329893112182617f;
+                T6Light->exponent = 0;
+                T6Light->falloff.x = 0.0f;
+                T6Light->falloff.y = 200.0f;
+                T6Light->falloff.z = 0.0f;
+                T6Light->falloff.w = 0.0f;
+                T6Light->mipDistance = 225.4763946533203f;
+                T6Light->origin.x = T5Light->origin[0];
+                T6Light->origin.y = T5Light->origin[1];
+                T6Light->origin.z = T5Light->origin[2];
+                T6Light->priority = 0;
+                T6Light->radius = 200.0f;
+                T6Light->rotationLimit = 1.0f;
+                T6Light->roundness = 1.0f;
+                T6Light->shadowmapVolume = 0;
+                T6Light->translationLimit = 0.0f;
+                T6Light->type = 2;
+                T6Light->useCookie = -1;
+
+                if (eee)
+                {
+                    eee = false;
+                    T6::GfxLightDef* T6LightDef = m_memory.Alloc<T6::GfxLightDef>();
+                    T6LightDef->name = m_memory.Dup("gobo_caustics_rgb");
+                    T6LightDef->lmapLookupStart = 0;
+                    T6LightDef->attenuation.samplerState = 115;
+                    auto T6LightDefImage = m_context.LoadDependency<T6::AssetImage>("gobo_caustics_rgb");
+                    if (T6LightDefImage == nullptr)
+                        return false;
+                    T6LightDef->attenuation.image = T6LightDefImage->Asset();
+                    m_context.AddAsset<T6::AssetLightDef>(T6LightDef->name, T6LightDef);
+                }
+            }
+            */
 
             if (T5Light->_pad[0] != 0 || T5Light->_pad[1] != 0)
                 con::warn(
@@ -115,10 +207,10 @@ namespace BSP
             // attenuation[4] - vec4 t5 possibly converted to dAttenuation t6
 
             // T6 differences
-            T6Light->useCookie = 0;       // added t5->t6, same position as T5Light->_pad[0]
-            T6Light->shadowmapVolume = 0; // added t5->t6, same position as T5Light->_pad[1]
-            T6Light->dAttenuation = 0.0f; // vec4 in t5, float in t6
-            T6Light->roundness = 0.0f;    // added t5->t6
+            T6Light->useCookie = 0;           // added t5->t6, same position as T5Light->_pad[0]
+            T6Light->shadowmapVolume = 0;     // added t5->t6, same position as T5Light->_pad[1]
+            T6Light->dAttenuation = 10000.0f; // vec4 in t5, float in t6 (10000 for testing: pre sure attenuation effects lights)
+            T6Light->roundness = 0.0f;        // added t5->t6
 
             if (T5Light->defName == nullptr)
             {

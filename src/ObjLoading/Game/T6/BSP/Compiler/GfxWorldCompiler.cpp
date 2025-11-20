@@ -1,11 +1,13 @@
 #include "GfxWorldCompiler.h"
 
 #include "Converter/T5ImageConverter.h"
+#include "SearchPath/OutputPathFilesystem.h"
 #include "Utils/Logging/Log.h"
 #include "Utils/Pack.h"
 
 #include <cassert>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -120,6 +122,7 @@ namespace BSP
             T6Surface->bounds[1].z = T5Surface->bounds[1][2];
 
             auto surfMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>(T5Surface->material->info.name);
+            // auto surfMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>("material_template");
             if (surfMaterialAsset == nullptr)
             {
                 surfMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>(CBSPLinkingConstants::MISSING_MATERIAL_NAME);
@@ -135,24 +138,50 @@ namespace BSP
             T6Surface->tris.vertexDataOffset1 = 0;
             T6Surface->tris.triCount = T5Surface->tris.triCount;
             T6Surface->tris.baseIndex = T5Surface->tris.baseIndex;
+            T6Surface->tris.mins.x = T5Surface->tris.mins[0];
+            T6Surface->tris.mins.y = T5Surface->tris.mins[1];
+            T6Surface->tris.mins.z = T5Surface->tris.mins[2];
+            T6Surface->tris.maxs.x = T5Surface->tris.maxs[0];
+            T6Surface->tris.maxs.y = T5Surface->tris.maxs[1];
+            T6Surface->tris.maxs.z = T5Surface->tris.maxs[2];
+            T6Surface->tris.himipRadiusInvSq = 1.0f / T5Surface->tris.himipRadiusSq;
+            T6Surface->tris.vertexCount = T5Surface->tris.vertexCount;
+            T6Surface->tris.firstVertex = T5Surface->tris.firstVertex;
 
             _ASSERT((T5Surface->tris.firstVertex + T5Surface->tris.vertexCount - 1) * sizeof(T6::GfxPackedWorldVertex) < T6GfxWorld->draw.vertexDataSize0);
-
             _ASSERT(T6Surface->tris.baseIndex + (T6Surface->tris.triCount * 3) - 1 < T5GfxWorld->draw.indexCount);
-
-            // unused values
-            T6Surface->tris.mins.x = 0.0f;
-            T6Surface->tris.mins.y = 0.0f;
-            T6Surface->tris.mins.z = 0.0f;
-            T6Surface->tris.maxs.x = 0.0f;
-            T6Surface->tris.maxs.y = 0.0f;
-            T6Surface->tris.maxs.z = 0.0f;
-            T6Surface->tris.himipRadiusInvSq = 0.0f;
-            T6Surface->tris.vertexCount = 0;
-            T6Surface->tris.firstVertex = 0;
         }
 
         return true;
+
+        // nlohmann::json js;
+        // js["surfaces"] = nlohmann::json::array();
+        // for (unsigned int surfIdx = 0; surfIdx < T5GfxWorld->surfaceCount; surfIdx++)
+        //{
+        //     T5::GfxSurface* T5Surface = &T5GfxWorld->dpvs.surfaces[surfIdx];
+        //
+        //     js["surfaces"][surfIdx]["aSurfIndex"] = surfIdx;
+        //     js["surfaces"][surfIdx]["lightmapIndex"] = T5Surface->lightmapIndex;
+        //     js["surfaces"][surfIdx]["reflectionProbeIndex"] = T5Surface->reflectionProbeIndex;
+        //     js["surfaces"][surfIdx]["primaryLightIndex"] = T5Surface->primaryLightIndex;
+        //     js["surfaces"][surfIdx]["flags"] = T5Surface->flags;
+        //     js["surfaces"][surfIdx]["mins"] = {T5Surface->bounds[0][0], T5Surface->bounds[0][1], T5Surface->bounds[0][2]};
+        //     js["surfaces"][surfIdx]["maxs"] = {T5Surface->bounds[1][0], T5Surface->bounds[1][1], T5Surface->bounds[1][2]};
+        //     js["surfaces"][surfIdx]["material"] = T5Surface->material->info.name;
+        //     js["surfaces"][surfIdx]["tris"]["vertexLayerData"] = T5Surface->tris.vertexLayerData;
+        //     js["surfaces"][surfIdx]["tris"]["firstVertex"] = T5Surface->tris.firstVertex;
+        //     js["surfaces"][surfIdx]["tris"]["vertexCount"] = T5Surface->tris.vertexCount;
+        //     js["surfaces"][surfIdx]["tris"]["triCount"] = T5Surface->tris.triCount;
+        //     js["surfaces"][surfIdx]["tris"]["baseIndex"] = T5Surface->tris.baseIndex;
+        //     js["surfaces"][surfIdx]["tris"]["himipRadiusSq"] = T5Surface->tris.himipRadiusSq;
+        //     js["surfaces"][surfIdx]["tris"]["stream2ByteOffset"] = T5Surface->tris.stream2ByteOffset;
+        //     js["surfaces"][surfIdx]["tris"]["mins"] = {T5Surface->tris.mins[0], T5Surface->tris.mins[1], T5Surface->tris.mins[2]};
+        //     js["surfaces"][surfIdx]["tris"]["maxs"] = {T5Surface->tris.maxs[0], T5Surface->tris.maxs[1], T5Surface->tris.maxs[2]};
+        // }
+        // OutputPathFilesystem fs("C:\\Users\\LJ\\Documents");
+        // const auto assetFile = fs.Open("surfs.json");
+        // std::string jsonString = js.dump(4);
+        // assetFile->write(jsonString.c_str(), jsonString.size());
 
         /*
         bool GfxWorldCompiler::loadMapSurfaces(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
@@ -616,33 +645,32 @@ namespace BSP
 
     void GfxWorldCompiler::loadSunData(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
     {
-        memcpy(T6GfxWorld->sunParse.name, T5GfxWorld->sunParse.name, sizeof(T5GfxWorld->sunParse.name));
-
-        T6GfxWorld->sunParse.initWorldSun->control = T5GfxWorld->sunParse.sunSettings->control;
-        T6GfxWorld->sunParse.initWorldSun->angles.x = T5GfxWorld->sunParse.sunSettings->angles[0];
-        T6GfxWorld->sunParse.initWorldSun->angles.y = T5GfxWorld->sunParse.sunSettings->angles[1];
-        T6GfxWorld->sunParse.initWorldSun->angles.z = T5GfxWorld->sunParse.sunSettings->angles[2];
-        T6GfxWorld->sunParse.initWorldSun->ambientColor.x = T5GfxWorld->sunParse.sunSettings->ambientColor[0];
-        T6GfxWorld->sunParse.initWorldSun->ambientColor.y = T5GfxWorld->sunParse.sunSettings->ambientColor[1];
-        T6GfxWorld->sunParse.initWorldSun->ambientColor.z = T5GfxWorld->sunParse.sunSettings->ambientColor[2];
-        T6GfxWorld->sunParse.initWorldSun->ambientColor.w = T5GfxWorld->sunParse.sunSettings->ambientColor[3];
-        T6GfxWorld->sunParse.initWorldSun->sunCd.x = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[0];
-        T6GfxWorld->sunParse.initWorldSun->sunCd.y = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[1];
-        T6GfxWorld->sunParse.initWorldSun->sunCd.z = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[2];
-        T6GfxWorld->sunParse.initWorldSun->sunCd.w = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[3];
-        T6GfxWorld->sunParse.initWorldSun->sunCs.x = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[0];
-        T6GfxWorld->sunParse.initWorldSun->sunCs.y = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[1];
-        T6GfxWorld->sunParse.initWorldSun->sunCs.z = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[2];
-        T6GfxWorld->sunParse.initWorldSun->sunCs.w = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[3];
-        T6GfxWorld->sunParse.initWorldSun->skyColor.x = T5GfxWorld->sunParse.sunSettings->skyColor[0];
-        T6GfxWorld->sunParse.initWorldSun->skyColor.y = T5GfxWorld->sunParse.sunSettings->skyColor[1];
-        T6GfxWorld->sunParse.initWorldSun->skyColor.z = T5GfxWorld->sunParse.sunSettings->skyColor[2];
-        T6GfxWorld->sunParse.initWorldSun->skyColor.w = T5GfxWorld->sunParse.sunSettings->skyColor[3];
-        T6GfxWorld->sunParse.initWorldSun->exposure = T5GfxWorld->sunParse.sunSettings->exposure;
-
-        // new in T6
         // default values taken from mp_dig
         T6GfxWorld->sunParse.fogTransitionTime = 0.001f;
+        T6GfxWorld->sunParse.name[0] = 0x00;
+
+        T6GfxWorld->sunParse.initWorldSun->control = 0;
+        T6GfxWorld->sunParse.initWorldSun->exposure = 2.5f;
+        T6GfxWorld->sunParse.initWorldSun->angles.x = -29.0f;
+        T6GfxWorld->sunParse.initWorldSun->angles.y = 254.0f;
+        T6GfxWorld->sunParse.initWorldSun->angles.z = 0.0f;
+        T6GfxWorld->sunParse.initWorldSun->sunCd.x = 1.0f;
+        T6GfxWorld->sunParse.initWorldSun->sunCd.y = 0.89f;
+        T6GfxWorld->sunParse.initWorldSun->sunCd.z = 0.69f;
+        T6GfxWorld->sunParse.initWorldSun->sunCd.w = 13.5f;
+        T6GfxWorld->sunParse.initWorldSun->ambientColor.x = 0.0f;
+        T6GfxWorld->sunParse.initWorldSun->ambientColor.y = 0.0f;
+        T6GfxWorld->sunParse.initWorldSun->ambientColor.z = 0.0f;
+        T6GfxWorld->sunParse.initWorldSun->ambientColor.w = 0.0f;
+        T6GfxWorld->sunParse.initWorldSun->skyColor.x = 0.0f;
+        T6GfxWorld->sunParse.initWorldSun->skyColor.y = 0.0f;
+        T6GfxWorld->sunParse.initWorldSun->skyColor.z = 0.0f;
+        T6GfxWorld->sunParse.initWorldSun->skyColor.w = 0.0f;
+        T6GfxWorld->sunParse.initWorldSun->sunCs.x = 0.0f;
+        T6GfxWorld->sunParse.initWorldSun->sunCs.y = 0.0f;
+        T6GfxWorld->sunParse.initWorldSun->sunCs.z = 0.0f;
+        T6GfxWorld->sunParse.initWorldSun->sunCs.w = 0.0f;
+
         T6GfxWorld->sunParse.initWorldFog->baseDist = 150.0f;
         T6GfxWorld->sunParse.initWorldFog->baseHeight = -100.0f;
         T6GfxWorld->sunParse.initWorldFog->fogColor.x = 2.35f;
@@ -659,6 +687,50 @@ namespace BSP
         T6GfxWorld->sunParse.initWorldFog->sunFogOuter = 80.84f;
         T6GfxWorld->sunParse.initWorldFog->sunFogPitch = -29.0f;
         T6GfxWorld->sunParse.initWorldFog->sunFogYaw = 254.0f;
+
+        // memcpy(T6GfxWorld->sunParse.name, T5GfxWorld->sunParse.name, sizeof(T5GfxWorld->sunParse.name));
+        //
+        // T6GfxWorld->sunParse.initWorldSun->control = T5GfxWorld->sunParse.sunSettings->control;
+        // T6GfxWorld->sunParse.initWorldSun->angles.x = T5GfxWorld->sunParse.sunSettings->angles[0];
+        // T6GfxWorld->sunParse.initWorldSun->angles.y = T5GfxWorld->sunParse.sunSettings->angles[1];
+        // T6GfxWorld->sunParse.initWorldSun->angles.z = T5GfxWorld->sunParse.sunSettings->angles[2];
+        // T6GfxWorld->sunParse.initWorldSun->ambientColor.x = T5GfxWorld->sunParse.sunSettings->ambientColor[0];
+        // T6GfxWorld->sunParse.initWorldSun->ambientColor.y = T5GfxWorld->sunParse.sunSettings->ambientColor[1];
+        // T6GfxWorld->sunParse.initWorldSun->ambientColor.z = T5GfxWorld->sunParse.sunSettings->ambientColor[2];
+        // T6GfxWorld->sunParse.initWorldSun->ambientColor.w = T5GfxWorld->sunParse.sunSettings->ambientColor[3];
+        // T6GfxWorld->sunParse.initWorldSun->sunCd.x = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[0];
+        // T6GfxWorld->sunParse.initWorldSun->sunCd.y = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[1];
+        // T6GfxWorld->sunParse.initWorldSun->sunCd.z = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[2];
+        // T6GfxWorld->sunParse.initWorldSun->sunCd.w = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[3];
+        // T6GfxWorld->sunParse.initWorldSun->sunCs.x = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[0];
+        // T6GfxWorld->sunParse.initWorldSun->sunCs.y = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[1];
+        // T6GfxWorld->sunParse.initWorldSun->sunCs.z = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[2];
+        // T6GfxWorld->sunParse.initWorldSun->sunCs.w = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[3];
+        // T6GfxWorld->sunParse.initWorldSun->skyColor.x = T5GfxWorld->sunParse.sunSettings->skyColor[0];
+        // T6GfxWorld->sunParse.initWorldSun->skyColor.y = T5GfxWorld->sunParse.sunSettings->skyColor[1];
+        // T6GfxWorld->sunParse.initWorldSun->skyColor.z = T5GfxWorld->sunParse.sunSettings->skyColor[2];
+        // T6GfxWorld->sunParse.initWorldSun->skyColor.w = T5GfxWorld->sunParse.sunSettings->skyColor[3];
+        // T6GfxWorld->sunParse.initWorldSun->exposure = T5GfxWorld->sunParse.sunSettings->exposure;
+        //
+        //// new in T6
+        //// default values taken from mp_dig
+        // T6GfxWorld->sunParse.fogTransitionTime = 0.001f;
+        // T6GfxWorld->sunParse.initWorldFog->baseDist = 150.0f;
+        // T6GfxWorld->sunParse.initWorldFog->baseHeight = -100.0f;
+        // T6GfxWorld->sunParse.initWorldFog->fogColor.x = 2.35f;
+        // T6GfxWorld->sunParse.initWorldFog->fogColor.y = 3.10f;
+        // T6GfxWorld->sunParse.initWorldFog->fogColor.z = 3.84f;
+        // T6GfxWorld->sunParse.initWorldFog->fogOpacity = 0.52f;
+        // T6GfxWorld->sunParse.initWorldFog->halfDist = 4450.f;
+        // T6GfxWorld->sunParse.initWorldFog->halfHeight = 2000.f;
+        // T6GfxWorld->sunParse.initWorldFog->sunFogColor.x = 5.27f;
+        // T6GfxWorld->sunParse.initWorldFog->sunFogColor.y = 4.73f;
+        // T6GfxWorld->sunParse.initWorldFog->sunFogColor.z = 3.88f;
+        // T6GfxWorld->sunParse.initWorldFog->sunFogInner = 0.0f;
+        // T6GfxWorld->sunParse.initWorldFog->sunFogOpacity = 0.67f;
+        // T6GfxWorld->sunParse.initWorldFog->sunFogOuter = 80.84f;
+        // T6GfxWorld->sunParse.initWorldFog->sunFogPitch = -29.0f;
+        // T6GfxWorld->sunParse.initWorldFog->sunFogYaw = 254.0f;
     }
 
     bool GfxWorldCompiler::loadReflectionProbeData(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
@@ -669,7 +741,6 @@ namespace BSP
         // reflectionProbeTextures is always empty
         T6GfxWorld->draw.reflectionProbeTextures = m_memory.Alloc<T6::GfxTexture>(T5GfxWorld->draw.reflectionProbeCount);
 
-        // default values taken from mp_dig
         T6GfxWorld->draw.reflectionProbes = m_memory.Alloc<T6::GfxReflectionProbe>(T5GfxWorld->draw.reflectionProbeCount);
         for (unsigned int probeIdx = 0; probeIdx < T5GfxWorld->draw.reflectionProbeCount; probeIdx++)
         {

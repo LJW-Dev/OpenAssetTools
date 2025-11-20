@@ -64,6 +64,18 @@ namespace
         }
     }
 
+    void addLightsToEntStr(std::string& entityString, size_t primaryLightIndexOfFirstLight, size_t lightCount)
+    {
+        for (size_t lightIdx = 0; lightIdx < lightCount; lightIdx++)
+        {
+            entityString.append("{\n");
+            entityString.append(std::format("\"pl#\" \"{}\"\n", primaryLightIndexOfFirstLight + lightIdx)); // primary light index
+            entityString.append(std::format("\"spawnflags\" \"45\"\n"));                                    // spawnflags & 16 != 0 for the light to spawn
+            entityString.append(std::format("\"classname\" \"light\"\n"));
+            entityString.append("}\n");
+        }
+    }
+
     std::string getFileNameForBSPAsset(std::string& assetName)
     {
         return std::format("BSP/{}", assetName);
@@ -81,6 +93,15 @@ namespace BSP
 
     bool MapEntsCompiler::linkMapEnts(ZoneAssetPools* T5AssetPool, std::string& mapName, std::string& bspName, std::string& T5BSPName)
     {
+        auto T5MapEntsAsset = T5AssetPool->GetAsset(T5::ASSET_TYPE_MAP_ENTS, T5BSPName);
+        if (T5MapEntsAsset == nullptr)
+        {
+            con::error("Can't find T5 MapEnts asset.");
+            return false;
+        }
+        T5::MapEnts* T5MapEnts = static_cast<T5::MapEnts*>(T5MapEntsAsset->m_ptr);
+        T6::MapEnts* T6MapEnts = m_memory.Alloc<T6::MapEnts>();
+
         try
         {
             json entJs;
@@ -119,6 +140,8 @@ namespace BSP
             parseSpawnpointJSON(spawnJs["attackers"], entityString, CBSPGameConstants::DEFENDER_SPAWN_POINT_NAMES, defenderNameCount);
             parseSpawnpointJSON(spawnJs["defenders"], entityString, CBSPGameConstants::ATTACKER_SPAWN_POINT_NAMES, attackerNameCount);
             parseSpawnpointJSON(spawnJs["FFA"], entityString, CBSPGameConstants::FFA_SPAWN_POINT_NAMES, ffaNameCount);
+
+            addLightsToEntStr(entityString, 2, 10);
 
             T6::MapEnts* mapEnts = m_memory.Alloc<T6::MapEnts>();
             mapEnts->name = m_memory.Dup(bspName.c_str());
