@@ -7,6 +7,23 @@
 #include <string>
 #include <vector>
 
+namespace
+{
+    enum T5GfxLightType : __int32
+    {
+        GFX_LIGHT_TYPE_NONE = 0x0,
+        GFX_LIGHT_TYPE_DIR = 0x1,
+        GFX_LIGHT_TYPE_SPOT = 0x2,
+        GFX_LIGHT_TYPE_OMNI = 0x3,
+        GFX_LIGHT_TYPE_COUNT = 0x4,
+        GFX_LIGHT_TYPE_DIR_SHADOWMAP = 0x4,
+        GFX_LIGHT_TYPE_SPOT_SHADOWMAP = 0x5,
+        GFX_LIGHT_TYPE_OMNI_SHADOWMAP = 0x6,
+        GFX_LIGHT_TYPE_COUNT_WITH_SHADOWMAP_VERSIONS = 0x7,
+    };
+
+} // namespace
+
 namespace BSP
 {
     ComWorldCompiler::ComWorldCompiler(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
@@ -24,7 +41,7 @@ namespace BSP
         T6LightDef->attenuation.samplerState = 115; // T6 is always 115
 
         // auto T6LightDefImage = m_context.LoadDependency<T6::AssetImage>(T5LightDef->attenuation.image->name);
-        auto T6LightDefImage = m_context.LoadDependency<T6::AssetImage>(CBSPLinkingConstants::DEAFULT_LIGHTDEF_IMAGE);
+        auto T6LightDefImage = m_context.LoadDependency<T6::AssetImage>("gobo_caustics_rgb");
         if (T6LightDefImage == nullptr)
             return false;
         T6LightDef->attenuation.image = T6LightDefImage->Asset();
@@ -151,7 +168,23 @@ namespace BSP
                 con::warn(
                     "ComWorld T5 light index {}: {} has non zero pad. Pad1: {}, Pad2: {}", lightIdx, T5Light->defName, T5Light->_pad[0], T5Light->_pad[1]);
 
-            T6Light->type = T5Light->type;
+            switch (T5Light->type)
+            {
+            case GFX_LIGHT_TYPE_NONE:
+                T6Light->type = T6::GFX_LIGHT_TYPE_NONE;
+                break;
+            case GFX_LIGHT_TYPE_DIR:
+                T6Light->type = T6::GFX_LIGHT_TYPE_DIR;
+                break;
+            case GFX_LIGHT_TYPE_SPOT:
+                T6Light->type = T6::GFX_LIGHT_TYPE_SPOT;
+                break;
+            case GFX_LIGHT_TYPE_OMNI:
+                T6Light->type = T6::GFX_LIGHT_TYPE_OMNI;
+                break;
+            default:
+                assert(false);
+            }
             T6Light->canUseShadowMap = T5Light->canUseShadowMap;
             T6Light->exponent = T5Light->exponent;
             T6Light->priority = T5Light->priority;
@@ -203,11 +236,12 @@ namespace BSP
             T6Light->cookieControl2.w = T5Light->cookieControl2[3];
 
             // t5 differences
+            // T6 added more light types
             // specularColor[4] - removed t5 -> t6
             // attenuation[4] - vec4 t5 possibly converted to dAttenuation t6
 
             // T6 differences
-            T6Light->useCookie = 0;           // added t5->t6, same position as T5Light->_pad[0]
+            T6Light->useCookie = -1;          // added t5->t6, same position as T5Light->_pad[0]
             T6Light->shadowmapVolume = 0;     // added t5->t6, same position as T5Light->_pad[1]
             T6Light->dAttenuation = 10000.0f; // vec4 in t5, float in t6 (10000 for testing: pre sure attenuation effects lights)
             T6Light->roundness = 0.0f;        // added t5->t6
