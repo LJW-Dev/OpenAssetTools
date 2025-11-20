@@ -112,7 +112,10 @@ namespace BSP
             T6Surface->primaryLightIndex = T5Surface->primaryLightIndex;
             T6Surface->lightmapIndex = T5Surface->lightmapIndex;
             T6Surface->reflectionProbeIndex = T5Surface->reflectionProbeIndex;
-            T6Surface->flags = T5Surface->flags;
+
+            // flags are different from T5 and mess with shadows if the original values are used
+            T6Surface->flags = 0;
+            // T6Surface->flags = T5Surface->flags;
 
             T6Surface->bounds[0].x = T5Surface->bounds[0][0];
             T6Surface->bounds[0].y = T5Surface->bounds[0][1];
@@ -121,11 +124,28 @@ namespace BSP
             T6Surface->bounds[1].y = T5Surface->bounds[1][1];
             T6Surface->bounds[1].z = T5Surface->bounds[1][2];
 
+            /*
+            Surface and material properties that determine lighting
+            Surface Flags:
+            If material game flags 0x40 is true then the surface will always cast a shadow (dpvs.surfaceCastsShadow to true) therefore GFX_SURFACE_CASTS_SHADOW
+                is redundant
+            - if the material flag is set then surface flag GFX_SURFACE_CASTS_SUN_SHADOW is checked and added (dpvs.surfaceCastsSunShadow to true)
+
+            Material flags:
+            0x40 - must be true for the game to check if any lights or shadows effect the surface
+            0x02 - true:
+                    - The surface primary light is used as the light for determining shadows
+                 - false:
+                    - Each light in the world is checked to see if it effects the surf (and added if true)
+
+            material techsets define if lightmaps and/or the light grid are used or not (im pretty sure)
+            */
             auto surfMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>(T5Surface->material->info.name);
             // auto surfMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>("material_template");
             if (surfMaterialAsset == nullptr)
             {
-                surfMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>(CBSPLinkingConstants::MISSING_MATERIAL_NAME);
+                // surfMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>(CBSPLinkingConstants::MISSING_MATERIAL_NAME);
+                surfMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>("material_template");
                 if (surfMaterialAsset == nullptr)
                 {
                     con::error("unable to load surface material {}!", T5Surface->material->info.name);
@@ -533,12 +553,9 @@ namespace BSP
 
     void GfxWorldCompiler::loadGfxCells(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
     {
-        // Cells are basically data used to determine what can be seen and what cant be seen
-        // Right now custom maps have no optimisation so there is only 1 cell
-        int cellCount = 1;
-
-        T6GfxWorld->dpvsPlanes.cellCount = cellCount;
-        T6GfxWorld->cellBitsCount = ((cellCount + 127) >> 3) & 0x1FFFFFF0;
+        int cellCount = T5GfxWorld->dpvsPlanes.cellCount;
+        T6GfxWorld->dpvsPlanes.cellCount = T5GfxWorld->dpvsPlanes.cellCount;
+        T6GfxWorld->cellBitsCount = T5GfxWorld->cellBitsCount;
 
         int cellCasterBitsCount = cellCount * ((cellCount + 31) / 32);
         T6GfxWorld->cellCasterBits = m_memory.Alloc<unsigned int>(cellCasterBitsCount);
@@ -547,53 +564,124 @@ namespace BSP
         T6GfxWorld->dpvsPlanes.sceneEntCellBits = m_memory.Alloc<unsigned int>(sceneEntCellBitsCount);
 
         T6GfxWorld->cells = m_memory.Alloc<T6::GfxCell>(cellCount);
-        T6GfxWorld->cells[0].portalCount = 0;
-        T6GfxWorld->cells[0].portals = nullptr;
-        T6GfxWorld->cells[0].mins.x = T5GfxWorld->mins[0];
-        T6GfxWorld->cells[0].mins.y = T5GfxWorld->mins[1];
-        T6GfxWorld->cells[0].mins.z = T5GfxWorld->mins[2];
-        T6GfxWorld->cells[0].maxs.x = T5GfxWorld->maxs[0];
-        T6GfxWorld->cells[0].maxs.y = T5GfxWorld->maxs[1];
-        T6GfxWorld->cells[0].maxs.z = T5GfxWorld->maxs[2];
-
-        // TODO: implement cells
-        T6GfxWorld->cells[0].reflectionProbeCount = T5GfxWorld->draw.reflectionProbeCount;
-        T6GfxWorld->cells[0].reflectionProbes = m_memory.Alloc<char>(T5GfxWorld->draw.reflectionProbeCount);
-        for (unsigned int probeIdx = 0; probeIdx < T5GfxWorld->draw.reflectionProbeCount; probeIdx++)
-            T6GfxWorld->cells[0].reflectionProbes[probeIdx] = static_cast<char>(probeIdx);
-
-        // AABB trees are used to detect what should be rendered and what shouldn't
-        // Just use the first AABB node to hold all models, no optimisation but all models/surfaces wil lbe drawn
-        T6GfxWorld->cells[0].aabbTreeCount = 1;
-        T6GfxWorld->cells[0].aabbTree = m_memory.Alloc<T6::GfxAabbTree>(T6GfxWorld->cells[0].aabbTreeCount);
-        T6GfxWorld->cells[0].aabbTree[0].childCount = 0;
-        T6GfxWorld->cells[0].aabbTree[0].childrenOffset = 0;
-        T6GfxWorld->cells[0].aabbTree[0].startSurfIndex = 0;
-        T6GfxWorld->cells[0].aabbTree[0].surfaceCount = static_cast<uint16_t>(T6GfxWorld->surfaceCount);
-        T6GfxWorld->cells[0].aabbTree[0].smodelIndexCount = static_cast<uint16_t>(T6GfxWorld->dpvs.smodelCount);
-        T6GfxWorld->cells[0].aabbTree[0].smodelIndexes = m_memory.Alloc<unsigned short>(T6GfxWorld->dpvs.smodelCount);
-        for (unsigned short smodelIdx = 0; smodelIdx < T6GfxWorld->dpvs.smodelCount; smodelIdx++)
+        for (int cellIdx = 0; cellIdx < cellCount; cellIdx++)
         {
-            T6GfxWorld->cells[0].aabbTree[0].smodelIndexes[smodelIdx] = smodelIdx;
+            T5::GfxCell* T5Cell = &T5GfxWorld->cells[cellIdx];
+            T6::GfxCell* T6Cell = &T6GfxWorld->cells[cellIdx];
+
+            T6Cell->mins.x = T5Cell->mins[0];
+            T6Cell->mins.y = T5Cell->mins[1];
+            T6Cell->mins.z = T5Cell->mins[2];
+            T6Cell->maxs.x = T5Cell->maxs[0];
+            T6Cell->maxs.y = T5Cell->maxs[1];
+            T6Cell->maxs.z = T5Cell->maxs[2];
+
+            T6Cell->reflectionProbeCount = T5Cell->reflectionProbeCount;
+            if (T5Cell->reflectionProbeCount == 0)
+                T6Cell->reflectionProbes = nullptr;
+            else
+            {
+                T6Cell->reflectionProbes = m_memory.Alloc<char>(T5Cell->reflectionProbeCount);
+                for (char probeIdx = 0; probeIdx < T5Cell->reflectionProbeCount; probeIdx++)
+                    T6Cell->reflectionProbes[probeIdx] = T5Cell->reflectionProbes[probeIdx];
+            }
+
+            T6Cell->aabbTreeCount = T5Cell->aabbTreeCount;
+            if (T5Cell->aabbTreeCount == 0)
+                T6Cell->aabbTree = nullptr;
+            else
+            {
+                T6Cell->aabbTree = m_memory.Alloc<T6::GfxAabbTree>(T5Cell->aabbTreeCount);
+                for (int aabbIdx = 0; aabbIdx < T5Cell->aabbTreeCount; aabbIdx++)
+                {
+                    T5::GfxAabbTree* T5AABB = &T5Cell->aabbTree[aabbIdx];
+                    T6::GfxAabbTree* T6AABB = &T6Cell->aabbTree[aabbIdx];
+
+                    T6AABB->mins.x = T5AABB->mins[0];
+                    T6AABB->mins.y = T5AABB->mins[1];
+                    T6AABB->mins.z = T5AABB->mins[2];
+                    T6AABB->maxs.x = T5AABB->maxs[0];
+                    T6AABB->maxs.y = T5AABB->maxs[1];
+                    T6AABB->maxs.z = T5AABB->maxs[2];
+
+                    T6AABB->childCount = T5AABB->childCount;
+                    T6AABB->surfaceCount = T5AABB->surfaceCount;
+                    T6AABB->startSurfIndex = T5AABB->startSurfIndex;
+                    T6AABB->childrenOffset = T5AABB->childrenOffset;
+
+                    // xmodels are unimplemented right now
+                    T6AABB->smodelIndexCount = 0;
+                    T6AABB->smodelIndexes = nullptr;
+                }
+            }
+
+            T6Cell->portalCount = T5Cell->portalCount;
+            if (T5Cell->portalCount == 0)
+                T6Cell->portals = nullptr;
+            else
+            {
+                T6Cell->portals = m_memory.Alloc<T6::GfxPortal>(T5Cell->portalCount);
+                for (char portalIdx = 0; portalIdx < T5Cell->portalCount; portalIdx++)
+                {
+                    T5::GfxPortal* T5Portal = &T5Cell->portals[portalIdx];
+                    T6::GfxPortal* T6Portal = &T6Cell->portals[portalIdx];
+
+                    // writable is always zeroed
+                    T6Portal->plane.coeffs.x = T5Portal->plane.coeffs[0];
+                    T6Portal->plane.coeffs.y = T5Portal->plane.coeffs[1];
+                    T6Portal->plane.coeffs.z = T5Portal->plane.coeffs[2];
+                    T6Portal->plane.coeffs.w = T5Portal->plane.coeffs[3];
+                    T6Portal->plane.side[0] = T5Portal->plane.side[0];
+                    T6Portal->plane.side[1] = T5Portal->plane.side[1];
+                    T6Portal->plane.side[2] = T5Portal->plane.side[2];
+                    T6Portal->plane.pad = T5Portal->plane.pad;
+
+                    T6Portal->hullAxis[0].x = T5Portal->hullAxis[0][0];
+                    T6Portal->hullAxis[0].y = T5Portal->hullAxis[0][1];
+                    T6Portal->hullAxis[0].z = T5Portal->hullAxis[0][2];
+                    T6Portal->hullAxis[1].x = T5Portal->hullAxis[1][0];
+                    T6Portal->hullAxis[1].y = T5Portal->hullAxis[1][1];
+                    T6Portal->hullAxis[1].z = T5Portal->hullAxis[1][2];
+
+                    T6Portal->vertexCount = T5Portal->vertexCount;
+                    T6Portal->vertices = m_memory.Alloc<T6::vec3_t>(T5Portal->vertexCount);
+                    memcpy(T6Portal->vertices, T5Portal->vertices, sizeof(T5::vec3_t) * T5Portal->vertexCount);
+
+                    // new in T6
+                    T6Portal->bounds[0].x = T5Portal->vertices[0].x;
+                    T6Portal->bounds[0].y = T5Portal->vertices[0].y;
+                    T6Portal->bounds[0].z = T5Portal->vertices[0].z;
+                    T6Portal->bounds[1].x = T5Portal->vertices[0].x;
+                    T6Portal->bounds[1].y = T5Portal->vertices[0].y;
+                    T6Portal->bounds[1].z = T5Portal->vertices[0].z;
+                    for (char vertIdx = 0; vertIdx < T5Portal->vertexCount; vertIdx++)
+                    {
+                        BSPUtil::updateAABBWithPoint(T6Portal->vertices[vertIdx], T6Portal->bounds[0], T6Portal->bounds[1]);
+                    }
+
+                    int foundIdx = -1;
+                    for (int idx = 0; idx < cellCount; idx++)
+                    {
+                        if (T5Portal->cell == &T5GfxWorld->cells[idx])
+                        {
+                            foundIdx = idx;
+                            break;
+                        }
+                    }
+                    assert(foundIdx != -1);
+                    T6Portal->cell = &T6GfxWorld->cells[foundIdx];
+                }
+            }
         }
-        T6GfxWorld->cells[0].aabbTree[0].mins.x = T5GfxWorld->mins[0];
-        T6GfxWorld->cells[0].aabbTree[0].mins.y = T5GfxWorld->mins[1];
-        T6GfxWorld->cells[0].aabbTree[0].mins.z = T5GfxWorld->mins[2];
-        T6GfxWorld->cells[0].aabbTree[0].maxs.x = T5GfxWorld->maxs[0];
-        T6GfxWorld->cells[0].aabbTree[0].maxs.y = T5GfxWorld->maxs[1];
-        T6GfxWorld->cells[0].aabbTree[0].maxs.z = T5GfxWorld->maxs[2];
 
-        // nodes have the struct mnode_t, and there must be at least 1 node (similar to BSP nodes)
-        // Nodes mnode_t.cellIndex indexes gfxWorld->cells
-        // and (mnode_t.cellIndex - (world->dpvsPlanes.cellCount + 1) indexes world->dpvsPlanes.planes
-        // Use only one node as there is no optimisation in custom maps
-        T6GfxWorld->nodeCount = 1;
-        T6GfxWorld->dpvsPlanes.nodes = m_memory.Alloc<uint16_t>(T6GfxWorld->nodeCount);
-        T6GfxWorld->dpvsPlanes.nodes[0] = 1; // nodes reference cells by index + 1
+        T6GfxWorld->nodeCount = T5GfxWorld->nodeCount;
+        T6GfxWorld->dpvsPlanes.nodes = m_memory.Alloc<uint16_t>(T5GfxWorld->nodeCount);
+        memcpy(T6GfxWorld->dpvsPlanes.nodes, T5GfxWorld->dpvsPlanes.nodes, sizeof(uint16_t) * T5GfxWorld->nodeCount);
 
-        // planes are overwritten by the clipmap loading code ingame
-        T6GfxWorld->planeCount = 0;
-        T6GfxWorld->dpvsPlanes.planes = nullptr;
+        T6GfxWorld->planeCount = T5GfxWorld->planeCount;
+        T6GfxWorld->dpvsPlanes.planes = m_memory.Alloc<T6::cplane_s>(T5GfxWorld->planeCount);
+        static_assert(sizeof(T5::cplane_s) == sizeof(T6::cplane_s));
+        memcpy(T6GfxWorld->dpvsPlanes.planes, T5GfxWorld->dpvsPlanes.planes, sizeof(T5::cplane_s) * T5GfxWorld->planeCount);
     }
 
     void GfxWorldCompiler::loadWorldBounds(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
@@ -645,76 +733,32 @@ namespace BSP
 
     void GfxWorldCompiler::loadSunData(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
     {
-        // default values taken from mp_dig
-        T6GfxWorld->sunParse.fogTransitionTime = 0.001f;
-        T6GfxWorld->sunParse.name[0] = 0x00;
-
-        T6GfxWorld->sunParse.initWorldSun->control = 0;
-        T6GfxWorld->sunParse.initWorldSun->exposure = 2.5f;
-        T6GfxWorld->sunParse.initWorldSun->angles.x = -29.0f;
-        T6GfxWorld->sunParse.initWorldSun->angles.y = 254.0f;
-        T6GfxWorld->sunParse.initWorldSun->angles.z = 0.0f;
-        T6GfxWorld->sunParse.initWorldSun->sunCd.x = 1.0f;
-        T6GfxWorld->sunParse.initWorldSun->sunCd.y = 0.89f;
-        T6GfxWorld->sunParse.initWorldSun->sunCd.z = 0.69f;
-        T6GfxWorld->sunParse.initWorldSun->sunCd.w = 13.5f;
-        T6GfxWorld->sunParse.initWorldSun->ambientColor.x = 0.0f;
-        T6GfxWorld->sunParse.initWorldSun->ambientColor.y = 0.0f;
-        T6GfxWorld->sunParse.initWorldSun->ambientColor.z = 0.0f;
-        T6GfxWorld->sunParse.initWorldSun->ambientColor.w = 0.0f;
-        T6GfxWorld->sunParse.initWorldSun->skyColor.x = 0.0f;
-        T6GfxWorld->sunParse.initWorldSun->skyColor.y = 0.0f;
-        T6GfxWorld->sunParse.initWorldSun->skyColor.z = 0.0f;
-        T6GfxWorld->sunParse.initWorldSun->skyColor.w = 0.0f;
-        T6GfxWorld->sunParse.initWorldSun->sunCs.x = 0.0f;
-        T6GfxWorld->sunParse.initWorldSun->sunCs.y = 0.0f;
-        T6GfxWorld->sunParse.initWorldSun->sunCs.z = 0.0f;
-        T6GfxWorld->sunParse.initWorldSun->sunCs.w = 0.0f;
-
-        T6GfxWorld->sunParse.initWorldFog->baseDist = 150.0f;
-        T6GfxWorld->sunParse.initWorldFog->baseHeight = -100.0f;
-        T6GfxWorld->sunParse.initWorldFog->fogColor.x = 2.35f;
-        T6GfxWorld->sunParse.initWorldFog->fogColor.y = 3.10f;
-        T6GfxWorld->sunParse.initWorldFog->fogColor.z = 3.84f;
-        T6GfxWorld->sunParse.initWorldFog->fogOpacity = 0.52f;
-        T6GfxWorld->sunParse.initWorldFog->halfDist = 4450.f;
-        T6GfxWorld->sunParse.initWorldFog->halfHeight = 2000.f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogColor.x = 5.27f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogColor.y = 4.73f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogColor.z = 3.88f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogInner = 0.0f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogOpacity = 0.67f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogOuter = 80.84f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogPitch = -29.0f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogYaw = 254.0f;
-
-        // memcpy(T6GfxWorld->sunParse.name, T5GfxWorld->sunParse.name, sizeof(T5GfxWorld->sunParse.name));
-        //
-        // T6GfxWorld->sunParse.initWorldSun->control = T5GfxWorld->sunParse.sunSettings->control;
-        // T6GfxWorld->sunParse.initWorldSun->angles.x = T5GfxWorld->sunParse.sunSettings->angles[0];
-        // T6GfxWorld->sunParse.initWorldSun->angles.y = T5GfxWorld->sunParse.sunSettings->angles[1];
-        // T6GfxWorld->sunParse.initWorldSun->angles.z = T5GfxWorld->sunParse.sunSettings->angles[2];
-        // T6GfxWorld->sunParse.initWorldSun->ambientColor.x = T5GfxWorld->sunParse.sunSettings->ambientColor[0];
-        // T6GfxWorld->sunParse.initWorldSun->ambientColor.y = T5GfxWorld->sunParse.sunSettings->ambientColor[1];
-        // T6GfxWorld->sunParse.initWorldSun->ambientColor.z = T5GfxWorld->sunParse.sunSettings->ambientColor[2];
-        // T6GfxWorld->sunParse.initWorldSun->ambientColor.w = T5GfxWorld->sunParse.sunSettings->ambientColor[3];
-        // T6GfxWorld->sunParse.initWorldSun->sunCd.x = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[0];
-        // T6GfxWorld->sunParse.initWorldSun->sunCd.y = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[1];
-        // T6GfxWorld->sunParse.initWorldSun->sunCd.z = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[2];
-        // T6GfxWorld->sunParse.initWorldSun->sunCd.w = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[3];
-        // T6GfxWorld->sunParse.initWorldSun->sunCs.x = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[0];
-        // T6GfxWorld->sunParse.initWorldSun->sunCs.y = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[1];
-        // T6GfxWorld->sunParse.initWorldSun->sunCs.z = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[2];
-        // T6GfxWorld->sunParse.initWorldSun->sunCs.w = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[3];
-        // T6GfxWorld->sunParse.initWorldSun->skyColor.x = T5GfxWorld->sunParse.sunSettings->skyColor[0];
-        // T6GfxWorld->sunParse.initWorldSun->skyColor.y = T5GfxWorld->sunParse.sunSettings->skyColor[1];
-        // T6GfxWorld->sunParse.initWorldSun->skyColor.z = T5GfxWorld->sunParse.sunSettings->skyColor[2];
-        // T6GfxWorld->sunParse.initWorldSun->skyColor.w = T5GfxWorld->sunParse.sunSettings->skyColor[3];
-        // T6GfxWorld->sunParse.initWorldSun->exposure = T5GfxWorld->sunParse.sunSettings->exposure;
-        //
-        //// new in T6
         //// default values taken from mp_dig
         // T6GfxWorld->sunParse.fogTransitionTime = 0.001f;
+        // T6GfxWorld->sunParse.name[0] = 0x00;
+        //
+        // T6GfxWorld->sunParse.initWorldSun->control = 0;
+        // T6GfxWorld->sunParse.initWorldSun->exposure = 2.5f;
+        // T6GfxWorld->sunParse.initWorldSun->angles.x = -29.0f;
+        // T6GfxWorld->sunParse.initWorldSun->angles.y = 254.0f;
+        // T6GfxWorld->sunParse.initWorldSun->angles.z = 0.0f;
+        // T6GfxWorld->sunParse.initWorldSun->sunCd.x = 1.0f;
+        // T6GfxWorld->sunParse.initWorldSun->sunCd.y = 0.89f;
+        // T6GfxWorld->sunParse.initWorldSun->sunCd.z = 0.69f;
+        // T6GfxWorld->sunParse.initWorldSun->sunCd.w = 13.5f;
+        // T6GfxWorld->sunParse.initWorldSun->ambientColor.x = 0.0f;
+        // T6GfxWorld->sunParse.initWorldSun->ambientColor.y = 0.0f;
+        // T6GfxWorld->sunParse.initWorldSun->ambientColor.z = 0.0f;
+        // T6GfxWorld->sunParse.initWorldSun->ambientColor.w = 0.0f;
+        // T6GfxWorld->sunParse.initWorldSun->skyColor.x = 0.0f;
+        // T6GfxWorld->sunParse.initWorldSun->skyColor.y = 0.0f;
+        // T6GfxWorld->sunParse.initWorldSun->skyColor.z = 0.0f;
+        // T6GfxWorld->sunParse.initWorldSun->skyColor.w = 0.0f;
+        // T6GfxWorld->sunParse.initWorldSun->sunCs.x = 0.0f;
+        // T6GfxWorld->sunParse.initWorldSun->sunCs.y = 0.0f;
+        // T6GfxWorld->sunParse.initWorldSun->sunCs.z = 0.0f;
+        // T6GfxWorld->sunParse.initWorldSun->sunCs.w = 0.0f;
+        //
         // T6GfxWorld->sunParse.initWorldFog->baseDist = 150.0f;
         // T6GfxWorld->sunParse.initWorldFog->baseHeight = -100.0f;
         // T6GfxWorld->sunParse.initWorldFog->fogColor.x = 2.35f;
@@ -731,6 +775,50 @@ namespace BSP
         // T6GfxWorld->sunParse.initWorldFog->sunFogOuter = 80.84f;
         // T6GfxWorld->sunParse.initWorldFog->sunFogPitch = -29.0f;
         // T6GfxWorld->sunParse.initWorldFog->sunFogYaw = 254.0f;
+
+        memcpy(T6GfxWorld->sunParse.name, T5GfxWorld->sunParse.name, sizeof(T5GfxWorld->sunParse.name));
+
+        T6GfxWorld->sunParse.initWorldSun->control = T5GfxWorld->sunParse.sunSettings->control;
+        T6GfxWorld->sunParse.initWorldSun->angles.x = T5GfxWorld->sunParse.sunSettings->angles[0];
+        T6GfxWorld->sunParse.initWorldSun->angles.y = T5GfxWorld->sunParse.sunSettings->angles[1];
+        T6GfxWorld->sunParse.initWorldSun->angles.z = T5GfxWorld->sunParse.sunSettings->angles[2];
+        T6GfxWorld->sunParse.initWorldSun->ambientColor.x = T5GfxWorld->sunParse.sunSettings->ambientColor[0];
+        T6GfxWorld->sunParse.initWorldSun->ambientColor.y = T5GfxWorld->sunParse.sunSettings->ambientColor[1];
+        T6GfxWorld->sunParse.initWorldSun->ambientColor.z = T5GfxWorld->sunParse.sunSettings->ambientColor[2];
+        T6GfxWorld->sunParse.initWorldSun->ambientColor.w = T5GfxWorld->sunParse.sunSettings->ambientColor[3];
+        T6GfxWorld->sunParse.initWorldSun->sunCd.x = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[0];
+        T6GfxWorld->sunParse.initWorldSun->sunCd.y = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[1];
+        T6GfxWorld->sunParse.initWorldSun->sunCd.z = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[2];
+        T6GfxWorld->sunParse.initWorldSun->sunCd.w = T5GfxWorld->sunParse.sunSettings->sunDiffuseColor[3];
+        T6GfxWorld->sunParse.initWorldSun->sunCs.x = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[0];
+        T6GfxWorld->sunParse.initWorldSun->sunCs.y = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[1];
+        T6GfxWorld->sunParse.initWorldSun->sunCs.z = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[2];
+        T6GfxWorld->sunParse.initWorldSun->sunCs.w = T5GfxWorld->sunParse.sunSettings->sunSpecularColor[3];
+        T6GfxWorld->sunParse.initWorldSun->skyColor.x = T5GfxWorld->sunParse.sunSettings->skyColor[0];
+        T6GfxWorld->sunParse.initWorldSun->skyColor.y = T5GfxWorld->sunParse.sunSettings->skyColor[1];
+        T6GfxWorld->sunParse.initWorldSun->skyColor.z = T5GfxWorld->sunParse.sunSettings->skyColor[2];
+        T6GfxWorld->sunParse.initWorldSun->skyColor.w = T5GfxWorld->sunParse.sunSettings->skyColor[3];
+        T6GfxWorld->sunParse.initWorldSun->exposure = T5GfxWorld->sunParse.sunSettings->exposure;
+
+        // new in T6
+        // default values taken from mp_dig
+        T6GfxWorld->sunParse.fogTransitionTime = 0.001f;
+        T6GfxWorld->sunParse.initWorldFog->baseDist = 150.0f;
+        T6GfxWorld->sunParse.initWorldFog->baseHeight = -100.0f;
+        T6GfxWorld->sunParse.initWorldFog->fogColor.x = 2.35f;
+        T6GfxWorld->sunParse.initWorldFog->fogColor.y = 3.10f;
+        T6GfxWorld->sunParse.initWorldFog->fogColor.z = 3.84f;
+        T6GfxWorld->sunParse.initWorldFog->fogOpacity = 0.52f;
+        T6GfxWorld->sunParse.initWorldFog->halfDist = 4450.f;
+        T6GfxWorld->sunParse.initWorldFog->halfHeight = 2000.f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogColor.x = 5.27f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogColor.y = 4.73f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogColor.z = 3.88f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogInner = 0.0f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogOpacity = 0.67f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogOuter = 80.84f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogPitch = -29.0f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogYaw = 254.0f;
     }
 
     bool GfxWorldCompiler::loadReflectionProbeData(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
