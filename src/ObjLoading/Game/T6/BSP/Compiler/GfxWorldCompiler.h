@@ -17,7 +17,18 @@ namespace BSP
         void loadDrawData(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld);
         bool loadMapSurfaces(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld);
         void loadXModels(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld);
-        void cleanGfxWorld(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        void loadCoronas(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        void loadExposureVolumes(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        void loadHeroLights(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        void loadLUT(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        void loadOccluders(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        void loadSiegeSkins(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        void loadOutdoorBounds(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        bool loadMaterials(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        void loadShadowMaps(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        void loadStreamInfo(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        void loadWater(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        void loadFog(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
         void loadLightRegionHulls(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
         void loadGfxLights(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
         void loadLightGrid(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
@@ -28,7 +39,7 @@ namespace BSP
         void loadSkyBox(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld, std::string& mapName);
         void loadDynEntData(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
         bool loadOutdoors(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
-        void loadSunData(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
+        bool loadSunData(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
         void loadWorldBounds(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* gfxWorld);
         MemoryManager& m_memory;
         ISearchPath& m_search_path;

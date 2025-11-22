@@ -98,7 +98,7 @@ namespace BSP
             return false;
 
         GfxWorldCompiler gfxworldCompiler(m_memory, m_search_path, m_context);
-        result = gfxworldCompiler.linkGfxWorld(t5AssetPool, T6MapName, T6BSPName, T5BSPName);
+        result = gfxworldCompiler.linkGfxWorld(t5AssetPool, T6MapName, T6BSPName, T5BSPName); // requires comworld
         if (!result)
             return false;
 

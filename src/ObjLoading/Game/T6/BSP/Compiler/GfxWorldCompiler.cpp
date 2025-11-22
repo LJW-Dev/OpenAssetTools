@@ -11,6 +11,23 @@
 #include <string>
 #include <vector>
 
+namespace
+{
+    enum T5GfxLightType : __int32
+    {
+        GFX_LIGHT_TYPE_NONE = 0x0,
+        GFX_LIGHT_TYPE_DIR = 0x1,
+        GFX_LIGHT_TYPE_SPOT = 0x2,
+        GFX_LIGHT_TYPE_OMNI = 0x3,
+        GFX_LIGHT_TYPE_COUNT = 0x4,
+        GFX_LIGHT_TYPE_DIR_SHADOWMAP = 0x4,
+        GFX_LIGHT_TYPE_SPOT_SHADOWMAP = 0x5,
+        GFX_LIGHT_TYPE_OMNI_SHADOWMAP = 0x6,
+        GFX_LIGHT_TYPE_COUNT_WITH_SHADOWMAP_VERSIONS = 0x7,
+    };
+
+} // namespace
+
 namespace BSP
 {
     GfxWorldCompiler::GfxWorldCompiler(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
@@ -23,55 +40,67 @@ namespace BSP
     void GfxWorldCompiler::loadDrawData(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
     {
         unsigned int vertexCount = T5GfxWorld->draw.vertexCount;
-        T6GfxWorld->draw.vertexCount = vertexCount;
-        T6GfxWorld->draw.vertexDataSize0 = static_cast<unsigned int>(vertexCount * sizeof(T6::GfxPackedWorldVertex));
-        T6::GfxPackedWorldVertex* vertexBuffer = m_memory.Alloc<T6::GfxPackedWorldVertex>(vertexCount);
-        for (unsigned int vertIdx = 0; vertIdx < vertexCount; vertIdx++)
+        if (vertexCount == 0)
         {
-            T5::GfxWorldVertex* T5Vertex = &T5GfxWorld->draw.vd.vertices[vertIdx];
-            T6::GfxPackedWorldVertex* T6Vertex = &vertexBuffer[vertIdx];
-
-            T6Vertex->xyz.x = T5Vertex->xyz[0];
-            T6Vertex->xyz.y = T5Vertex->xyz[1];
-            T6Vertex->xyz.z = T5Vertex->xyz[2];
-
-            T6Vertex->color.packed = T5Vertex->color.packed;
-            T6Vertex->texCoord.packed = pack32::Vec2PackTexCoordsUV(T5Vertex->texCoord);
-            T6Vertex->normal.packed = T5Vertex->normal.packed;
-            T6Vertex->tangent.packed = T5Vertex->tangent.packed;
-            T6Vertex->binormalSign = T5Vertex->binormalSign;
-            T6Vertex->lmapCoord.packed = pack32::Vec2PackTexCoordsUV(T5Vertex->lmapCoord);
+            T6GfxWorld->draw.vertexCount = 0;
+            T6GfxWorld->draw.vertexDataSize0 = 0;
+            T6GfxWorld->draw.vertexDataSize1 = 0;
+            T6GfxWorld->draw.vd0.data = nullptr;
+            T6GfxWorld->draw.vd1.data = nullptr;
+            T6GfxWorld->draw.indexCount = 0;
+            T6GfxWorld->draw.indices = nullptr;
         }
-        T6GfxWorld->draw.vd0.data = reinterpret_cast<char*>(vertexBuffer);
+        else
+        {
+            T6GfxWorld->draw.vertexCount = vertexCount;
+            T6GfxWorld->draw.vertexDataSize0 = static_cast<unsigned int>(vertexCount * sizeof(T6::GfxPackedWorldVertex));
+            T6::GfxPackedWorldVertex* vertexBuffer = m_memory.Alloc<T6::GfxPackedWorldVertex>(vertexCount);
+            for (unsigned int vertIdx = 0; vertIdx < vertexCount; vertIdx++)
+            {
+                T5::GfxWorldVertex* T5Vertex = &T5GfxWorld->draw.vd.vertices[vertIdx];
+                T6::GfxPackedWorldVertex* T6Vertex = &vertexBuffer[vertIdx];
 
-        // vd1 is unused but still needs to be initialised
-        // the data type varies and 0x20 is enough for all types
-        T6GfxWorld->draw.vertexDataSize1 = 0x20;
-        T6GfxWorld->draw.vd1.data = m_memory.Alloc<char>(T6GfxWorld->draw.vertexDataSize1);
+                T6Vertex->xyz.x = T5Vertex->xyz[0];
+                T6Vertex->xyz.y = T5Vertex->xyz[1];
+                T6Vertex->xyz.z = T5Vertex->xyz[2];
 
-        T6GfxWorld->draw.indexCount = T5GfxWorld->draw.indexCount;
-        T6GfxWorld->draw.indices = m_memory.Alloc<uint16_t>(T5GfxWorld->draw.indexCount);
-        memcpy(T6GfxWorld->draw.indices, T5GfxWorld->draw.indices, sizeof(uint16_t) * T5GfxWorld->draw.indexCount);
+                T6Vertex->color.packed = T5Vertex->color.packed;
+                T6Vertex->texCoord.packed = pack32::Vec2PackTexCoordsUV(T5Vertex->texCoord);
+                T6Vertex->normal.packed = T5Vertex->normal.packed;
+                T6Vertex->tangent.packed = T5Vertex->tangent.packed;
+                T6Vertex->binormalSign = T5Vertex->binormalSign;
+                T6Vertex->lmapCoord.packed = pack32::Vec2PackTexCoordsUV(T5Vertex->lmapCoord);
+            }
+            T6GfxWorld->draw.vd0.data = reinterpret_cast<char*>(vertexBuffer);
+
+            // vd1 is unused but still needs to be initialised
+            // the data type varies and 0x20 is enough for all types
+            T6GfxWorld->draw.vertexDataSize1 = 0x20;
+            T6GfxWorld->draw.vd1.data = m_memory.Alloc<char>(T6GfxWorld->draw.vertexDataSize1);
+
+            assert(T5GfxWorld->draw.indexCount != 0);
+            T6GfxWorld->draw.indexCount = T5GfxWorld->draw.indexCount;
+            T6GfxWorld->draw.indices = m_memory.Alloc<uint16_t>(T5GfxWorld->draw.indexCount);
+            memcpy(T6GfxWorld->draw.indices, T5GfxWorld->draw.indices, sizeof(uint16_t) * T5GfxWorld->draw.indexCount);
+        }
     }
 
     bool GfxWorldCompiler::loadMapSurfaces(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
     {
+        if (T5GfxWorld->surfaceCount == 0 || T5GfxWorld->dpvs.staticSurfaceCount == 0)
+        {
+            con::error("Cannot convert map with 0 surfaces!");
+            return false;
+        }
+
         loadDrawData(T5GfxWorld, T6GfxWorld);
 
-        // TODO: crash relating to an inavlid model ptr caused by bad values in this function
-        // working but incorrect code is kept in, non-working code below
-
-        // T6GfxWorld->surfaceCount = T5GfxWorld->surfaceCount;
         T6GfxWorld->surfaceCount = T5GfxWorld->dpvs.staticSurfaceCount;
         T6GfxWorld->dpvs.staticSurfaceCount = T5GfxWorld->dpvs.staticSurfaceCount;
-        // unsigned int surfaceCount = T5GfxWorld->surfaceCount;
         unsigned int surfaceCount = T5GfxWorld->dpvs.staticSurfaceCount;
         unsigned int StaticSurfaceCount = T5GfxWorld->dpvs.staticSurfaceCount;
 
         // sortedSurfIndex is staticSurfaceCount size
-
-        // 2
-        // doesn't seem to matter what order the sorted surfs go in
         T6GfxWorld->dpvs.sortedSurfIndex = m_memory.Alloc<uint16_t>(surfaceCount);
         for (unsigned int surfIdx = 0; surfIdx < StaticSurfaceCount; surfIdx++)
             T6GfxWorld->dpvs.sortedSurfIndex[surfIdx] = T5GfxWorld->dpvs.sortedSurfIndex[surfIdx];
@@ -148,7 +177,7 @@ namespace BSP
                 surfMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>("material_template");
                 if (surfMaterialAsset == nullptr)
                 {
-                    con::error("unable to load surface material {}!", T5Surface->material->info.name);
+                    con::error("unable to load the default material {}!", "material_template");
                     return false;
                 }
             }
@@ -168,8 +197,8 @@ namespace BSP
             T6Surface->tris.vertexCount = T5Surface->tris.vertexCount;
             T6Surface->tris.firstVertex = T5Surface->tris.firstVertex;
 
-            _ASSERT((T5Surface->tris.firstVertex + T5Surface->tris.vertexCount - 1) * sizeof(T6::GfxPackedWorldVertex) < T6GfxWorld->draw.vertexDataSize0);
-            _ASSERT(T6Surface->tris.baseIndex + (T6Surface->tris.triCount * 3) - 1 < T5GfxWorld->draw.indexCount);
+            assert((T5Surface->tris.firstVertex + T5Surface->tris.vertexCount - 1) * sizeof(T6::GfxPackedWorldVertex) < T6GfxWorld->draw.vertexDataSize0);
+            assert(T6Surface->tris.baseIndex + (T6Surface->tris.triCount * 3) - 1 < T5GfxWorld->draw.indexCount);
         }
 
         return true;
@@ -203,6 +232,8 @@ namespace BSP
         // std::string jsonString = js.dump(4);
         // assetFile->write(jsonString.c_str(), jsonString.size());
 
+        // TODO: crash relating to an inavlid model ptr caused by bad values in this function
+        // working but incorrect code is kept in, non-working code below
         /*
         bool GfxWorldCompiler::loadMapSurfaces(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
         {
@@ -302,7 +333,17 @@ namespace BSP
     void GfxWorldCompiler::loadXModels(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
     {
         // XModels are unsupported right now
+        T6GfxWorld->dpvs.smodelCount = 0;
+        T6GfxWorld->dpvs.smodelInsts = nullptr;
+        T6GfxWorld->dpvs.smodelDrawInsts = nullptr;
+        T6GfxWorld->dpvs.smodelVisDataCount = 0;
+        T6GfxWorld->dpvs.smodelVisData[0] = nullptr;
+        T6GfxWorld->dpvs.smodelVisData[1] = nullptr;
+        T6GfxWorld->dpvs.smodelVisData[2] = nullptr;
+        T6GfxWorld->dpvs.smodelVisDataCameraSaved = nullptr;
+        T6GfxWorld->dpvs.smodelCastsShadow = nullptr;
 
+        /*
         unsigned int modelCount = 0;
         T6GfxWorld->dpvs.smodelCount = modelCount;
         T6GfxWorld->dpvs.smodelInsts = m_memory.Alloc<T6::GfxStaticModelInst>(modelCount);
@@ -324,80 +365,289 @@ namespace BSP
             else
                 T6GfxWorld->dpvs.smodelCastsShadow[i] = 0;
         }
-
-        // official maps set this to 0
-        T6GfxWorld->dpvs.usageCount = 0;
+        */
     }
 
-    void GfxWorldCompiler::cleanGfxWorld(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    void GfxWorldCompiler::loadCoronas(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
     {
-        // checksum is generated by the game
-        T6GfxWorld->checksum = 0;
+        T6GfxWorld->coronaCount = T5GfxWorld->coronaCount;
+        if (T5GfxWorld->coronaCount == 0)
+            T6GfxWorld->coronas = nullptr;
+        else
+        {
+            T6GfxWorld->coronas = m_memory.Alloc<T6::GfxLightCorona>(T5GfxWorld->coronaCount);
+            for (unsigned int coronaIdx = 0; coronaIdx < T5GfxWorld->coronaCount; coronaIdx++)
+            {
+                T6GfxWorld->coronas[coronaIdx].radius = T5GfxWorld->coronas[coronaIdx].radius;
+                T6GfxWorld->coronas[coronaIdx].intensity = T5GfxWorld->coronas[coronaIdx].intensity;
+                T6GfxWorld->coronas[coronaIdx].origin.x = T5GfxWorld->coronas[coronaIdx].origin[0];
+                T6GfxWorld->coronas[coronaIdx].origin.y = T5GfxWorld->coronas[coronaIdx].origin[1];
+                T6GfxWorld->coronas[coronaIdx].origin.z = T5GfxWorld->coronas[coronaIdx].origin[2];
+                T6GfxWorld->coronas[coronaIdx].color.x = T5GfxWorld->coronas[coronaIdx].color[0];
+                T6GfxWorld->coronas[coronaIdx].color.y = T5GfxWorld->coronas[coronaIdx].color[1];
+                T6GfxWorld->coronas[coronaIdx].color.z = T5GfxWorld->coronas[coronaIdx].color[2];
+            }
+        }
+    }
 
-        // Remove Coronas
-        T6GfxWorld->coronaCount = 0;
-        T6GfxWorld->coronas = nullptr;
+    void GfxWorldCompiler::loadExposureVolumes(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    {
+        T6GfxWorld->exposureVolumeCount = T5GfxWorld->exposureVolumeCount;
+        if (T5GfxWorld->exposureVolumeCount == 0)
+            T6GfxWorld->exposureVolumes = nullptr;
+        else
+        {
+            static_assert(sizeof(T5::GfxExposureVolume) == sizeof(T6::GfxExposureVolume));
+            T6GfxWorld->exposureVolumes = m_memory.Alloc<T6::GfxExposureVolume>(T5GfxWorld->exposureVolumeCount);
+            memcpy(T6GfxWorld->exposureVolumes, T5GfxWorld->exposureVolumes, sizeof(T5::GfxExposureVolume) * T5GfxWorld->exposureVolumeCount);
+        }
 
-        // Remove exposure volumes
-        T6GfxWorld->exposureVolumeCount = 0;
-        T6GfxWorld->exposureVolumes = nullptr;
-        T6GfxWorld->exposureVolumePlaneCount = 0;
-        T6GfxWorld->exposureVolumePlanes = nullptr;
+        T6GfxWorld->exposureVolumePlaneCount = T5GfxWorld->exposureVolumePlaneCount;
+        if (T5GfxWorld->exposureVolumePlaneCount == 0)
+            T6GfxWorld->exposureVolumePlanes = nullptr;
+        else
+        {
+            static_assert(sizeof(T5::GfxVolumePlane) == sizeof(T6::GfxVolumePlane));
+            T6GfxWorld->exposureVolumePlanes = m_memory.Alloc<T6::GfxVolumePlane>(T5GfxWorld->exposureVolumePlaneCount);
+            memcpy(T6GfxWorld->exposureVolumePlanes, T5GfxWorld->exposureVolumePlanes, sizeof(T5::GfxVolumePlane) * T5GfxWorld->exposureVolumePlaneCount);
+        }
+    }
+
+    void GfxWorldCompiler::loadHeroLights(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    {
+        if (T5GfxWorld->heroLightCount != 0 || T5GfxWorld->heroLightTreeCount != 0)
+            con::warn("T5 Map contains hero lights and they will not be added as they are not supported right now.");
 
         // Remove hero lights
+        // Hero light trees added a left and right index to it's struct and it's use or how it works is unknown right now
         T6GfxWorld->heroLightCount = 0;
         T6GfxWorld->heroLights = nullptr;
         T6GfxWorld->heroLightTreeCount = 0;
         T6GfxWorld->heroLightTree = nullptr;
+    }
 
+    void GfxWorldCompiler::loadLUT(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    {
+        // New in T6
         // remove LUT data
         T6GfxWorld->lutVolumeCount = 0;
         T6GfxWorld->lutVolumes = nullptr;
         T6GfxWorld->lutVolumePlaneCount = 0;
         T6GfxWorld->lutVolumePlanes = nullptr;
+    }
 
-        // remove occluders
-        T6GfxWorld->numOccluders = 0;
-        T6GfxWorld->occluders = nullptr;
+    void GfxWorldCompiler::loadOccluders(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    {
+        T6GfxWorld->numOccluders = T5GfxWorld->numOccluders;
+        if (T5GfxWorld->numOccluders == 0)
+            T6GfxWorld->occluders = nullptr;
+        else
+        {
+            static_assert(sizeof(T5::Occluder) == sizeof(T6::Occluder));
+            T6GfxWorld->occluders = m_memory.Alloc<T6::Occluder>(T5GfxWorld->numOccluders);
+            memcpy(T6GfxWorld->occluders, T5GfxWorld->occluders, sizeof(T5::Occluder) * T5GfxWorld->numOccluders);
+        }
+    }
 
+    void GfxWorldCompiler::loadSiegeSkins(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    {
+        // New in T6
         // remove Siege Skins
         T6GfxWorld->numSiegeSkinInsts = 0;
         T6GfxWorld->siegeSkinInsts = nullptr;
+    }
 
-        // remove outdoor bounds
-        T6GfxWorld->numOutdoorBounds = 0;
-        T6GfxWorld->outdoorBounds = nullptr;
+    void GfxWorldCompiler::loadOutdoorBounds(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    {
+        T6GfxWorld->numOutdoorBounds = T5GfxWorld->numOutdoorBounds;
+        if (T5GfxWorld->numOutdoorBounds == 0)
+            T6GfxWorld->outdoorBounds = nullptr;
+        else
+        {
+            static_assert(sizeof(T5::GfxOutdoorBounds) == sizeof(T6::GfxOutdoorBounds));
+            T6GfxWorld->outdoorBounds = m_memory.Alloc<T6::GfxOutdoorBounds>(T5GfxWorld->numOutdoorBounds);
+            memcpy(T6GfxWorld->outdoorBounds, T5GfxWorld->outdoorBounds, sizeof(T5::GfxOutdoorBounds) * T5GfxWorld->numOutdoorBounds);
+        }
+    }
 
-        // remove materials
-        T6GfxWorld->ropeMaterial = nullptr;
+    bool GfxWorldCompiler::loadMaterials(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    {
+        if (T5GfxWorld->ropeMaterial == nullptr)
+            T6GfxWorld->ropeMaterial = nullptr;
+        else
+        {
+            const char* ropeMaterialName = T5GfxWorld->ropeMaterial->info.name;
+            auto ropeMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>(ropeMaterialName);
+            if (ropeMaterialAsset == nullptr)
+            {
+                con::error("Unable to load T6 rope material {}.", ropeMaterialName);
+                return false;
+            }
+            else
+            {
+                T6GfxWorld->ropeMaterial = ropeMaterialAsset->Asset();
+            }
+        }
+
+        if (T5GfxWorld->coronaMaterial == nullptr)
+            T6GfxWorld->coronaMaterial = nullptr;
+        else
+        {
+            const char* coronaMaterialName = T5GfxWorld->coronaMaterial->info.name;
+            auto coronaMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>(coronaMaterialName);
+            if (coronaMaterialAsset == nullptr)
+            {
+                con::error("Unable to load T6 corona material {}.", coronaMaterialName);
+                return false;
+            }
+            else
+            {
+                T6GfxWorld->coronaMaterial = coronaMaterialAsset->Asset();
+            }
+        }
+
+        if (T5GfxWorld->waterMaterial == nullptr)
+            T6GfxWorld->waterMaterial = nullptr;
+        else
+        {
+            const char* waterMaterialName = T5GfxWorld->waterMaterial->info.name;
+            auto waterMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>(waterMaterialName);
+            if (waterMaterialAsset == nullptr)
+            {
+                con::error("Unable to load T6 water material {}.", waterMaterialName);
+                return false;
+            }
+            else
+            {
+                T6GfxWorld->waterMaterial = waterMaterialAsset->Asset();
+            }
+        }
+
+        // Luts are new in T6
+        // Remove LUT material
         T6GfxWorld->lutMaterial = nullptr;
-        T6GfxWorld->waterMaterial = nullptr;
-        T6GfxWorld->coronaMaterial = nullptr;
 
-        // remove shadow maps
-        T6GfxWorld->shadowMapVolumeCount = 0;
-        T6GfxWorld->shadowMapVolumes = nullptr;
-        T6GfxWorld->shadowMapVolumePlaneCount = 0;
-        T6GfxWorld->shadowMapVolumePlanes = nullptr;
+        T6GfxWorld->materialMemoryCount = T5GfxWorld->materialMemoryCount;
+        if (T5GfxWorld->materialMemoryCount == 0)
+            T6GfxWorld->materialMemory = nullptr;
+        else
+        {
+            T6GfxWorld->materialMemory = m_memory.Alloc<T6::MaterialMemory>(T5GfxWorld->materialMemoryCount);
+            for (int matIdx = 0; matIdx < T5GfxWorld->materialMemoryCount; matIdx++)
+            {
+                T6GfxWorld->materialMemory[matIdx].memory = T5GfxWorld->materialMemory[matIdx].memory;
 
+                if (T5GfxWorld->materialMemory[matIdx].material == nullptr)
+                    T6GfxWorld->materialMemory[matIdx].material = nullptr;
+                else
+                {
+                    const char* materialName = T5GfxWorld->materialMemory[matIdx].material->info.name;
+                    auto materialAsset = m_context.LoadDependency<T6::AssetMaterial>(materialName);
+                    if (materialAsset == nullptr)
+                    {
+                        // surfMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>(CBSPLinkingConstants::MISSING_MATERIAL_NAME);
+                        materialAsset = m_context.LoadDependency<T6::AssetMaterial>("material_template");
+                        if (materialAsset == nullptr)
+                        {
+                            con::error("unable to load the default material {}!", "material_template");
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        T6GfxWorld->materialMemory[matIdx].material = materialAsset->Asset();
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    void GfxWorldCompiler::loadShadowMaps(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    {
+        T6GfxWorld->shadowMapVolumeCount = T5GfxWorld->shadowMapVolumeCount;
+        if (T5GfxWorld->shadowMapVolumeCount == 0)
+            T6GfxWorld->shadowMapVolumes = nullptr;
+        else
+        {
+            static_assert(sizeof(T5::GfxShadowMapVolume) == sizeof(T6::GfxShadowMapVolume));
+            T6GfxWorld->shadowMapVolumes = m_memory.Alloc<T6::GfxShadowMapVolume>(T5GfxWorld->shadowMapVolumeCount);
+            memcpy(T6GfxWorld->shadowMapVolumes, T5GfxWorld->shadowMapVolumes, sizeof(T5::GfxShadowMapVolume) * T5GfxWorld->shadowMapVolumeCount);
+        }
+
+        T6GfxWorld->shadowMapVolumePlaneCount = T5GfxWorld->shadowMapVolumePlaneCount;
+        if (T5GfxWorld->shadowMapVolumePlaneCount == 0)
+            T6GfxWorld->shadowMapVolumePlanes = nullptr;
+        else
+        {
+            static_assert(sizeof(T5::GfxVolumePlane) == sizeof(T6::GfxVolumePlane));
+            T6GfxWorld->shadowMapVolumePlanes = m_memory.Alloc<T6::GfxVolumePlane>(T5GfxWorld->shadowMapVolumePlaneCount);
+            memcpy(T6GfxWorld->shadowMapVolumePlanes, T5GfxWorld->shadowMapVolumePlanes, sizeof(T5::GfxVolumePlane) * T5GfxWorld->shadowMapVolumePlaneCount);
+        }
+    }
+
+    void GfxWorldCompiler::loadStreamInfo(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    {
+        if (T5GfxWorld->streamInfo.aabbTreeCount != 0 || T5GfxWorld->streamInfo.leafRefCount != 0)
+            con::warn("T5 Map contains stream info data and it will not be added as it is not supported right now.");
+
+        // aabb trees have extra data that needs to be converted
         // remove stream info
         T6GfxWorld->streamInfo.aabbTreeCount = 0;
         T6GfxWorld->streamInfo.aabbTrees = nullptr;
         T6GfxWorld->streamInfo.leafRefCount = 0;
         T6GfxWorld->streamInfo.leafRefs = nullptr;
+    }
 
-        // remove sun data
-        memset(&T6GfxWorld->sun, 0, sizeof(T6::sunflare_t));
-        T6GfxWorld->sun.hasValidData = false;
+    void GfxWorldCompiler::loadWater(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    {
+        T6GfxWorld->waterDirection = T5GfxWorld->waterDirection;
 
-        // Remove Water
-        T6GfxWorld->waterDirection = 0.0f;
-        T6GfxWorld->waterBuffers[0].bufferSize = 0;
-        T6GfxWorld->waterBuffers[0].buffer = nullptr;
-        T6GfxWorld->waterBuffers[1].bufferSize = 0;
-        T6GfxWorld->waterBuffers[1].buffer = nullptr;
+        T6GfxWorld->waterBuffers[0].bufferSize = T5GfxWorld->waterBuffers[0].bufferSize;
+        if (T5GfxWorld->waterBuffers[0].bufferSize == 0)
+            T6GfxWorld->waterBuffers[0].buffer = nullptr;
+        else
+        {
+            static_assert(sizeof(T5::vec4_t) == sizeof(T6::vec4_t));
+            T6GfxWorld->waterBuffers[0].buffer = static_cast<T6::vec4_t*>(m_memory.AllocRaw(T5GfxWorld->waterBuffers[0].bufferSize));
+            memcpy(T6GfxWorld->waterBuffers[0].buffer, T5GfxWorld->waterBuffers[0].buffer, T5GfxWorld->waterBuffers[0].bufferSize);
+        }
 
-        // Remove Fog
+        T6GfxWorld->waterBuffers[1].bufferSize = T5GfxWorld->waterBuffers[1].bufferSize;
+        if (T5GfxWorld->waterBuffers[1].bufferSize == 0)
+            T6GfxWorld->waterBuffers[1].buffer = nullptr;
+        else
+        {
+            static_assert(sizeof(T5::vec4_t) == sizeof(T6::vec4_t));
+            T6GfxWorld->waterBuffers[1].buffer = static_cast<T6::vec4_t*>(m_memory.AllocRaw(T5GfxWorld->waterBuffers[1].bufferSize));
+            memcpy(T6GfxWorld->waterBuffers[1].buffer, T5GfxWorld->waterBuffers[1].buffer, T5GfxWorld->waterBuffers[1].bufferSize);
+        }
+    }
+
+    void GfxWorldCompiler::loadFog(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    {
+        // fog is new in T6
+        // sunParse fog values taken from mp_dig
+        T6GfxWorld->sunParse.fogTransitionTime = 0.001f;
+        T6GfxWorld->sunParse.initWorldFog->baseDist = 150.0f;
+        T6GfxWorld->sunParse.initWorldFog->baseHeight = -100.0f;
+        T6GfxWorld->sunParse.initWorldFog->fogColor.x = 2.35f;
+        T6GfxWorld->sunParse.initWorldFog->fogColor.y = 3.10f;
+        T6GfxWorld->sunParse.initWorldFog->fogColor.z = 3.84f;
+        T6GfxWorld->sunParse.initWorldFog->fogOpacity = 0.52f;
+        T6GfxWorld->sunParse.initWorldFog->halfDist = 4450.f;
+        T6GfxWorld->sunParse.initWorldFog->halfHeight = 2000.f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogColor.x = 5.27f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogColor.y = 4.73f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogColor.z = 3.88f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogInner = 0.0f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogOpacity = 0.67f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogOuter = 80.84f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogPitch = -29.0f;
+        T6GfxWorld->sunParse.initWorldFog->sunFogYaw = 254.0f;
+
+        // remove fog volumes
         T6GfxWorld->worldFogModifierVolumeCount = 0;
         T6GfxWorld->worldFogModifierVolumes = nullptr;
         T6GfxWorld->worldFogModifierVolumePlaneCount = 0;
@@ -406,28 +656,19 @@ namespace BSP
         T6GfxWorld->worldFogVolumes = nullptr;
         T6GfxWorld->worldFogVolumePlaneCount = 0;
         T6GfxWorld->worldFogVolumePlanes = nullptr;
-
-        // materialMemory is unused
-        T6GfxWorld->materialMemoryCount = 0;
-        T6GfxWorld->materialMemory = nullptr;
-
-        // sunLight is overwritten by the game, just needs to be a valid pointer
-        T6GfxWorld->sunLight = m_memory.Alloc<T6::GfxLight>();
     }
 
     void GfxWorldCompiler::loadLightRegionHulls(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
     {
+        assert(T5GfxWorld->primaryLightCount >= 2);
         T6GfxWorld->lightRegion = m_memory.Alloc<T6::GfxLightRegion>(T5GfxWorld->primaryLightCount);
         for (unsigned int lightIdx = 0; lightIdx < T5GfxWorld->primaryLightCount; lightIdx++)
         {
+            T6GfxWorld->lightRegion[lightIdx].hullCount = T5GfxWorld->lightRegion[lightIdx].hullCount;
             if (T5GfxWorld->lightRegion[lightIdx].hullCount == 0)
-            {
-                T6GfxWorld->lightRegion[lightIdx].hullCount = 0;
                 T6GfxWorld->lightRegion[lightIdx].hulls = nullptr;
-            }
             else
             {
-                T6GfxWorld->lightRegion[lightIdx].hullCount = T5GfxWorld->lightRegion[lightIdx].hullCount;
                 T6GfxWorld->lightRegion[lightIdx].hulls = m_memory.Alloc<T6::GfxLightRegionHull>(T5GfxWorld->lightRegion[lightIdx].hullCount);
                 for (unsigned int hullIdx = 0; hullIdx < T5GfxWorld->lightRegion[lightIdx].hullCount; hullIdx++)
                 {
@@ -499,16 +740,16 @@ namespace BSP
             else
             {
                 // sorted surf index and surfaceCount is overwritten by the game and re-initialised each frame
-                // Using T5 values results in a buffer overflow, so we set each surf count to the size of the sorted surf buffer
+                // Using T5 values results in a buffer overflow, so we set each surf count to the surface count
                 T6GfxWorld->shadowGeom[lightIdx].surfaceCount = T5GfxWorld->dpvs.staticSurfaceCount;
                 T6GfxWorld->shadowGeom[lightIdx].sortedSurfIndex = m_memory.Alloc<uint16_t>(T5GfxWorld->dpvs.staticSurfaceCount);
             }
         }
         loadLightRegionHulls(T5GfxWorld, T6GfxWorld);
 
-        unsigned int lightEntShadowVisSize = (T5GfxWorld->primaryLightCount - T5GfxWorld->sunPrimaryLightIndex - 1) * 8192;
-        if (lightEntShadowVisSize != 0)
-            T6GfxWorld->primaryLightEntityShadowVis = m_memory.Alloc<unsigned int>(lightEntShadowVisSize);
+        unsigned int lightEntShadowVisCount = (T5GfxWorld->primaryLightCount - T5GfxWorld->sunPrimaryLightIndex - 1) * 8192;
+        if (lightEntShadowVisCount != 0)
+            T6GfxWorld->primaryLightEntityShadowVis = m_memory.Alloc<unsigned int>(lightEntShadowVisCount);
         else
             T6GfxWorld->primaryLightEntityShadowVis = nullptr;
     }
@@ -699,17 +940,17 @@ namespace BSP
         // Models (Submodels in the clipmap code) are used for the world and map ent collision (triggers, bomb zones, etc)
         // Right now there is only one submodel, the world sub model
         T6GfxWorld->modelCount = 1;
-        T6GfxWorld->models = m_memory.Alloc<T6::GfxBrushModel>(T6GfxWorld->modelCount);
+        T6GfxWorld->models = m_memory.Alloc<T6::GfxBrushModel>(1);
 
         // first model is always the world model
         T6GfxWorld->models[0].startSurfIndex = 0;
-        T6GfxWorld->models[0].surfaceCount = static_cast<unsigned int>(T6GfxWorld->surfaceCount);
-        T6GfxWorld->models[0].bounds[0].x = T6GfxWorld->mins.x;
-        T6GfxWorld->models[0].bounds[0].y = T6GfxWorld->mins.y;
-        T6GfxWorld->models[0].bounds[0].z = T6GfxWorld->mins.z;
-        T6GfxWorld->models[0].bounds[1].x = T6GfxWorld->maxs.x;
-        T6GfxWorld->models[0].bounds[1].y = T6GfxWorld->maxs.y;
-        T6GfxWorld->models[0].bounds[1].z = T6GfxWorld->maxs.z;
+        T6GfxWorld->models[0].surfaceCount = static_cast<unsigned int>(T5GfxWorld->dpvs.staticSurfaceCount); // uses static not total surface count
+        T6GfxWorld->models[0].bounds[0].x = T5GfxWorld->mins[0];
+        T6GfxWorld->models[0].bounds[0].y = T5GfxWorld->mins[1];
+        T6GfxWorld->models[0].bounds[0].z = T5GfxWorld->mins[2];
+        T6GfxWorld->models[0].bounds[1].x = T5GfxWorld->maxs[0];
+        T6GfxWorld->models[0].bounds[1].y = T5GfxWorld->maxs[1];
+        T6GfxWorld->models[0].bounds[1].z = T5GfxWorld->maxs[2];
         memset(&T6GfxWorld->models[0].writable, 0, sizeof(T6::GfxBrushModelWritable));
 
         // Other models aren't implemented yet
@@ -731,7 +972,7 @@ namespace BSP
         //}
     }
 
-    void GfxWorldCompiler::loadSunData(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
+    bool GfxWorldCompiler::loadSunData(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
     {
         //// default values taken from mp_dig
         // T6GfxWorld->sunParse.fogTransitionTime = 0.001f;
@@ -800,29 +1041,157 @@ namespace BSP
         T6GfxWorld->sunParse.initWorldSun->skyColor.w = T5GfxWorld->sunParse.sunSettings->skyColor[3];
         T6GfxWorld->sunParse.initWorldSun->exposure = T5GfxWorld->sunParse.sunSettings->exposure;
 
-        // new in T6
-        // default values taken from mp_dig
-        T6GfxWorld->sunParse.fogTransitionTime = 0.001f;
-        T6GfxWorld->sunParse.initWorldFog->baseDist = 150.0f;
-        T6GfxWorld->sunParse.initWorldFog->baseHeight = -100.0f;
-        T6GfxWorld->sunParse.initWorldFog->fogColor.x = 2.35f;
-        T6GfxWorld->sunParse.initWorldFog->fogColor.y = 3.10f;
-        T6GfxWorld->sunParse.initWorldFog->fogColor.z = 3.84f;
-        T6GfxWorld->sunParse.initWorldFog->fogOpacity = 0.52f;
-        T6GfxWorld->sunParse.initWorldFog->halfDist = 4450.f;
-        T6GfxWorld->sunParse.initWorldFog->halfHeight = 2000.f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogColor.x = 5.27f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogColor.y = 4.73f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogColor.z = 3.88f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogInner = 0.0f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogOpacity = 0.67f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogOuter = 80.84f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogPitch = -29.0f;
-        T6GfxWorld->sunParse.initWorldFog->sunFogYaw = 254.0f;
+        T6GfxWorld->sun.hasValidData = T5GfxWorld->sun.hasValidData;
+        T6GfxWorld->sun.spriteSize = T5GfxWorld->sun.spriteSize;
+        T6GfxWorld->sun.flareMinSize = T5GfxWorld->sun.flareMinSize;
+        T6GfxWorld->sun.flareMinDot = T5GfxWorld->sun.flareMinDot;
+        T6GfxWorld->sun.flareMaxSize = T5GfxWorld->sun.flareMaxSize;
+        T6GfxWorld->sun.flareMaxDot = T5GfxWorld->sun.flareMaxDot;
+        T6GfxWorld->sun.flareMaxAlpha = T5GfxWorld->sun.flareMaxAlpha;
+        T6GfxWorld->sun.flareFadeInTime = T5GfxWorld->sun.flareFadeInTime;
+        T6GfxWorld->sun.flareFadeOutTime = T5GfxWorld->sun.flareFadeOutTime;
+        T6GfxWorld->sun.blindMinDot = T5GfxWorld->sun.blindMinDot;
+        T6GfxWorld->sun.blindMaxDot = T5GfxWorld->sun.blindMaxDot;
+        T6GfxWorld->sun.blindMaxDarken = T5GfxWorld->sun.blindMaxDarken;
+        T6GfxWorld->sun.blindFadeInTime = T5GfxWorld->sun.blindFadeInTime;
+        T6GfxWorld->sun.blindFadeOutTime = T5GfxWorld->sun.blindFadeOutTime;
+        T6GfxWorld->sun.glareMinDot = T5GfxWorld->sun.glareMinDot;
+        T6GfxWorld->sun.glareMaxDot = T5GfxWorld->sun.glareMaxDot;
+        T6GfxWorld->sun.glareMaxLighten = T5GfxWorld->sun.glareMaxLighten;
+        T6GfxWorld->sun.glareFadeInTime = T5GfxWorld->sun.glareFadeInTime;
+        T6GfxWorld->sun.glareFadeOutTime = T5GfxWorld->sun.glareFadeOutTime;
+        T6GfxWorld->sun.sunFxPosition.x = T5GfxWorld->sun.sunFxPosition[0];
+        T6GfxWorld->sun.sunFxPosition.y = T5GfxWorld->sun.sunFxPosition[1];
+        T6GfxWorld->sun.sunFxPosition.z = T5GfxWorld->sun.sunFxPosition[2];
+
+        if (T5GfxWorld->sun.spriteMaterial == nullptr)
+            T6GfxWorld->sun.spriteMaterial = nullptr;
+        else
+        {
+            const char* spriteMaterialName = T5GfxWorld->sun.spriteMaterial->info.name;
+            auto spriteMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>(spriteMaterialName);
+            if (spriteMaterialAsset == nullptr)
+            {
+                con::error("Unable to load T6 sun sprite material {}.", spriteMaterialName);
+                return false;
+            }
+            else
+            {
+                T6GfxWorld->sun.spriteMaterial = spriteMaterialAsset->Asset();
+            }
+        }
+
+        if (T5GfxWorld->sun.flareMaterial == nullptr)
+            T6GfxWorld->sun.flareMaterial = nullptr;
+        else
+        {
+            const char* flareMaterialName = T5GfxWorld->sun.flareMaterial->info.name;
+            auto flareMaterialAsset = m_context.LoadDependency<T6::AssetMaterial>(flareMaterialName);
+            if (flareMaterialAsset == nullptr)
+            {
+                con::error("Unable to load T6 sun flare material {}.", flareMaterialName);
+                return false;
+            }
+            else
+            {
+                T6GfxWorld->sun.flareMaterial = flareMaterialAsset->Asset();
+            }
+        }
+
+        T6GfxWorld->sunLight = m_memory.Alloc<T6::GfxLight>();
+        T5::GfxLight* T5Light = T5GfxWorld->sunLight;
+        T6::GfxLight* T6Light = T6GfxWorld->sunLight;
+        switch (T5Light->type)
+        {
+        case GFX_LIGHT_TYPE_NONE:
+            T6Light->type = T6::GFX_LIGHT_TYPE_NONE;
+            break;
+        case GFX_LIGHT_TYPE_DIR:
+            T6Light->type = T6::GFX_LIGHT_TYPE_DIR;
+            break;
+        case GFX_LIGHT_TYPE_SPOT:
+            T6Light->type = T6::GFX_LIGHT_TYPE_SPOT;
+            break;
+        case GFX_LIGHT_TYPE_OMNI:
+            T6Light->type = T6::GFX_LIGHT_TYPE_OMNI;
+            break;
+        default:
+            assert(false);
+        }
+        T6Light->canUseShadowMap = T5Light->canUseShadowMap;
+        T6Light->cullDist = T5Light->cullDist;
+        T6Light->color.x = T5Light->color[0];
+        T6Light->color.y = T5Light->color[1];
+        T6Light->color.z = T5Light->color[2];
+        T6Light->dir.x = T5Light->dir[0];
+        T6Light->dir.y = T5Light->dir[1];
+        T6Light->dir.z = T5Light->dir[2];
+        T6Light->origin.x = T5Light->origin[0];
+        T6Light->origin.y = T5Light->origin[1];
+        T6Light->origin.z = T5Light->origin[2];
+        T6Light->radius = T5Light->radius;
+        T6Light->cosHalfFovOuter = T5Light->cosHalfFovOuter;
+        T6Light->cosHalfFovInner = T5Light->cosHalfFovInner;
+        T6Light->exponent = T5Light->exponent;
+        T6Light->spotShadowIndex = T5Light->spotShadowIndex;
+        T6Light->angles.x = T5Light->angles[0];
+        T6Light->angles.y = T5Light->angles[1];
+        T6Light->angles.z = T5Light->angles[2];
+        T6Light->spotShadowHiDistance = T5Light->spotShadowHiDistance;
+        T6Light->diffuseColor.x = T5Light->diffuseColor[0];
+        T6Light->diffuseColor.y = T5Light->diffuseColor[1];
+        T6Light->diffuseColor.z = T5Light->diffuseColor[2];
+        T6Light->diffuseColor.w = T5Light->diffuseColor[3];
+        T6Light->shadowColor.x = T5Light->shadowColor[0];
+        T6Light->shadowColor.y = T5Light->shadowColor[1];
+        T6Light->shadowColor.z = T5Light->shadowColor[2];
+        T6Light->shadowColor.w = T5Light->shadowColor[3];
+        T6Light->falloff.x = T5Light->falloff[0];
+        T6Light->falloff.y = T5Light->falloff[1];
+        T6Light->falloff.z = T5Light->falloff[2];
+        T6Light->falloff.w = T5Light->falloff[3];
+        T6Light->aAbB.x = T5Light->aAbB[0];
+        T6Light->aAbB.y = T5Light->aAbB[1];
+        T6Light->aAbB.z = T5Light->aAbB[2];
+        T6Light->aAbB.w = T5Light->aAbB[3];
+        T6Light->cookieControl0.x = T5Light->cookieControl0[0];
+        T6Light->cookieControl0.y = T5Light->cookieControl0[1];
+        T6Light->cookieControl0.z = T5Light->cookieControl0[2];
+        T6Light->cookieControl0.w = T5Light->cookieControl0[3];
+        T6Light->cookieControl1.x = T5Light->cookieControl1[0];
+        T6Light->cookieControl1.y = T5Light->cookieControl1[1];
+        T6Light->cookieControl1.z = T5Light->cookieControl1[2];
+        T6Light->cookieControl1.w = T5Light->cookieControl1[3];
+        T6Light->cookieControl2.x = T5Light->cookieControl2[0];
+        T6Light->cookieControl2.y = T5Light->cookieControl2[1];
+        T6Light->cookieControl2.z = T5Light->cookieControl2[2];
+        T6Light->cookieControl2.w = T5Light->cookieControl2[3];
+
+        static_assert(sizeof(T5::float44) == sizeof(T6::float44));
+        memcpy(&T6Light->viewMatrix, &T5Light->viewMatrix, sizeof(T5::float44));
+        memcpy(&T6Light->projMatrix, &T5Light->projMatrix, sizeof(T5::float44));
+
+        if (T5Light->def == nullptr)
+            T6Light->def = nullptr;
+        else
+        {
+            auto lightDefAsset = m_context.LoadDependency<T6::AssetLightDef>(T5Light->def->name);
+            if (lightDefAsset == nullptr)
+                assert(false);
+            else
+                T6Light->def = lightDefAsset->Asset();
+        }
+        // T6 differences
+        T6Light->shadowmapVolume = 0;     // added t5->t6, same position as T5Light->_pad[1]
+        T6Light->dAttenuation = 10000.0f; // vec4 in t5, float in t6 (10000 for testing: pre sure attenuation effects lights)
+        T6Light->roundness = 0.0f;        // added t5->t6
+
+        return true;
     }
 
     bool GfxWorldCompiler::loadReflectionProbeData(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
     {
+        assert(T5GfxWorld->draw.reflectionProbeCount != 0);
         // max 31 probes
         T6GfxWorld->draw.reflectionProbeCount = T5GfxWorld->draw.reflectionProbeCount;
 
@@ -903,6 +1272,8 @@ namespace BSP
 
     bool GfxWorldCompiler::loadLightmapData(T5::GfxWorld* T5GfxWorld, T6::GfxWorld* T6GfxWorld)
     {
+        assert(T5GfxWorld->draw.lightmapCount != 0);
+
         T6GfxWorld->draw.lightmapCount = T5GfxWorld->draw.lightmapCount;
 
         // always empty
@@ -1022,42 +1393,52 @@ namespace BSP
         T6GfxWorld->lightingFlags = 0;
         T6GfxWorld->lightingQuality = 4096;
 
-        cleanGfxWorld(T5GfxWorld, T6GfxWorld);
+        // checksum is generated by the game
+        T6GfxWorld->checksum = 0;
+
+        // Unsure what this relates to
+        T6GfxWorld->dpvs.usageCount = T5GfxWorld->dpvs.usageCount;
 
         if (!loadMapSurfaces(T5GfxWorld, T6GfxWorld))
             return false;
 
-        loadXModels(T5GfxWorld, T6GfxWorld);
+        if (!loadMaterials(T5GfxWorld, T6GfxWorld))
+            return false;
 
         if (!loadLightmapData(T5GfxWorld, T6GfxWorld))
             return false;
 
-        loadSkyBox(T5GfxWorld, T6GfxWorld, mapName);
-
         if (!loadReflectionProbeData(T5GfxWorld, T6GfxWorld))
             return false;
 
-        // requires surfaces and vertexes
-        loadWorldBounds(T5GfxWorld, T6GfxWorld);
-
-        // requires world mins and maxs
         if (!loadOutdoors(T5GfxWorld, T6GfxWorld))
             return false;
 
-        // gfx cells depend on world mins/maxs, surface and smodel count
+        if (!loadSunData(T5GfxWorld, T6GfxWorld))
+            return false;
+
+        loadXModels(T5GfxWorld, T6GfxWorld);
+        loadSkyBox(T5GfxWorld, T6GfxWorld, mapName);
+        loadWorldBounds(T5GfxWorld, T6GfxWorld);
+        loadCoronas(T5GfxWorld, T6GfxWorld);
+        loadExposureVolumes(T5GfxWorld, T6GfxWorld);
+        loadHeroLights(T5GfxWorld, T6GfxWorld);
+        loadLUT(T5GfxWorld, T6GfxWorld);
+        loadOccluders(T5GfxWorld, T6GfxWorld);
+        loadSiegeSkins(T5GfxWorld, T6GfxWorld);
+        loadOutdoorBounds(T5GfxWorld, T6GfxWorld);
+        loadMaterials(T5GfxWorld, T6GfxWorld);
+        loadShadowMaps(T5GfxWorld, T6GfxWorld);
+        loadStreamInfo(T5GfxWorld, T6GfxWorld);
+        loadWater(T5GfxWorld, T6GfxWorld);
+        loadFog(T5GfxWorld, T6GfxWorld);
         loadGfxCells(T5GfxWorld, T6GfxWorld);
-
         loadGfxLights(T5GfxWorld, T6GfxWorld);
-
-        // requires lights
         loadLightGrid(T5GfxWorld, T6GfxWorld);
-
-        // requires surfaces
         loadModels(T5GfxWorld, T6GfxWorld);
-
         loadSunData(T5GfxWorld, T6GfxWorld);
 
-        // requires cells and lights
+        // requires T6 cells and lights
         loadDynEntData(T5GfxWorld, T6GfxWorld);
 
         m_context.AddAsset<T6::AssetGfxWorld>(T6GfxWorld->name, T6GfxWorld);
