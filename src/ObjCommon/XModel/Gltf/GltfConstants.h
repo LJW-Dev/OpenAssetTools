@@ -23,6 +23,7 @@ namespace gltf
 
     constexpr auto GLTF_ATTRIBUTE_POSITION = "POSITION";
     constexpr auto GLTF_ATTRIBUTE_NORMAL = "NORMAL";
+    constexpr auto GLTF_ATTRIBUTE_COLOR = "COLOR";
     constexpr auto GLTF_ATTRIBUTE_TEXCOORD_0 = "TEXCOORD_0";
     constexpr auto GLTF_ATTRIBUTE_JOINTS_0 = "JOINTS_0";
     constexpr auto GLTF_ATTRIBUTE_WEIGHTS_0 = "WEIGHTS_0";

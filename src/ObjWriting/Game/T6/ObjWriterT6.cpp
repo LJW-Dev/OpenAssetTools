@@ -1,5 +1,6 @@
 #include "ObjWriterT6.h"
 
+#include "BSP/BSPDumperT6.h"
 #include "FontIcon/FontIconDumperT6.h"
 #include "Game/T6/Material/MaterialJsonDumperT6.h"
 #include "Game/T6/Techset/TechsetDumperT6.h"
@@ -82,5 +83,5 @@ void ObjWriter::RegisterAssetDumpers(AssetDumpingContext& context)
     RegisterAssetDumper(std::make_unique<slug::DumperT6>());
     // REGISTER_DUMPER(AssetDumperFootstepTableDef, m_footstep_table)
     // REGISTER_DUMPER(AssetDumperFootstepFXTableDef, m_footstep_fx_table)
-    RegisterAssetDumper(std::make_unique<z_barrier::DumperT6>());
+    RegisterAssetDumper(std::make_unique<bsp::DumperT6>());
 }
