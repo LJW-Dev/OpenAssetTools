@@ -10,6 +10,8 @@
 #include "XModel/Gltf/GltfWriter.h"
 #include "XModel/Gltf/JsonGltf.h"
 
+#include <deque>
+
 using namespace gltf;
 using namespace T6;
 
@@ -35,7 +37,10 @@ namespace
     {
         vec3_t origin;
         vec4_t rotationQuaternion;
-        size_t modelIndex;
+
+        bool isGfxEntity;
+        size_t surfaceIndex;
+        size_t surfaceCount;
 
         std::vector<BSPEntityEntry> entries;
     };
@@ -58,14 +63,25 @@ namespace
         int vertexCount;
     };
 
+    struct BSPWorldDump
+    {
+        std::vector<BSPSurface> surfaces;
+        std::vector<GltfVertex> vertices;
+        std::vector<uint16_t> indices;
+    };
+
     struct bspDumpData
     {
         std::string BSPName;
         std::vector<BSPEntity> entities;
 
-        std::vector<BSPSurface> surfaces;
-        std::vector<GltfVertex> vertices;
-        std::vector<uint16_t> indices;
+        size_t staticSurfaceStart;
+        size_t staticSurfaceCount;
+        BSPWorldDump gfxWorld;
+
+        size_t terrainSurfaceStart;
+        size_t terrainSurfaceCount;
+        BSPWorldDump colWorld;
     };
 
     void LhcToRhcCoordinates(float (&coords)[3])
@@ -223,7 +239,136 @@ namespace
         return convertAxisToQuat(axis);
     }
 
-    void dumpMapEnts(bspDumpData& dumpData, const MapEnts* mapEnts)
+    void getPartitionsFromAABBTree(const clipMap_t* clipmap, int aabbStartIndex, int aabbCount, std::vector<size_t>& partitionList)
+    {
+        std::deque<int> aabbQueue;
+        for (int i = 0; i < aabbCount; i++)
+            aabbQueue.emplace_back(aabbStartIndex + i);
+
+        while (!aabbQueue.empty())
+        {
+            int aabbIdx = aabbQueue.front();
+            aabbQueue.pop_front();
+
+            CollisionAabbTree* aabb = &clipmap->aabbTrees[aabbIdx];
+            if (aabb->childCount == 0)
+                partitionList.emplace_back(aabb->u.partitionIndex);
+            else
+            {
+                for (uint16_t i = 0; i < aabb->childCount; i++)
+                    aabbQueue.emplace_back(aabb->u.firstChildIndex + i);
+            }
+        }
+    }
+
+    size_t createSurfacesFromPartitions(const clipMap_t* clipmap, bspDumpData& dumpData, std::vector<size_t>& partitionList)
+    {
+        size_t surfStart = dumpData.colWorld.surfaces.size();
+        int totalVertexCount = dumpData.colWorld.vertices.size();
+        for (size_t partitionIdx : partitionList)
+        {
+            BSPSurface surface;
+            CollisionPartition* partition = &clipmap->partitions[partitionIdx];
+
+            surface.indexOfFirstVertex = totalVertexCount;
+            surface.triCount = partition->triCount;
+            surface.vertexCount = partition->triCount * 3;
+            surface.flags = 0;
+            surface.materialIndex = 0;
+            surface.indexOfFirstIndex = totalVertexCount;
+            dumpData.colWorld.surfaces.emplace_back(surface);
+
+            for (int k = 0; k < partition->triCount; k++)
+            {
+                int triIndex = partition->firstTri + k;
+                uint16_t* vertIndices = clipmap->triIndices[triIndex];
+
+                GltfVertex vert0{};
+                GltfVertex vert1{};
+                GltfVertex vert2{};
+                vert0.coordinates[0] = clipmap->verts[vertIndices[0]].x;
+                vert0.coordinates[1] = clipmap->verts[vertIndices[0]].y;
+                vert0.coordinates[2] = clipmap->verts[vertIndices[0]].z;
+                vert1.coordinates[0] = clipmap->verts[vertIndices[1]].x;
+                vert1.coordinates[1] = clipmap->verts[vertIndices[1]].y;
+                vert1.coordinates[2] = clipmap->verts[vertIndices[1]].z;
+                vert2.coordinates[0] = clipmap->verts[vertIndices[2]].x;
+                vert2.coordinates[1] = clipmap->verts[vertIndices[2]].y;
+                vert2.coordinates[2] = clipmap->verts[vertIndices[2]].z;
+
+                LhcToRhcCoordinates(vert0.coordinates);
+                LhcToRhcCoordinates(vert1.coordinates);
+                LhcToRhcCoordinates(vert2.coordinates);
+
+                dumpData.colWorld.vertices.emplace_back(vert2);
+                dumpData.colWorld.vertices.emplace_back(vert1);
+                dumpData.colWorld.vertices.emplace_back(vert0);
+
+                dumpData.colWorld.indices.emplace_back((k * 3) + 2);
+                dumpData.colWorld.indices.emplace_back((k * 3) + 1);
+                dumpData.colWorld.indices.emplace_back((k * 3) + 0);
+            }
+
+            totalVertexCount += surface.vertexCount;
+        }
+        return surfStart;
+    }
+
+    void createSurfacesFromEntity(size_t modelIndex, BSPEntity& entity, bspDumpData& dumpData, const GfxWorld* gfxworld, const clipMap_t* clipmap)
+    {
+        if (modelIndex == 0)
+            return;
+
+        if (gfxworld->models[modelIndex].surfaceCount != 0)
+        {
+            entity.isGfxEntity = true;
+            entity.surfaceCount = gfxworld->models[modelIndex].surfaceCount;
+            entity.surfaceIndex = gfxworld->models[modelIndex].startSurfIndex;
+        }
+        else
+        {
+            cLeaf_s* leaf = &clipmap->cmodels[modelIndex].leaf;
+            if (leaf->collAabbCount != 0)
+            {
+                entity.isGfxEntity = false;
+                std::vector<size_t> partitionList;
+                getPartitionsFromAABBTree(clipmap, leaf->firstCollAabbIndex, leaf->collAabbCount, partitionList);
+                entity.surfaceCount = partitionList.size();
+                entity.surfaceIndex = createSurfacesFromPartitions(clipmap, dumpData, partitionList);
+            }
+            else if (leaf->leafBrushNode != 0)
+            {
+                entity.isGfxEntity = false;
+            }
+        }
+
+        size_t ee = 0;
+        bool wasgfx = false;
+        if (gfxworld->models[modelIndex].surfaceCount != 0)
+        {
+            wasgfx = true;
+            ee++;
+        }
+        size_t ee2 = 0;
+        if (clipmap->cmodels[modelIndex].leaf.collAabbCount != 0)
+        {
+            ee++;
+            ee2++;
+        }
+        if (clipmap->cmodels[modelIndex].leaf.leafBrushNode != 0)
+        {
+            ee++;
+            ee2++;
+        }
+        if (ee == 0)
+            con::warn("Entity used a model index with no col or gfx data");
+        else if (ee != 1 && wasgfx)
+            con::warn("Entity used a model index with both col and gfx data");
+        if (ee2 != 1)
+            con::warn("Entity used a model index with both col terrain and brush data");
+    }
+
+    void dumpMapEnts(bspDumpData& dumpData, const MapEnts* mapEnts, const GfxWorld* gfxworld, const clipMap_t* clipmap)
     {
         char* origEntStrPtr = _strdup(mapEnts->entityString);
         char* entStrPtr = origEntStrPtr;
@@ -234,10 +379,12 @@ namespace
             if (*(entStrPtr++) == '\0')
                 break;
 
-            BSPEntity entity;
+            BSPEntity entity{};
             entity.origin = {};
             entity.rotationQuaternion = {};
-            entity.modelIndex = 0;
+            entity.isGfxEntity = false;
+            entity.surfaceCount = 0;
+            entity.surfaceIndex = 0;
             while (true)
             {
                 while (*entStrPtr != '"' && *entStrPtr != '}')
@@ -269,9 +416,10 @@ namespace
                 {
                     vec3_t angles = convertStringToVec3(valueStrPtr);
                     entity.rotationQuaternion = convertAnglesToQuat(angles);
+                    LhcToRhcQuaternion(entity.rotationQuaternion.v);
                 }
                 else if (!strcmp(keyStrPtr, "model") && *valueStrPtr == '*')
-                    entity.modelIndex = atol(valueStrPtr + 1);
+                    createSurfacesFromEntity(atol(valueStrPtr + 1), entity, dumpData, gfxworld, clipmap);
                 else
                 {
                     BSPEntityEntry entry = {keyStrPtr, valueStrPtr};
@@ -312,8 +460,10 @@ namespace
 
     void dumpGfxWorld(bspDumpData& dumpData, const GfxWorld* gfxWorld)
     {
+        dumpData.staticSurfaceStart = dumpData.gfxWorld.surfaces.size();
+        dumpData.staticSurfaceCount = gfxWorld->dpvs.staticSurfaceCount;
         std::vector<std::pair<int, uint16_t>> vd0Offsets; // maps unique vd0 offsets to their maximum index
-        for (unsigned int surfIdx = 0; surfIdx < gfxWorld->dpvs.staticSurfaceCount; surfIdx++)
+        for (int surfIdx = 0; surfIdx < gfxWorld->surfaceCount; surfIdx++)
         {
             GfxSurface* inSurface = &gfxWorld->dpvs.surfaces[surfIdx];
             int vd0Offset = inSurface->tris.vertexDataOffset0;
@@ -366,12 +516,12 @@ namespace
                 LhcToRhcCoordinates(outVertex.normal);
                 pack32::Vec2UnpackTexCoordsUV(inVertex->texCoord.packed, outVertex.uv);
                 pack32::Vec4UnpackGfxColor(inVertex->color.packed, outVertex.color);
-                dumpData.vertices.emplace_back(outVertex);
+                dumpData.gfxWorld.vertices.emplace_back(outVertex);
             }
         }
 
         int indexBufferSize = 0;
-        for (unsigned int surfIdx = 0; surfIdx < gfxWorld->dpvs.staticSurfaceCount; surfIdx++)
+        for (int surfIdx = 0; surfIdx < gfxWorld->surfaceCount; surfIdx++)
         {
             GfxSurface* inSurface = &gfxWorld->dpvs.surfaces[surfIdx];
             BSPSurface outSurface;
@@ -396,13 +546,49 @@ namespace
             uint16_t* surfTriIndicies = &gfxWorld->draw.indices[inSurface->tris.baseIndex];
             for (int triIdx = 0; triIdx < inSurface->tris.triCount; triIdx++)
             {
-                dumpData.indices.emplace_back(surfTriIndicies[triIdx * 3 + 2]);
-                dumpData.indices.emplace_back(surfTriIndicies[triIdx * 3 + 1]);
-                dumpData.indices.emplace_back(surfTriIndicies[triIdx * 3]);
+                dumpData.gfxWorld.indices.emplace_back(surfTriIndicies[triIdx * 3 + 2]);
+                dumpData.gfxWorld.indices.emplace_back(surfTriIndicies[triIdx * 3 + 1]);
+                dumpData.gfxWorld.indices.emplace_back(surfTriIndicies[triIdx * 3]);
             }
 
-            dumpData.surfaces.emplace_back(outSurface);
+            dumpData.gfxWorld.surfaces.emplace_back(outSurface);
         }
+    }
+
+    void getStaticCollisionList(const clipMap_t* clipmap, std::vector<size_t>& partitionList, std::vector<size_t>& brushList)
+    {
+        std::deque<int16_t> nodeQueue;
+        nodeQueue.emplace_back(0);
+        while (!nodeQueue.empty())
+        {
+            int nodeIdx = nodeQueue.front();
+            nodeQueue.pop_front();
+
+            if (nodeIdx < 0)
+            {
+                int leafIndex = -1 - nodeIdx;
+                cLeaf_s* leaf = &clipmap->leafs[leafIndex];
+
+                if (leaf->collAabbCount != 0)
+                    getPartitionsFromAABBTree(clipmap, leaf->firstCollAabbIndex, leaf->collAabbCount, partitionList);
+            }
+            else
+            {
+
+                nodeQueue.emplace_back(clipmap->nodes[nodeIdx].children[0]);
+                nodeQueue.emplace_back(clipmap->nodes[nodeIdx].children[1]);
+            }
+        }
+    }
+
+    void dumpClipmap(bspDumpData& dumpData, const clipMap_t* clipmap)
+    {
+        std::vector<size_t> partitionList;
+        std::vector<size_t> brushList;
+        getStaticCollisionList(clipmap, partitionList, brushList);
+
+        dumpData.terrainSurfaceCount = partitionList.size();
+        dumpData.terrainSurfaceStart = createSurfacesFromPartitions(clipmap, dumpData, partitionList);
     }
 
     struct BSPAssetPtrs
@@ -418,8 +604,9 @@ namespace
     void dumpBSPData(bspDumpData& dumpData, std::string zoneName, BSPAssetPtrs& assetPtrs)
     {
         dumpData.BSPName = zoneName;
-        dumpMapEnts(dumpData, assetPtrs.mapEnts);
+        dumpMapEnts(dumpData, assetPtrs.mapEnts, assetPtrs.gfxworld, assetPtrs.clipmap);
         dumpGfxWorld(dumpData, assetPtrs.gfxworld);
+        dumpClipmap(dumpData, assetPtrs.clipmap);
     }
 
     void writeGltf(JsonRoot& root, std::vector<uint8_t>& bufferData, std::ostream* stream)
@@ -439,42 +626,89 @@ namespace
         output->Finalize();
     }
 
-    void CreateBufferViews(JsonRoot& gltf, bspDumpData& dumpData, std::vector<uint8_t>& bufferData)
+    void CreateBufferViews(JsonRoot& gltf, bspDumpData& dumpData, std::vector<uint8_t>& bufferData, bool isGfxWorld)
     {
         gltf.bufferViews.emplace();
 
-        unsigned bufferOffset = 0u;
-        m_vertex_buffer_view = static_cast<unsigned>(gltf.bufferViews->size());
-        JsonBufferView vertexBufferView;
-        vertexBufferView.buffer = 0u;
-        vertexBufferView.byteOffset = bufferOffset;
-        vertexBufferView.byteStride = static_cast<unsigned>(sizeof(GltfVertex));
-        vertexBufferView.byteLength = static_cast<unsigned>(sizeof(GltfVertex) * dumpData.vertices.size());
-        vertexBufferView.target = JsonBufferViewTarget::ARRAY_BUFFER;
-        bufferOffset += vertexBufferView.byteLength;
-        gltf.bufferViews->emplace_back(vertexBufferView);
+        if (isGfxWorld)
+        {
+            unsigned bufferOffset = 0u;
+            m_vertex_buffer_view = static_cast<unsigned>(gltf.bufferViews->size());
+            JsonBufferView vertexBufferView;
+            vertexBufferView.buffer = 0u;
+            vertexBufferView.byteOffset = bufferOffset;
+            vertexBufferView.byteStride = static_cast<unsigned>(sizeof(GltfVertex));
+            vertexBufferView.byteLength = static_cast<unsigned>(sizeof(GltfVertex) * dumpData.gfxWorld.vertices.size());
+            vertexBufferView.target = JsonBufferViewTarget::ARRAY_BUFFER;
+            bufferOffset += vertexBufferView.byteLength;
+            gltf.bufferViews->emplace_back(vertexBufferView);
 
-        m_index_buffer_view = static_cast<unsigned>(gltf.bufferViews->size());
-        JsonBufferView indicesBufferView;
-        indicesBufferView.buffer = 0u;
-        indicesBufferView.byteOffset = bufferOffset;
-        indicesBufferView.byteLength = static_cast<unsigned>(sizeof(unsigned short) * dumpData.indices.size());
-        indicesBufferView.target = JsonBufferViewTarget::ELEMENT_ARRAY_BUFFER;
-        bufferOffset += indicesBufferView.byteLength;
-        gltf.bufferViews->emplace_back(indicesBufferView);
+            m_index_buffer_view = static_cast<unsigned>(gltf.bufferViews->size());
+            JsonBufferView indicesBufferView;
+            indicesBufferView.buffer = 0u;
+            indicesBufferView.byteOffset = bufferOffset;
+            indicesBufferView.byteLength = static_cast<unsigned>(sizeof(unsigned short) * dumpData.gfxWorld.indices.size());
+            indicesBufferView.target = JsonBufferViewTarget::ELEMENT_ARRAY_BUFFER;
+            bufferOffset += indicesBufferView.byteLength;
+            gltf.bufferViews->emplace_back(indicesBufferView);
 
-        size_t vertexBufferSize = dumpData.vertices.size() * sizeof(GltfVertex);
-        size_t indexBufferSize = dumpData.indices.size() * sizeof(uint16_t);
-        bufferData.resize(vertexBufferSize + indexBufferSize);
+            size_t vertexBufferSize = dumpData.gfxWorld.vertices.size() * sizeof(GltfVertex);
+            size_t indexBufferSize = dumpData.gfxWorld.indices.size() * sizeof(uint16_t);
+            bufferData.resize(vertexBufferSize + indexBufferSize);
 
-        size_t currentBufferOffset = 0;
-        memcpy(&bufferData.at(currentBufferOffset), dumpData.vertices.data(), vertexBufferSize);
-        currentBufferOffset += vertexBufferSize;
-        memcpy(&bufferData.at(currentBufferOffset), dumpData.indices.data(), indexBufferSize);
-        currentBufferOffset += indexBufferSize;
+            size_t currentBufferOffset = 0;
+            if (vertexBufferSize != 0)
+            {
+                memcpy(&bufferData.at(currentBufferOffset), dumpData.gfxWorld.vertices.data(), vertexBufferSize);
+                currentBufferOffset += vertexBufferSize;
+            }
+            if (indexBufferSize != 0)
+            {
+                memcpy(&bufferData.at(currentBufferOffset), dumpData.gfxWorld.indices.data(), indexBufferSize);
+                currentBufferOffset += indexBufferSize;
+            }
+        }
+        else
+        {
+            unsigned bufferOffset = 0u;
+            m_vertex_buffer_view = static_cast<unsigned>(gltf.bufferViews->size());
+            JsonBufferView vertexBufferView;
+            vertexBufferView.buffer = 0u;
+            vertexBufferView.byteOffset = bufferOffset;
+            vertexBufferView.byteStride = static_cast<unsigned>(sizeof(GltfVertex));
+            vertexBufferView.byteLength = static_cast<unsigned>(sizeof(GltfVertex) * dumpData.colWorld.vertices.size());
+            vertexBufferView.target = JsonBufferViewTarget::ARRAY_BUFFER;
+            bufferOffset += vertexBufferView.byteLength;
+            gltf.bufferViews->emplace_back(vertexBufferView);
+
+            m_index_buffer_view = static_cast<unsigned>(gltf.bufferViews->size());
+            JsonBufferView indicesBufferView;
+            indicesBufferView.buffer = 0u;
+            indicesBufferView.byteOffset = bufferOffset;
+            indicesBufferView.byteLength = static_cast<unsigned>(sizeof(unsigned short) * dumpData.colWorld.indices.size());
+            indicesBufferView.target = JsonBufferViewTarget::ELEMENT_ARRAY_BUFFER;
+            bufferOffset += indicesBufferView.byteLength;
+            gltf.bufferViews->emplace_back(indicesBufferView);
+
+            size_t vertexBufferSize = dumpData.colWorld.vertices.size() * sizeof(GltfVertex);
+            size_t indexBufferSize = dumpData.colWorld.indices.size() * sizeof(uint16_t);
+            bufferData.resize(vertexBufferSize + indexBufferSize);
+
+            size_t currentBufferOffset = 0;
+            if (vertexBufferSize != 0)
+            {
+                memcpy(&bufferData.at(currentBufferOffset), dumpData.colWorld.vertices.data(), vertexBufferSize);
+                currentBufferOffset += vertexBufferSize;
+            }
+            if (indexBufferSize != 0)
+            {
+                memcpy(&bufferData.at(currentBufferOffset), dumpData.colWorld.indices.data(), indexBufferSize);
+                currentBufferOffset += indexBufferSize;
+            }
+        }
     }
 
-    void CreateAccessors(JsonRoot& gltf, bspDumpData& dumpData)
+    void CreateAccessors(JsonRoot& gltf, bspDumpData& dumpData, bool isGfxWorld)
     {
         m_position_accessor_start = 0;
         m_normal_accessor_start = 1;
@@ -483,9 +717,19 @@ namespace
         m_index_accessor_start = 4;
 
         gltf.accessors.emplace();
-        for (size_t i = 0; i < dumpData.surfaces.size(); i++)
+
+        size_t surfCount;
+        if (isGfxWorld)
+            surfCount = dumpData.gfxWorld.surfaces.size();
+        else
+            surfCount = dumpData.colWorld.surfaces.size();
+        for (size_t i = 0; i < surfCount; i++)
         {
-            BSPSurface& surf = dumpData.surfaces.at(i);
+            BSPSurface surf;
+            if (isGfxWorld)
+                surf = dumpData.gfxWorld.surfaces.at(i);
+            else
+                surf = dumpData.colWorld.surfaces.at(i);
             JsonAccessor positionAccessor;
             positionAccessor.bufferView = m_vertex_buffer_view;
             positionAccessor.byteOffset = surf.indexOfFirstVertex * sizeof(GltfVertex) + static_cast<unsigned>(offsetof(GltfVertex, coordinates));
@@ -528,55 +772,27 @@ namespace
         }
     }
 
-    void createMapEnts(JsonRoot& root, bspDumpData& dumpData)
+    constexpr size_t ROOT_NODE_IDX = 0;
+
+    size_t addNodeToGltf(JsonRoot& root, JsonNode& node, std::optional<size_t> parentIdx)
     {
-        JsonNode entNode;
-        entNode.name = "Map Entities";
-        entNode.children.emplace();
-        size_t entNodeIdx = root.nodes->size();
-        root.nodes->at(0).children->emplace_back(entNodeIdx);
-        root.nodes->emplace_back(entNode);
-
-        int entIdx = 0;
-        for (BSPEntity& entity : dumpData.entities)
-        {
-            JsonNode node;
-            node.name.emplace();
-            node.translation.emplace();
-            node.rotation.emplace();
-            node.extras.emplace();
-            node.name = std::format("entity_{}", entIdx++);
-
-            (*node.translation)[0] = entity.origin.x;
-            (*node.translation)[1] = entity.origin.y;
-            (*node.translation)[2] = entity.origin.z;
-            (*node.rotation)[0] = entity.rotationQuaternion.x;
-            (*node.rotation)[1] = entity.rotationQuaternion.y;
-            (*node.rotation)[2] = entity.rotationQuaternion.z;
-            (*node.rotation)[3] = entity.rotationQuaternion.w;
-            for (const auto& entityEntry : entity.entries)
-                (*node.extras)[entityEntry.key] = entityEntry.value;
-            root.nodes->at(entNodeIdx).children->emplace_back(root.nodes->size());
-            root.nodes->emplace_back(node);
-        }
-    }
-
-    void createGfxWorld(JsonRoot& root, bspDumpData& dumpData)
-    {
-        JsonNode node;
-        node.name = "GFX Surfaces";
-        node.mesh = 0;
-        root.nodes->at(0).children->emplace_back(root.nodes->size());
+        size_t nodeIdx = root.nodes->size();
+        if (parentIdx)
+            root.nodes->at(*parentIdx).children->emplace_back(nodeIdx);
         root.nodes->emplace_back(node);
+        return nodeIdx;
     }
 
-    void createMeshes(JsonRoot& root, bspDumpData& dumpData)
+    JsonMesh createMeshFromSurfaces(bspDumpData& dumpData, size_t startSurf, size_t count, bool isGfxWorld)
     {
-        root.meshes.emplace();
         JsonMesh mesh;
-        for (unsigned surfIdx = 0; surfIdx < dumpData.surfaces.size(); surfIdx++)
+        for (size_t surfIdx = startSurf; surfIdx < startSurf + count; surfIdx++)
         {
-            BSPSurface& surface = dumpData.surfaces[surfIdx];
+            BSPSurface surface;
+            if (isGfxWorld)
+                surface = dumpData.gfxWorld.surfaces[surfIdx];
+            else
+                surface = dumpData.colWorld.surfaces[surfIdx];
 
             JsonMeshPrimitives primitive;
             // primitive.material = surface.materialIndex;
@@ -588,7 +804,77 @@ namespace
             primitive.attributes.TEXCOORD_0 = (surfIdx * m_total_accessor_types) + m_uv_accessor_start;
             mesh.primitives.emplace_back(primitive);
         }
+        return mesh;
+    }
+
+    void createMapEnts(JsonRoot& root, bspDumpData& dumpData, bool isGfxWorld)
+    {
+        JsonNode entNode;
+        entNode.name = "Map Entities";
+        entNode.children.emplace();
+        size_t entNodeIdx = addNodeToGltf(root, entNode, ROOT_NODE_IDX);
+
+        int entIdx = 0;
+        for (BSPEntity& entity : dumpData.entities)
+        {
+            if (entity.isGfxEntity != isGfxWorld)
+                continue;
+
+            JsonNode node;
+            node.name = std::format("entity_{}", entIdx++);
+
+            if (entity.surfaceCount != 0)
+            {
+                JsonMesh mesh = createMeshFromSurfaces(dumpData, entity.surfaceIndex, entity.surfaceCount, isGfxWorld);
+                size_t meshIdx = root.meshes->size();
+                root.meshes->emplace_back(mesh);
+                node.mesh = meshIdx;
+            }
+            else
+                continue;
+
+            node.translation.emplace();
+            node.rotation.emplace();
+            node.extras.emplace();
+            (*node.translation)[0] = entity.origin.x;
+            (*node.translation)[1] = entity.origin.y;
+            (*node.translation)[2] = entity.origin.z;
+            (*node.rotation)[0] = entity.rotationQuaternion.x;
+            (*node.rotation)[1] = entity.rotationQuaternion.y;
+            (*node.rotation)[2] = entity.rotationQuaternion.z;
+            (*node.rotation)[3] = entity.rotationQuaternion.w;
+            for (const auto& entityEntry : entity.entries)
+                (*node.extras)[entityEntry.key] = entityEntry.value;
+            addNodeToGltf(root, node, entNodeIdx);
+        }
+    }
+
+    void createGfxWorld(JsonRoot& root, bspDumpData& dumpData)
+    {
+        JsonMesh mesh = createMeshFromSurfaces(dumpData, dumpData.staticSurfaceStart, dumpData.staticSurfaceCount, true);
+        size_t meshIdx = root.meshes->size();
         root.meshes->emplace_back(mesh);
+
+        JsonNode node;
+        node.name = "GFX Surfaces";
+        node.mesh = meshIdx;
+        addNodeToGltf(root, node, ROOT_NODE_IDX);
+    }
+
+    void createColWorld(JsonRoot& root, bspDumpData& dumpData)
+    {
+        JsonNode node;
+        node.name = "Collision Terrain";
+        JsonMesh mesh = createMeshFromSurfaces(dumpData, dumpData.terrainSurfaceStart, dumpData.terrainSurfaceCount, false);
+        node.mesh = root.meshes->size();
+        root.meshes->emplace_back(mesh);
+        addNodeToGltf(root, node, ROOT_NODE_IDX);
+
+        // node.name = "Collision Brushes";
+        // mesh = createMeshFromSurfaces(dumpData, dumpData.terrainSurfaceCount, dumpData.colWorld.surfaces.size() - dumpData.terrainSurfaceCount, false);
+        // node.mesh = root.meshes->size();
+        // root.meshes->emplace_back(mesh);
+        // addNodeToGltf(root, node, ROOT_NODE_IDX);
     }
 
     void CreateMaterials(JsonRoot& root, bspDumpData& dumpData)
@@ -611,24 +897,31 @@ namespace
         root.scenes.emplace();
         root.scenes->emplace_back(scene);
         root.scene = 0;
+
+        root.nodes.emplace();
+        root.meshes.emplace();
     }
 
-    void createJson(JsonRoot& root, bspDumpData& dumpData, std::vector<uint8_t>& bufferData)
+    void createJson(JsonRoot& root, bspDumpData& dumpData, std::vector<uint8_t>& bufferData, bool isGfxWorld)
     {
         createJsonHeader(root);
-        CreateBufferViews(root, dumpData, bufferData);
-        CreateAccessors(root, dumpData); // requires buffer views
-        createMeshes(root, dumpData);    // requires accessors
+        CreateBufferViews(root, dumpData, bufferData, isGfxWorld);
+        CreateAccessors(root, dumpData, isGfxWorld); // requires buffer views
+
         CreateMaterials(root, dumpData);
 
         JsonNode rootNode;
         rootNode.name = dumpData.BSPName;
         rootNode.children.emplace();
-        root.nodes.emplace();
-        root.nodes->emplace_back(rootNode);
+        addNodeToGltf(root, rootNode, std::nullopt);
 
-        createGfxWorld(root, dumpData);
-        createMapEnts(root, dumpData);
+        if (isGfxWorld)
+            ;
+        // createGfxWorld(root, dumpData);
+        else
+            createColWorld(root, dumpData);
+
+        createMapEnts(root, dumpData, isGfxWorld);
     }
 } // namespace
 
@@ -675,17 +968,32 @@ namespace bsp
         assetPtrs.skinnedverts = skinnedvertsInfo->Asset();
         dumpBSPData(dumpData, context.m_zone.m_name, assetPtrs);
 
-        JsonRoot root;
-        std::vector<uint8_t> bufferData;
-        createJson(root, dumpData, bufferData);
+        { // gfx
+            JsonRoot root;
+            std::vector<uint8_t> bufferData;
+            createJson(root, dumpData, bufferData, true);
 
-        const auto assetFile = context.OpenAssetFile("bsp/zm_transits.glb");
-        if (!assetFile)
-        {
-            con::error("Unable to open bsp output file.");
-            return;
+            const auto assetFile = context.OpenAssetFile("bsp/map_gfx.glb");
+            if (!assetFile)
+            {
+                con::error("Unable to open bsp output file.");
+                return;
+            }
+            writeGltf(root, bufferData, assetFile.get());
         }
-        writeGltf(root, bufferData, assetFile.get());
+        { // collision
+            JsonRoot root;
+            std::vector<uint8_t> bufferData;
+            createJson(root, dumpData, bufferData, false);
+
+            const auto assetFile = context.OpenAssetFile("bsp/map_col.glb");
+            if (!assetFile)
+            {
+                con::error("Unable to open bsp output file.");
+                return;
+            }
+            writeGltf(root, bufferData, assetFile.get());
+        }
 
         context.IncrementProgress();
     }
