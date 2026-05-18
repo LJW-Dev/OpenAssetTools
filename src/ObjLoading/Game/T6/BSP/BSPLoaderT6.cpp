@@ -1,4 +1,4 @@
-#include "LoaderBSP_T6.h"
+#include "BSPLoaderT6.h"
 
 #include "BSPCreator.h"
 #include "BSPUtil.h"
@@ -37,8 +37,8 @@ namespace
             if (bsp == nullptr)
                 return false;
 
-            BSPLinker linker(m_memory, m_search_path, context);
-            bool result = linker.linkBSP(bsp.get());
+            std::unique_ptr<BSPLinker> linker = BSPLinker::Create(m_memory, m_search_path, context);
+            bool result = linker->linkBSP(bsp.get());
             if (!result)
                 con::error("BSP link has failed.");
 

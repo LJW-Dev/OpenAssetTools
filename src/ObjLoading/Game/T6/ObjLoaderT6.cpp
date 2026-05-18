@@ -1,7 +1,7 @@
 #include "ObjLoaderT6.h"
 
 #include "Asset/GlobalAssetPoolsLoader.h"
-#include "BSP/LoaderBSP_T6.h"
+#include "BSP/BSPLoaderT6.h"
 #include "FontIcon/CsvLoaderFontIconT6.h"
 #include "FontIcon/JsonLoaderFontIconT6.h"
 #include "Game/T6/AssetMarkerT6.h"
