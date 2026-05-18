@@ -18,7 +18,6 @@
 #include "Sound/SndBankDumperT6.h"
 #include "Sound/SndDriverGlobalsDumperT6.h"
 #include "StringTable/StringTableDumperT6.h"
-#include "Techset/AssetDumperTechniqueSet.h"
 #include "Tracer/TracerDumperT6.h"
 #include "Vehicle/VehicleDumperT6.h"
 #include "Weapon/AttachmentDumperT6.h"
@@ -37,7 +36,6 @@ void ObjWriter::RegisterAssetDumpers(AssetDumpingContext& context)
     // REGISTER_DUMPER(AssetDumperXAnimParts, m_xanim_parts)
     RegisterAssetDumper(std::make_unique<xmodel::DumperT6>());
     RegisterAssetDumper(std::make_unique<material::JsonDumperT6>());
-    RegisterAssetDumper(std::make_unique<AssetDumperTechniqueSet>());
     RegisterAssetDumper(std::make_unique<techset::DumperT6>(
 #ifdef TECHSET_DEBUG
         true
