@@ -46,7 +46,7 @@ namespace BSP
         std::vector<size_t> partitionToColSurfaceMap;
 
         void addAABBTreeFromPartitions(
-            clipMap_t* clipMap, std::vector<int>& partitions, size_t* out_parentCount, size_t* out_parentStartIndex, int* out_treeContents);
+            clipMap_t* clipMap, std::vector<size_t>& partitions, size_t* out_parentCount, size_t* out_parentStartIndex, int* out_treeContents);
         int16_t loadBSPNode(clipMap_t* clipMap, BSPTree* tree, bool isRoot);
         bool loadBSPTree(clipMap_t* clipMap, BSPData* bsp);
         bool loadPartitions(clipMap_t* clipMap, BSPData* bsp);

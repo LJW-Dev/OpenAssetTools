@@ -183,7 +183,7 @@ namespace BSP
     bool GfxWorldLinker::loadXModels(BSPData* bsp, GfxWorld* gfxWorld)
     {
         size_t modelCount = bsp->gfxWorld.xmodels.size();
-        gfxWorld->dpvs.smodelCount = modelCount;
+        gfxWorld->dpvs.smodelCount = (unsigned int)modelCount;
         gfxWorld->dpvs.smodelInsts = m_memory.Alloc<GfxStaticModelInst>(modelCount);
         gfxWorld->dpvs.smodelDrawInsts = m_memory.Alloc<GfxStaticModelDrawInst>(modelCount);
 
@@ -236,7 +236,7 @@ namespace BSP
             currModel->cullDist = XMODEL_CULL_DIST;
             currModel->primaryLightIndex = DEFAULT_PRIMARYLIGHT_INDEX;
             currModel->reflectionProbeIndex = DEFAULT_RPROBE_INDEX;
-            currModel->smid = modelIdx;
+            currModel->smid = static_cast<unsigned int>(modelIdx);
 
             currModelInst->lightingOrigin = bspModel.origin;
 
@@ -647,8 +647,8 @@ namespace BSP
 
             if (bspModel.isGfxModel && bspModel.surfaceCount != 0)
             {
-                currEntModel->startSurfIndex = bsp->gfxWorld.staticSurfaces.size() + bspModel.surfaceIndex;
-                currEntModel->surfaceCount = bspModel.surfaceCount;
+                currEntModel->startSurfIndex = static_cast<unsigned int>(bsp->gfxWorld.staticSurfaces.size() + bspModel.surfaceIndex);
+                currEntModel->surfaceCount = static_cast<unsigned int>(bspModel.surfaceCount);
                 for (size_t surfIdx = 0; surfIdx < bspModel.surfaceCount; surfIdx++)
                 {
                     GfxSurface* surf = &gfxWorld->dpvs.surfaces[currEntModel->startSurfIndex + surfIdx];

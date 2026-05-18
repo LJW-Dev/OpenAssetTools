@@ -4,7 +4,7 @@ namespace BSP
 {
     constexpr int MAX_NODE_SIZE = 512; // maximum size a BSP node can be before it becomes a leaf
 
-    BSPObject::BSPObject(float xMin, float yMin, float zMin, float xMax, float yMax, float zMax, int objPartitionIndex)
+    BSPObject::BSPObject(float xMin, float yMin, float zMin, float xMax, float yMax, float zMax, size_t objPartitionIndex)
     {
         min.x = xMin;
         min.y = yMin;
@@ -74,7 +74,7 @@ namespace BSP
         }
     }
 
-    BSPTree::BSPTree(float xMin, float yMin, float zMin, float xMax, float yMax, float zMax, int treeLevel)
+    BSPTree::BSPTree(float xMin, float yMin, float zMin, float xMax, float yMax, float zMax, size_t treeLevel)
     {
         min.x = xMin;
         min.y = yMin;

@@ -7,7 +7,7 @@ namespace
     struct uniqueMatData
     {
         size_t materialIndex;
-        std::vector<int> partitionIndexes;
+        std::vector<size_t> partitionIndexes;
     };
 
     constexpr size_t MAX_AABB_TREE_CHILDREN = 128;
@@ -137,7 +137,7 @@ namespace BSP
         // A lot of XModels don't implement collmaps (OAT also doesn't generate these collmaps atm), and
         //  even official maps instead use terrain or brushes to cover where the collision should be.
 
-        clipMap->numStaticModels = bsp->colWorld.xmodels.size();
+        clipMap->numStaticModels = (unsigned int)bsp->colWorld.xmodels.size();
         clipMap->staticModelList = m_memory.Alloc<cStaticModel_s>(clipMap->numStaticModels);
 
         if (clipMap->numStaticModels == 0)
@@ -241,7 +241,7 @@ namespace BSP
     }
 
     void ClipMapLinker::addAABBTreeFromPartitions(
-        clipMap_t* clipMap, std::vector<int>& partitions, size_t* out_parentCount, size_t* out_parentStartIndex, int* out_treeContents)
+        clipMap_t* clipMap, std::vector<size_t>& partitions, size_t* out_parentCount, size_t* out_parentStartIndex, int* out_treeContents)
     {
         size_t partitionCount = partitions.size();
         assert(partitionCount > 0);
@@ -251,7 +251,7 @@ namespace BSP
         std::vector<uniqueMatData> uniqueMaterials;
         for (size_t partArrayIdx = 0; partArrayIdx < partitionCount; partArrayIdx++)
         {
-            int partitionIdx = partitions.at(partArrayIdx);
+            size_t partitionIdx = partitions.at(partArrayIdx);
             size_t materialIndex = collisionSurfaceVec.at(partitionToColSurfaceMap.at(partitionIdx)).materialIndex;
             bool foundIdx = false;
             for (auto& uniqueMat : uniqueMaterials)
@@ -315,7 +315,7 @@ namespace BSP
                 for (size_t objectIdx = 0; objectIdx < currChildObjectCount; objectIdx++)
                 {
                     // create a child AABBTree with the partition and add it to AABBTreeVec
-                    int partitionIndex = matData.partitionIndexes.at(addedObjectCount + objectIdx);
+                    size_t partitionIndex = matData.partitionIndexes.at(addedObjectCount + objectIdx);
                     CollisionPartition* partition = &clipMap->partitions[partitionIndex];
                     vec3_t childMins;
                     vec3_t childMaxs;
@@ -324,7 +324,7 @@ namespace BSP
                     CollisionAabbTree childAABBTree;
                     childAABBTree.materialIndex = static_cast<uint16_t>(matData.materialIndex);
                     childAABBTree.childCount = 0;
-                    childAABBTree.u.partitionIndex = partitionIndex;
+                    childAABBTree.u.partitionIndex = static_cast<int>(partitionIndex);
                     childAABBTree.origin = BSPUtil::calcMiddleOfAABB(childMins, childMaxs);
                     childAABBTree.halfSize = BSPUtil::calcHalfSizeOfAABB(childMins, childMaxs);
                     AABBTreeVec.emplace_back(childAABBTree);
@@ -403,7 +403,7 @@ namespace BSP
                 size_t parentCount = 0;
                 size_t parentStartIndex = 0;
                 int treeContents = 0;
-                std::vector<int> partitions;
+                std::vector<size_t> partitions;
                 for (size_t objIdx = 0; objIdx < tree->leaf->getObjectCount(); objIdx++)
                     partitions.emplace_back(tree->leaf->getObject(objIdx)->partitionIndex);
                 addAABBTreeFromPartitions(clipMap, partitions, &parentCount, &parentStartIndex, &treeContents);
@@ -586,7 +586,7 @@ namespace BSP
         }
 
         clipMap->triCount = static_cast<int>(triIndexVec.size() / 3);
-        clipMap->triIndices = reinterpret_cast<uint16_t(*)[3]>(m_memory.Alloc<uint16_t>(triIndexVec.size()));
+        clipMap->triIndices = reinterpret_cast<uint16_t (*)[3]>(m_memory.Alloc<uint16_t>(triIndexVec.size()));
         memcpy(clipMap->triIndices, &triIndexVec[0], sizeof(uint16_t) * triIndexVec.size());
 
         clipMap->partitionCount = static_cast<int>(partitionVec.size());
@@ -652,7 +652,7 @@ namespace BSP
 
             if (bspModel.surfaceCount != 0)
             {
-                std::vector<int> partitionIndexes;
+                std::vector<size_t> partitionIndexes;
                 for (size_t surfIdx = 0; surfIdx < bspModel.surfaceCount; surfIdx++)
                 {
                     ColSurface& surf = collisionSurfaceVec.at(bsp->colWorld.staticSurfaces.size() + bspModel.surfaceIndex + surfIdx);
