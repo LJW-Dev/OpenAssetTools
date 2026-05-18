@@ -9,9 +9,12 @@
 #include "Game/T5/Techset/PixelShaderLoaderT5.h"
 #include "Game/T5/Techset/VertexShaderLoaderT5.h"
 #include "Game/T5/XModel/LoaderXModelT5.h"
+#include "LightDef/LightDefLoaderT5.h"
 #include "Localize/LoaderLocalizeT5.h"
 #include "Material/LoaderMaterialT5.h"
 #include "ObjLoading.h"
+#include "PhysPreset/GdtLoaderPhysPresetT5.h"
+#include "PhysPreset/RawLoaderPhysPresetT5.h"
 #include "RawFile/LoaderRawFileT5.h"
 #include "StringTable/LoaderStringTableT5.h"
 
@@ -101,11 +104,12 @@ namespace
         collection.AddAssetCreator(std::make_unique<GlobalAssetPoolsLoader<AssetEmblemSet>>(zone));
     }
 
-    void ConfigureLoaders(AssetCreatorCollection& collection, Zone& zone, ISearchPath& searchPath)
+    void ConfigureLoaders(AssetCreatorCollection& collection, Zone& zone, ISearchPath& searchPath, IGdtQueryable& gdt)
     {
         auto& memory = zone.Memory();
 
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderPhysPreset>(memory));
+        collection.AddAssetCreator(phys_preset::CreateRawLoaderT5(memory, searchPath, zone));
+        collection.AddAssetCreator(phys_preset::CreateGdtLoaderT5(memory, gdt, zone));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderPhysConstraints>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderDestructibleDef>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderXAnim>(memory));
@@ -122,7 +126,7 @@ namespace
         // collection.AddAssetCreator(std::make_unique<AssetLoaderGameWorldMp>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderMapEnts>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderGfxWorld>(memory));
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderLightDef>(memory));
+        collection.AddAssetCreator(light_def::CreateLoaderT5(memory, searchPath));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderFont>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderMenuList>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderMenu>(memory));
@@ -147,6 +151,6 @@ namespace
 void ObjLoader::ConfigureCreatorCollection(AssetCreatorCollection& collection, Zone& zone, ISearchPath& searchPath, IGdtQueryable& gdt) const
 {
     ConfigureDefaultCreators(collection, zone);
-    ConfigureLoaders(collection, zone, searchPath);
+    ConfigureLoaders(collection, zone, searchPath, gdt);
     ConfigureGlobalAssetPoolsLoaders(collection, zone);
 }

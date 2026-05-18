@@ -9,10 +9,14 @@
 #include "Game/IW3/Techset/PixelShaderLoaderIW3.h"
 #include "Game/IW3/Techset/VertexShaderLoaderIW3.h"
 #include "Game/IW3/XModel/LoaderXModelIW3.h"
+#include "LightDef/LightDefLoaderIW3.h"
 #include "Localize/AssetLoaderLocalizeIW3.h"
 #include "Material/LoaderMaterialIW3.h"
 #include "ObjLoading.h"
+#include "PhysPreset/GdtLoaderPhysPresetIW3.h"
+#include "PhysPreset/RawLoaderPhysPresetIW3.h"
 #include "RawFile/AssetLoaderRawFileIW3.h"
+#include "Sound/LoaderSoundCurveIW3.h"
 #include "StringTable/AssetLoaderStringTableIW3.h"
 
 #include <memory>
@@ -89,11 +93,12 @@ namespace
         collection.AddAssetCreator(std::make_unique<GlobalAssetPoolsLoader<AssetStringTable>>(zone));
     }
 
-    void ConfigureLoaders(AssetCreatorCollection& collection, Zone& zone, ISearchPath& searchPath)
+    void ConfigureLoaders(AssetCreatorCollection& collection, Zone& zone, ISearchPath& searchPath, IGdtQueryable& gdt)
     {
         auto& memory = zone.Memory();
 
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderPhysPreset>(memory));
+        collection.AddAssetCreator(phys_preset::CreateRawLoaderIW3(memory, searchPath, zone));
+        collection.AddAssetCreator(phys_preset::CreateGdtLoaderIW3(memory, gdt, zone));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderXAnim>(memory));
         collection.AddAssetCreator(xmodel::CreateLoaderIW3(memory, searchPath, zone));
         collection.AddAssetCreator(material::CreateLoaderIW3(memory, searchPath));
@@ -101,7 +106,7 @@ namespace
         collection.AddAssetCreator(image::CreateLoaderEmbeddedIW3(memory, searchPath));
         collection.AddAssetCreator(image::CreateLoaderExternalIW3(memory, searchPath));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderSound>(memory));
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderSoundCurve>(memory));
+        collection.AddAssetCreator(sound_curve::CreateLoaderIW3(memory, searchPath));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderLoadedSound>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderClipMapPvs>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderComWorld>(memory));
@@ -109,7 +114,7 @@ namespace
         // collection.AddAssetCreator(std::make_unique<AssetLoaderGameWorldMp>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderMapEnts>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderGfxWorld>(memory));
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderLightDef>(memory));
+        collection.AddAssetCreator(light_def::CreateLoaderIW3(memory, searchPath));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderFont>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderMenuList>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderMenu>(memory));
@@ -129,6 +134,6 @@ namespace
 void ObjLoader::ConfigureCreatorCollection(AssetCreatorCollection& collection, Zone& zone, ISearchPath& searchPath, IGdtQueryable& gdt) const
 {
     ConfigureDefaultCreators(collection, zone);
-    ConfigureLoaders(collection, zone, searchPath);
+    ConfigureLoaders(collection, zone, searchPath, gdt);
     ConfigureGlobalAssetPoolsLoaders(collection, zone);
 }

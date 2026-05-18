@@ -7,13 +7,16 @@
 #include "Game/IW5/XModel/XModelDumperIW5.h"
 #include "Image/ImageDumperIW5.h"
 #include "Leaderboard/LeaderboardJsonDumperIW5.h"
+#include "LightDef/LightDefDumperIW5.h"
 #include "Localize/LocalizeDumperIW5.h"
 #include "Maps/AddonMapEntsDumperIW5.h"
 #include "Menu/MenuDumperIW5.h"
 #include "Menu/MenuListDumperIW5.h"
+#include "PhysPreset/PhysPresetInfoStringDumperIW5.h"
 #include "RawFile/RawFileDumperIW5.h"
 #include "Script/ScriptDumperIW5.h"
 #include "Sound/LoadedSoundDumperIW5.h"
+#include "Sound/SndCurveDumperIW5.h"
 #include "StringTable/StringTableDumperIW5.h"
 #include "Weapon/AttachmentJsonDumperIW5.h"
 #include "Weapon/WeaponDumperIW5.h"
@@ -22,7 +25,7 @@ using namespace IW5;
 
 void ObjWriter::RegisterAssetDumpers(AssetDumpingContext& context)
 {
-    // REGISTER_DUMPER(AssetDumperPhysPreset)
+    RegisterAssetDumper(std::make_unique<phys_preset::InfoStringDumperIW5>());
     // REGISTER_DUMPER(AssetDumperPhysCollmap)
     // REGISTER_DUMPER(AssetDumperXAnimParts)
     // REGISTER_DUMPER(AssetDumperXModelSurfs)
@@ -39,7 +42,7 @@ void ObjWriter::RegisterAssetDumpers(AssetDumpingContext& context)
         ));
     RegisterAssetDumper(std::make_unique<image::DumperIW5>());
     // REGISTER_DUMPER(AssetDumpersnd_alias_list_t)
-    // REGISTER_DUMPER(AssetDumperSndCurve)
+    RegisterAssetDumper(std::make_unique<sound_curve::DumperIW5>());
     RegisterAssetDumper(std::make_unique<sound::LoadedSoundDumperIW5>());
     // REGISTER_DUMPER(AssetDumperclipMap_t)
     // REGISTER_DUMPER(AssetDumperComWorld)
@@ -49,7 +52,7 @@ void ObjWriter::RegisterAssetDumpers(AssetDumpingContext& context)
     // REGISTER_DUMPER(AssetDumperMapEnts)
     // REGISTER_DUMPER(AssetDumperFxWorld)
     // REGISTER_DUMPER(AssetDumperGfxWorld)
-    // REGISTER_DUMPER(AssetDumperGfxLightDef)
+    RegisterAssetDumper(std::make_unique<light_def::DumperIW5>());
     // REGISTER_DUMPER(AssetDumperFont_s)
     RegisterAssetDumper(std::make_unique<menu::MenuListDumperIW5>());
     RegisterAssetDumper(std::make_unique<menu::MenuDumperIW5>());
