@@ -125,10 +125,10 @@ namespace
     struct BSPSurface
     {
         size_t materialIndex;
-        uint16_t triCount;
-        int indexOfFirstVertex;
-        int indexOfFirstIndex;
-        int vertexCount;
+        size_t triCount;
+        size_t indexOfFirstVertex;
+        size_t indexOfFirstIndex;
+        size_t vertexCount;
     };
 
     struct bspMaterial
@@ -358,8 +358,8 @@ namespace
     void createSurfacesFromPartitions(const clipMap_t* clipmap, bspDumpData& dumpData, std::vector<partitionData>& partitionList, outSurface& result)
     {
         result.surfaceStart = dumpData.colWorld.surfaces.size();
-        int totalVertexCount = dumpData.colWorld.vertices.size();
-        int totalIndexCount = dumpData.colWorld.indices.size();
+        size_t totalVertexCount = (int)dumpData.colWorld.vertices.size();
+        size_t totalIndexCount = (int)dumpData.colWorld.indices.size();
         std::unordered_set<size_t> uniquePartitions;
         for (partitionData partitionIdx : partitionList)
         {
@@ -418,8 +418,8 @@ namespace
     void createSurfacesFromBrushes(const clipMap_t* clipmap, bspDumpData& dumpData, std::vector<size_t>& brushList, outSurface& result)
     {
         result.surfaceStart = dumpData.colWorld.surfaces.size();
-        int totalVertexCount = dumpData.colWorld.vertices.size();
-        int totalIndexCount = dumpData.colWorld.indices.size();
+        size_t totalVertexCount = (int)dumpData.colWorld.vertices.size();
+        size_t totalIndexCount = (int)dumpData.colWorld.indices.size();
         std::unordered_set<size_t> uniqueBrushes;
         for (size_t brushIdx : brushList)
         {
@@ -480,7 +480,7 @@ namespace
             surface.indexOfFirstVertex = totalVertexCount;
             surface.indexOfFirstIndex = totalIndexCount;
             surface.triCount = (uint16_t)(indexBuffer.size() / 3);
-            surface.vertexCount = vertexBuffer.size();
+            surface.vertexCount = (int)vertexBuffer.size();
 
             size_t matIndex = -1;
             for (unsigned i = 0; i < clipmap->info.numMaterials; i++)
@@ -511,7 +511,7 @@ namespace
 
             for (const auto& index : indexBuffer)
             {
-                dumpData.colWorld.indices.emplace_back(index);
+                dumpData.colWorld.indices.emplace_back((uint16_t)index);
             }
 
             totalVertexCount += surface.vertexCount;
@@ -1095,41 +1095,42 @@ namespace
                 surf = dumpData.colWorld.surfaces.at(i);
             JsonAccessor positionAccessor;
             positionAccessor.bufferView = m_vertex_buffer_view;
-            positionAccessor.byteOffset = surf.indexOfFirstVertex * sizeof(GltfVertex) + static_cast<unsigned>(offsetof(GltfVertex, coordinates));
+            positionAccessor.byteOffset =
+                (unsigned)surf.indexOfFirstVertex * (unsigned)sizeof(GltfVertex) + static_cast<unsigned>(offsetof(GltfVertex, coordinates));
             positionAccessor.componentType = JsonAccessorComponentType::FLOAT;
-            positionAccessor.count = surf.vertexCount;
+            positionAccessor.count = (unsigned int)surf.vertexCount;
             positionAccessor.type = JsonAccessorType::VEC3;
             gltf.accessors->emplace_back(positionAccessor);
 
             JsonAccessor normalAccessor;
             normalAccessor.bufferView = m_vertex_buffer_view;
-            normalAccessor.byteOffset = surf.indexOfFirstVertex * sizeof(GltfVertex) + static_cast<unsigned>(offsetof(GltfVertex, normal));
+            normalAccessor.byteOffset = (unsigned)surf.indexOfFirstVertex * (unsigned)sizeof(GltfVertex) + static_cast<unsigned>(offsetof(GltfVertex, normal));
             normalAccessor.componentType = JsonAccessorComponentType::FLOAT;
-            normalAccessor.count = surf.vertexCount;
+            normalAccessor.count = (unsigned int)surf.vertexCount;
             normalAccessor.type = JsonAccessorType::VEC3;
             gltf.accessors->emplace_back(normalAccessor);
 
             JsonAccessor uvAccessor;
             uvAccessor.bufferView = m_vertex_buffer_view;
-            uvAccessor.byteOffset = surf.indexOfFirstVertex * sizeof(GltfVertex) + static_cast<unsigned>(offsetof(GltfVertex, uv));
+            uvAccessor.byteOffset = (unsigned)surf.indexOfFirstVertex * (unsigned)sizeof(GltfVertex) + static_cast<unsigned>(offsetof(GltfVertex, uv));
             uvAccessor.componentType = JsonAccessorComponentType::FLOAT;
-            uvAccessor.count = surf.vertexCount;
+            uvAccessor.count = (unsigned int)surf.vertexCount;
             uvAccessor.type = JsonAccessorType::VEC2;
             gltf.accessors->emplace_back(uvAccessor);
 
             JsonAccessor colorAccessor;
             colorAccessor.bufferView = m_vertex_buffer_view;
-            colorAccessor.byteOffset = surf.indexOfFirstVertex * sizeof(GltfVertex) + static_cast<unsigned>(offsetof(GltfVertex, color));
+            colorAccessor.byteOffset = (unsigned)surf.indexOfFirstVertex * (unsigned)sizeof(GltfVertex) + static_cast<unsigned>(offsetof(GltfVertex, color));
             colorAccessor.componentType = JsonAccessorComponentType::FLOAT;
-            colorAccessor.count = surf.vertexCount;
+            colorAccessor.count = (unsigned int)surf.vertexCount;
             colorAccessor.type = JsonAccessorType::VEC4;
             gltf.accessors->emplace_back(colorAccessor);
 
             JsonAccessor indicesAccessor;
             indicesAccessor.bufferView = m_index_buffer_view;
-            indicesAccessor.byteOffset = surf.indexOfFirstIndex * sizeof(uint16_t);
+            indicesAccessor.byteOffset = (unsigned)surf.indexOfFirstIndex * (unsigned)sizeof(uint16_t);
             indicesAccessor.componentType = JsonAccessorComponentType::UNSIGNED_SHORT;
-            indicesAccessor.count = surf.triCount * 3;
+            indicesAccessor.count = (unsigned int)surf.triCount * 3;
             indicesAccessor.type = JsonAccessorType::SCALAR;
             gltf.accessors->emplace_back(indicesAccessor);
         }
@@ -1141,7 +1142,7 @@ namespace
     {
         size_t nodeIdx = root.nodes->size();
         if (parentIdx)
-            root.nodes->at(*parentIdx).children->emplace_back(nodeIdx);
+            root.nodes->at(*parentIdx).children->emplace_back((unsigned)nodeIdx);
         root.nodes->emplace_back(node);
         return nodeIdx;
     }
@@ -1159,13 +1160,13 @@ namespace
 
             JsonMeshPrimitives primitive;
             if (surface.materialIndex != -1)
-                primitive.material = surface.materialIndex;
+                primitive.material = (unsigned)surface.materialIndex;
             primitive.mode = JsonMeshPrimitivesMode::TRIANGLES;
-            primitive.indices = (surfIdx * m_total_accessor_types) + m_index_accessor_start;
-            primitive.attributes.COLOR_0 = (surfIdx * m_total_accessor_types) + m_color_accessor_start;
-            primitive.attributes.NORMAL = (surfIdx * m_total_accessor_types) + m_normal_accessor_start;
-            primitive.attributes.POSITION = (surfIdx * m_total_accessor_types) + m_position_accessor_start;
-            primitive.attributes.TEXCOORD_0 = (surfIdx * m_total_accessor_types) + m_uv_accessor_start;
+            primitive.indices = ((unsigned)surfIdx * m_total_accessor_types) + m_index_accessor_start;
+            primitive.attributes.COLOR_0 = ((unsigned)surfIdx * m_total_accessor_types) + m_color_accessor_start;
+            primitive.attributes.NORMAL = ((unsigned)surfIdx * m_total_accessor_types) + m_normal_accessor_start;
+            primitive.attributes.POSITION = ((unsigned)surfIdx * m_total_accessor_types) + m_position_accessor_start;
+            primitive.attributes.TEXCOORD_0 = ((unsigned)surfIdx * m_total_accessor_types) + m_uv_accessor_start;
             mesh.primitives.emplace_back(primitive);
         }
         size_t meshIdx = root.meshes->size();
@@ -1181,7 +1182,7 @@ namespace
         {
             JsonNode node;
             node.name = std::format("brush_{}", totalBrushes++);
-            node.mesh = addMeshFromSurface(root, dumpData, startSurf + i, 1, isGfxWorld);
+            node.mesh = (unsigned)addMeshFromSurface(root, dumpData, startSurf + i, 1, isGfxWorld);
             nlohmann::json js;
             js["model"] = "brush";
             node.extras = js;
@@ -1197,7 +1198,7 @@ namespace
         {
             JsonNode node;
             node.name = std::format("terrain_{}", totalTerrain++);
-            node.mesh = addMeshFromSurface(root, dumpData, startSurf + i, 1, isGfxWorld);
+            node.mesh = (unsigned)addMeshFromSurface(root, dumpData, startSurf + i, 1, isGfxWorld);
             nlohmann::json js;
             js["model"] = "terrain";
             node.extras = js;
@@ -1290,7 +1291,7 @@ namespace
 
         JsonNode node;
         node.name = "Surfaces";
-        node.mesh = addMeshFromSurface(root, dumpData, dumpData.staticSurfaceStart, dumpData.staticSurfaceCount, true);
+        node.mesh = (unsigned)addMeshFromSurface(root, dumpData, dumpData.staticSurfaceStart, dumpData.staticSurfaceCount, true);
         addNodeToGltf(root, node, ROOT_NODE_IDX);
     }
 
@@ -1301,7 +1302,7 @@ namespace
 
         JsonNode tNode;
         tNode.name = "Terrain";
-        tNode.mesh = addMeshFromSurface(root, dumpData, dumpData.terrainSurfaceStart, dumpData.terrainSurfaceCount, false);
+        tNode.mesh = (unsigned)addMeshFromSurface(root, dumpData, dumpData.terrainSurfaceStart, dumpData.terrainSurfaceCount, false);
         size_t terrainNodeIdx = addNodeToGltf(root, tNode, ROOT_NODE_IDX);
 
         JsonNode bNode;
