@@ -6,51 +6,12 @@
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
 
-namespace BSP
+class ClipMapLinker
 {
-    struct ColSurface
-    {
-        size_t materialIndex;
-        size_t partitionCount;
-        size_t partitionStartIndex;
-    };
+public:
+    virtual ~ClipMapLinker() = default;
 
-    class ClipMapLinker
-    {
-    public:
-        ClipMapLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-        clipMap_t* linkClipMap(BSPData* bsp);
+    static std::unique_ptr<ClipMapLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
 
-    private:
-        MemoryManager& m_memory;
-        ISearchPath& m_search_path;
-        AssetCreationContext& m_context;
-
-        void loadBoxData(clipMap_t* clipMap);
-        void loadVisibility(clipMap_t* clipMap);
-        void loadDynEnts(clipMap_t* clipMap);
-        void loadRopesAndConstraints(clipMap_t* clipMap);
-        bool loadSubModelCollision(clipMap_t* clipMap, BSPData* bsp);
-        bool loadXModelCollision(clipMap_t* clipMap, BSPData* bsp);
-
-        std::vector<cplane_s> planeVec;
-        std::vector<cNode_t> nodeVec;
-        std::vector<cLeaf_s> leafVec;
-        std::vector<CollisionAabbTree> AABBTreeVec;
-        size_t highestPartitionCountForAABB = 0;
-
-        std::vector<cLeafBrushNode_s> brushNodeVec;
-        std::vector<cbrush_array_t> brushVec;
-
-        std::vector<ColSurface> collisionSurfaceVec;
-        std::vector<size_t> partitionToColSurfaceMap;
-
-        void addAABBTreeFromPartitions(
-            clipMap_t* clipMap, std::vector<size_t>& partitions, size_t* out_parentCount, size_t* out_parentStartIndex, int* out_treeContents);
-        int16_t loadBSPNode(clipMap_t* clipMap, BSPTree* tree, bool isRoot);
-        bool loadBSPTree(clipMap_t* clipMap, BSPData* bsp);
-        bool loadPartitions(clipMap_t* clipMap, BSPData* bsp);
-        bool loadWorldCollision(clipMap_t* clipMap, BSPData* bsp);
-        bool loadMaterials(clipMap_t* clipMap, BSPData* bsp);
-    };
-} // namespace BSP
+    virtual clipMap_t* linkClipMap(BSP::BSPData* bsp) = 0;
+};

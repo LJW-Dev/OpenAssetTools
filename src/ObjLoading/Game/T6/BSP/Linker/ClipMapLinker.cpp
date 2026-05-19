@@ -10,19 +10,42 @@ namespace
         std::vector<size_t> partitionIndexes;
     };
 
+    struct ColSurface
+    {
+        size_t materialIndex;
+        size_t partitionCount;
+        size_t partitionStartIndex;
+    };
+
     constexpr size_t MAX_AABB_TREE_CHILDREN = 128;
+
+    constexpr vec3_t normalX = {1.0f, 0.0f, 0.0f};
+    constexpr vec3_t normalY = {0.0f, 1.0f, 0.0f};
+    constexpr vec3_t normalZ = {0.0f, 0.0f, 1.0f};
 } // namespace
 
-namespace BSP
-{
-    ClipMapLinker::ClipMapLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
-        : m_memory(memory),
-          m_search_path(searchPath),
-          m_context(context)
-    {
-    }
+using namespace BSP;
 
-    void ClipMapLinker::loadDynEnts(clipMap_t* clipMap)
+class ClipMapLinkerImpl : public ClipMapLinker
+{
+private:
+    MemoryManager& m_memory;
+    ISearchPath& m_search_path;
+    AssetCreationContext& m_context;
+
+    std::vector<cplane_s> planeVec;
+    std::vector<cNode_t> nodeVec;
+    std::vector<cLeaf_s> leafVec;
+    std::vector<CollisionAabbTree> AABBTreeVec;
+    size_t highestPartitionCountForAABB = 0;
+
+    std::vector<cLeafBrushNode_s> brushNodeVec;
+    std::vector<cbrush_array_t> brushVec;
+
+    std::vector<ColSurface> collisionSurfaceVec;
+    std::vector<size_t> partitionToColSurfaceMap;
+
+    void loadDynEnts(clipMap_t* clipMap)
     {
         int dynEntCount = 0;
         clipMap->originalDynEntCount = dynEntCount;
@@ -49,7 +72,7 @@ namespace BSP
         clipMap->dynEntDefList[1] = nullptr;
     }
 
-    void ClipMapLinker::loadVisibility(clipMap_t* clipMap)
+    void loadVisibility(clipMap_t* clipMap)
     {
         // Only use one visbility cluster for the entire map
         clipMap->numClusters = 1;
@@ -60,7 +83,7 @@ namespace BSP
         memset(clipMap->visibility, 0xFF, clipMap->clusterBytes);
     }
 
-    void ClipMapLinker::loadBoxData(clipMap_t* clipMap)
+    void loadBoxData(clipMap_t* clipMap)
     {
         // box_model and box_brush are what are used by game traces as "temporary" collision when
         //  no brush or model is specified to do the trace with.
@@ -121,7 +144,7 @@ namespace BSP
         clipMap->box_brush->verts = nullptr;
     }
 
-    void ClipMapLinker::loadRopesAndConstraints(clipMap_t* clipMap)
+    void loadRopesAndConstraints(clipMap_t* clipMap)
     {
         clipMap->num_constraints = 0; // max 511
         clipMap->constraints = nullptr;
@@ -131,7 +154,7 @@ namespace BSP
         clipMap->ropes = m_memory.Alloc<rope_t>(clipMap->max_ropes);
     }
 
-    bool ClipMapLinker::loadXModelCollision(clipMap_t* clipMap, BSPData* bsp)
+    bool loadXModelCollision(clipMap_t* clipMap, BSPData* bsp)
     {
         // it seems like for players to be able to collide with xmodels, it requires xmodel->collmaps to be valid.
         // A lot of XModels don't implement collmaps (OAT also doesn't generate these collmaps atm), and
@@ -240,7 +263,7 @@ namespace BSP
         }
     }
 
-    void ClipMapLinker::addAABBTreeFromPartitions(
+    void addAABBTreeFromPartitions(
         clipMap_t* clipMap, std::vector<size_t>& partitions, size_t* out_parentCount, size_t* out_parentStartIndex, int* out_treeContents)
     {
         size_t partitionCount = partitions.size();
@@ -358,15 +381,11 @@ namespace BSP
             *out_treeContents |= clipMap->info.materials[matData.materialIndex].contentFlags;
     }
 
-    constexpr vec3_t normalX = {1.0f, 0.0f, 0.0f};
-    constexpr vec3_t normalY = {0.0f, 1.0f, 0.0f};
-    constexpr vec3_t normalZ = {0.0f, 0.0f, 1.0f};
-
     // returns the index of the node/leaf parsed by the function
     // Nodes are indexed by their index in the node array
     // Leafs are indexed by (-1 - <leaf index>)
     // See https://developer.valvesoftware.com/wiki/BSP_(Source)
-    int16_t ClipMapLinker::loadBSPNode(clipMap_t* clipMap, BSPTree* tree, bool isRoot)
+    int16_t loadBSPNode(clipMap_t* clipMap, BSPTree* tree, bool isRoot)
     {
         if (tree->isLeaf)
         {
@@ -471,7 +490,7 @@ namespace BSP
         }
     }
 
-    bool ClipMapLinker::loadBSPTree(clipMap_t* clipMap, BSPData* bsp)
+    bool loadBSPTree(clipMap_t* clipMap, BSPData* bsp)
     {
         vec3_t worldMins;
         vec3_t worldMaxs;
@@ -512,7 +531,7 @@ namespace BSP
         return true;
     }
 
-    bool ClipMapLinker::loadPartitions(clipMap_t* clipMap, BSPData* bsp)
+    bool loadPartitions(clipMap_t* clipMap, BSPData* bsp)
     {
         // due to tris using uint16_t as the type for indexing the vert array,
         //  any vertex count over the uint16_t max means the vertices above the uint16_t max can't be indexed
@@ -600,7 +619,7 @@ namespace BSP
         return true;
     }
 
-    bool ClipMapLinker::loadSubModelCollision(clipMap_t* clipMap, BSPData* bsp)
+    bool loadSubModelCollision(clipMap_t* clipMap, BSPData* bsp)
     {
         // Submodels are used for the world and map ent collision (triggers, bomb zones, etc)
         clipMap->numSubModels = static_cast<unsigned int>(bsp->models.size() + 1);
@@ -775,7 +794,7 @@ namespace BSP
         return true;
     }
 
-    bool ClipMapLinker::loadWorldCollision(clipMap_t* clipMap, BSPData* bsp)
+    bool loadWorldCollision(clipMap_t* clipMap, BSPData* bsp)
     {
         // unused brush data
         clipMap->info.numBrushSides = 0;
@@ -856,7 +875,7 @@ namespace BSP
         return true;
     }
 
-    bool ClipMapLinker::loadMaterials(clipMap_t* clipMap, BSPData* bsp)
+    bool loadMaterials(clipMap_t* clipMap, BSPData* bsp)
     {
         // Clipmap materials define the properties of a material (bullet penetration, no collision, water, etc)
 
@@ -881,7 +900,15 @@ namespace BSP
         return true;
     }
 
-    clipMap_t* ClipMapLinker::linkClipMap(BSPData* bsp)
+public:
+    explicit ClipMapLinkerImpl(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+        : m_memory(memory),
+          m_search_path(searchPath),
+          m_context(context)
+    {
+    }
+
+    clipMap_t* linkClipMap(BSPData* bsp) override
     {
         clipMap_t* clipMap = m_memory.Alloc<clipMap_t>();
         clipMap->name = m_memory.Dup(bsp->bspName.c_str());
@@ -920,4 +947,9 @@ namespace BSP
 
         return clipMap;
     }
-} // namespace BSP
+};
+
+std::unique_ptr<ClipMapLinker> ClipMapLinker::Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+{
+    return std::make_unique<ClipMapLinkerImpl>(memory, searchPath, context);
+}

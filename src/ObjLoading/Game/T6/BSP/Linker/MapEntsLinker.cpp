@@ -137,16 +137,24 @@ namespace
     }
 } // namespace
 
-namespace BSP
+using namespace BSP;
+
+class MapEntsLinkerImpl : public MapEntsLinker
 {
-    MapEntsLinker::MapEntsLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+private:
+    MemoryManager& m_memory;
+    ISearchPath& m_search_path;
+    AssetCreationContext& m_context;
+
+public:
+    explicit MapEntsLinkerImpl(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
         : m_memory(memory),
           m_search_path(searchPath),
           m_context(context)
     {
     }
 
-    MapEnts* MapEntsLinker::linkMapEnts(BSPData* bsp)
+    MapEnts* linkMapEnts(BSPData* bsp) override
     {
         std::string entityString;
 
@@ -171,4 +179,9 @@ namespace BSP
 
         return mapEnts;
     }
-} // namespace BSP
+};
+
+std::unique_ptr<MapEntsLinker> MapEntsLinker::Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+{
+    return std::make_unique<MapEntsLinkerImpl>(memory, searchPath, context);
+}

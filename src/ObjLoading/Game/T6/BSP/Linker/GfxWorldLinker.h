@@ -5,33 +5,12 @@
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
 
-namespace BSP
+class GfxWorldLinker
 {
-    class GfxWorldLinker
-    {
-    public:
-        GfxWorldLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-        GfxWorld* linkGfxWorld(BSPData* bsp);
+public:
+    virtual ~GfxWorldLinker() = default;
 
-    private:
-        MemoryManager& m_memory;
-        ISearchPath& m_search_path;
-        AssetCreationContext& m_context;
+    static std::unique_ptr<GfxWorldLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
 
-        void loadDrawData(BSPData* projInfo, GfxWorld* gfxWorld);
-        bool loadMapSurfaces(BSPData* projInfo, GfxWorld* gfxWorld);
-        bool loadXModels(BSPData* projInfo, GfxWorld* gfxWorld);
-        void cleanGfxWorld(GfxWorld* gfxWorld);
-        bool loadGfxLights(BSPData* bsp, GfxWorld* gfxWorld);
-        bool loadLightGrid(BSPData* bsp, GfxWorld* gfxWorld);
-        void loadGfxCells(GfxWorld* gfxWorld);
-        void loadModels(BSPData* bsp, GfxWorld* gfxWorld);
-        bool loadReflectionProbeData(GfxWorld* gfxWorld);
-        bool loadLightmapData(GfxWorld* gfxWorld);
-        void loadSkyBox(BSPData* projInfo, GfxWorld* gfxWorld);
-        void loadDynEntData(GfxWorld* gfxWorld);
-        bool loadOutdoors(GfxWorld* gfxWorld);
-        void loadSunData(BSPData* projInfo, GfxWorld* gfxWorld);
-        void loadWorldBounds(GfxWorld* gfxWorld);
-    };
-} // namespace BSP
+    virtual GfxWorld* linkGfxWorld(BSP::BSPData* bsp) = 0;
+};

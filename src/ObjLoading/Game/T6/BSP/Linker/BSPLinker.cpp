@@ -7,27 +7,55 @@
 #include "MapEntsLinker.h"
 #include "SkinnedVertsLinker.h"
 
-namespace BSP
+using namespace BSP;
+
+class BSPLinkerImpl : public BSPLinker
 {
-    FootstepTableDef* BSPLinker::addEmptyFootstepTableAsset(std::string assetName)
+private:
+    MemoryManager& m_memory;
+    ISearchPath& m_search_path;
+    AssetCreationContext& m_context;
+
+    FootstepTableDef* addEmptyFootstepTableAsset(std::string assetName)
     {
         if (assetName.length() == 0)
             return nullptr;
 
+        auto asset = m_context.LoadDependency<AssetFootstepTable>(assetName);
+        if (asset != nullptr)
+            return asset->Asset();
+
         FootstepTableDef* footstepTable = m_memory.Alloc<FootstepTableDef>();
         footstepTable->name = m_memory.Dup(assetName.c_str());
         memset(footstepTable->sndAliasTable, 0, sizeof(footstepTable->sndAliasTable));
-
         m_context.AddAsset<AssetFootstepTable>(assetName, footstepTable);
 
         return footstepTable;
     }
 
-    bool BSPLinker::addDefaultRequiredAssets(BSPData* bsp)
+    RawFile* addEmptyRawFileAsset(std::string assetName)
+    {
+        if (assetName.length() == 0)
+            return nullptr;
+
+        auto asset = m_context.LoadDependency<AssetRawFile>(assetName);
+        if (asset != nullptr)
+            return asset->Asset();
+
+        RawFile* rawFile = m_memory.Alloc<RawFile>();
+        rawFile->name = m_memory.Dup(assetName.c_str());
+        rawFile->len = 1;
+        rawFile->buffer = m_memory.Alloc<char>();
+        m_context.AddAsset<AssetRawFile>(assetName, rawFile);
+
+        return rawFile;
+    }
+
+    bool addDefaultRequiredAssets(BSPData* bsp)
     {
         if (m_context.LoadDependency<AssetScript>("maps/mp/" + bsp->name + ".gsc") == nullptr)
         {
-            con::error("maps/mp/" + bsp->name + ".gsc not found, make sure GSC file is in another fastfile.");
+            con::warn("maps/mp/" + bsp->name + ".gsc not found, make sure GSC file is in another fastfile.");
         }
         else
         {
@@ -51,61 +79,66 @@ namespace BSP
         addEmptyFootstepTableAsset("default_3rd_person_loud");
         addEmptyFootstepTableAsset("default_ai");
 
-        if (m_context.LoadDependency<AssetRawFile>("animtrees/fxanim_props.atr") == nullptr)
-            return false;
+        addEmptyRawFileAsset("animtrees/fxanim_props.atr");
 
         return true;
     }
 
-    BSPLinker::BSPLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+public:
+    explicit BSPLinkerImpl(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
         : m_memory(memory),
           m_search_path(searchPath),
           m_context(context)
     {
     }
 
-    bool BSPLinker::linkBSP(BSPData* bsp)
+    bool linkBSP(BSPData* bsp) override
     {
         if (!addDefaultRequiredAssets(bsp))
             return false;
 
-        ComWorldLinker comWorldLinker(m_memory, m_search_path, m_context);
-        ClipMapLinker clipMapLinker(m_memory, m_search_path, m_context);
-        GameWorldMpLinker gameWorldMpLinker(m_memory, m_search_path, m_context);
-        GfxWorldLinker gfxWorldLinker(m_memory, m_search_path, m_context);
-        MapEntsLinker mapEntsLinker(m_memory, m_search_path, m_context);
-        SkinnedVertsLinker skinnedVertsLinker(m_memory, m_search_path, m_context);
+        auto comWorldLinker = ComWorldLinker::Create(m_memory, m_search_path, m_context);
+        auto clipMapLinker = ClipMapLinker::Create(m_memory, m_search_path, m_context);
+        auto gameWorldMpLinker = GameWorldMpLinker::Create(m_memory, m_search_path, m_context);
+        auto gfxWorldLinker = GfxWorldLinker::Create(m_memory, m_search_path, m_context);
+        auto mapEntsLinker = MapEntsLinker::Create(m_memory, m_search_path, m_context);
+        auto skinnedVertsLinker = SkinnedVertsLinker::Create(m_memory, m_search_path, m_context);
 
-        ComWorld* comWorld = comWorldLinker.linkComWorld(bsp);
+        ComWorld* comWorld = comWorldLinker->linkComWorld(bsp);
         if (comWorld == nullptr)
             return false;
         m_context.AddAsset<AssetComWorld>(comWorld->name, comWorld);
 
-        MapEnts* mapEnts = mapEntsLinker.linkMapEnts(bsp);
+        MapEnts* mapEnts = mapEntsLinker->linkMapEnts(bsp);
         if (mapEnts == nullptr)
             return false;
         m_context.AddAsset<AssetMapEnts>(mapEnts->name, mapEnts);
 
-        GameWorldMp* gameWorldMp = gameWorldMpLinker.linkGameWorldMp(bsp);
+        GameWorldMp* gameWorldMp = gameWorldMpLinker->linkGameWorldMp(bsp);
         if (gameWorldMp == nullptr)
             return false;
         m_context.AddAsset<AssetGameWorldMp>(gameWorldMp->name, gameWorldMp);
 
-        SkinnedVertsDef* skinnedVerts = skinnedVertsLinker.linkSkinnedVerts(bsp);
+        SkinnedVertsDef* skinnedVerts = skinnedVertsLinker->linkSkinnedVerts(bsp);
         if (skinnedVerts == nullptr)
             return false;
         m_context.AddAsset<AssetSkinnedVerts>(skinnedVerts->name, skinnedVerts);
 
-        GfxWorld* gfxWorld = gfxWorldLinker.linkGfxWorld(bsp);
+        GfxWorld* gfxWorld = gfxWorldLinker->linkGfxWorld(bsp);
         if (gfxWorld == nullptr)
             return false;
         m_context.AddAsset<AssetGfxWorld>(gfxWorld->name, gfxWorld);
 
-        clipMap_t* clipMap = clipMapLinker.linkClipMap(bsp); // requires mapents asset
+        clipMap_t* clipMap = clipMapLinker->linkClipMap(bsp); // requires mapents asset
         if (clipMap == nullptr)
             return false;
-        m_context.AddAsset<AssetClipMap>(clipMap->name, clipMap);
+        m_context.AddAsset<AssetClipMapPvs>(clipMap->name, clipMap);
 
         return true;
-    }
-} // namespace BSP
+    };
+};
+
+std::unique_ptr<BSPLinker> BSPLinker::Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+{
+    return std::make_unique<BSPLinkerImpl>(memory, searchPath, context);
+}

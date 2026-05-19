@@ -8,16 +8,24 @@ namespace
     constexpr short LIGHT_CULLDIST = 10000;
 } // namespace
 
-namespace BSP
+using namespace BSP;
+
+class ComWorldLinkerImpl : public ComWorldLinker
 {
-    ComWorldLinker::ComWorldLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+private:
+    MemoryManager& m_memory;
+    ISearchPath& m_search_path;
+    AssetCreationContext& m_context;
+
+public:
+    explicit ComWorldLinkerImpl(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
         : m_memory(memory),
           m_search_path(searchPath),
           m_context(context)
     {
     }
 
-    bool ComWorldLinker::createLightDefs()
+    bool createLightDefs()
     {
         T6::GfxLightDef* lightDef2d = m_memory.Alloc<T6::GfxLightDef>();
         lightDef2d->name = m_memory.Dup(DEFAULT_LIGHTDEF_NAME);
@@ -32,7 +40,7 @@ namespace BSP
         return true;
     }
 
-    ComWorld* ComWorldLinker::linkComWorld(BSPData* bsp)
+    ComWorld* linkComWorld(BSPData* bsp) override
     {
         ComWorld* comWorld = m_memory.Alloc<ComWorld>();
         comWorld->name = m_memory.Dup(bsp->bspName.c_str());
@@ -117,4 +125,9 @@ namespace BSP
 
         return comWorld;
     }
-} // namespace BSP
+};
+
+std::unique_ptr<ComWorldLinker> ComWorldLinker::Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+{
+    return std::make_unique<ComWorldLinkerImpl>(memory, searchPath, context);
+}

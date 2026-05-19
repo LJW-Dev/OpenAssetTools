@@ -1,15 +1,23 @@
 #include "GameWorldMpLinker.h"
 
-namespace BSP
+using namespace BSP;
+
+class GameWorldMpLinkerImpl : public GameWorldMpLinker
 {
-    GameWorldMpLinker::GameWorldMpLinker(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+private:
+    MemoryManager& m_memory;
+    ISearchPath& m_search_path;
+    AssetCreationContext& m_context;
+
+public:
+    explicit GameWorldMpLinkerImpl(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
         : m_memory(memory),
           m_search_path(searchPath),
           m_context(context)
     {
     }
 
-    GameWorldMp* GameWorldMpLinker::linkGameWorldMp(BSPData* bsp)
+    GameWorldMp* linkGameWorldMp(BSPData* bsp) override
     {
         GameWorldMp* gameWorldMp = m_memory.Alloc<GameWorldMp>();
 
@@ -31,4 +39,9 @@ namespace BSP
 
         return gameWorldMp;
     }
-} // namespace BSP
+};
+
+std::unique_ptr<GameWorldMpLinker> GameWorldMpLinker::Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+{
+    return std::make_unique<GameWorldMpLinkerImpl>(memory, searchPath, context);
+}
