@@ -1,6 +1,6 @@
 #pragma once
 
-#include "BSP.h"
+#include "BSP/BSP.h"
 
 namespace BSP
 {

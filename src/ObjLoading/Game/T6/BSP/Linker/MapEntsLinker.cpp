@@ -1,6 +1,6 @@
 #include "MapEntsLinker.h"
 
-#include "../BSPUtil.h"
+#include "BSP/BSPUtil.h"
 
 namespace
 {

@@ -1,6 +1,6 @@
 #include "BSPCreator.h"
 
-#include "BSPUtil.h"
+#include "BSP/BSPUtil.h"
 #include "Gltf/JsonGltf.h"
 #include "Utils/StringUtils.h"
 #include "XModel/Gltf/GltfBinInput.h"

@@ -2,14 +2,14 @@
 
 #include "BSPDumperT6.h"
 
-#include "BSPFlags.h"
+#include "BSP/BSPFlags.h"
 #include "Game/T6/T6.h"
+#include "Gltf/JsonGltf.h"
 #include "Utils/Logging/Log.h"
 #include "Utils/Pack.h"
 #include "XModel/Gltf/GltfBinOutput.h"
 #include "XModel/Gltf/GltfTextOutput.h"
 #include "XModel/Gltf/GltfWriter.h"
-#include "XModel/Gltf/JsonGltf.h"
 #include "quickhull/quickhull.hpp"
 
 #include <deque>

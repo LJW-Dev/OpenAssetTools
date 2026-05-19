@@ -1,7 +1,7 @@
 #include "BSPLoaderT6.h"
 
+#include "BSP/BSPUtil.h"
 #include "BSPCreator.h"
-#include "BSPUtil.h"
 #include "Linker/BSPLinker.h"
 
 namespace

@@ -1,7 +1,7 @@
 #include "GfxWorldLinker.h"
 
-#include "../BSPCalculation.h"
-#include "../BSPUtil.h"
+#include "BSP/BSPUtil.h"
+#include "BSPCalculation.h"
 #include "Utils/Pack.h"
 
 namespace

@@ -1,8 +1,7 @@
 #pragma once
 
-#include "../BSP.h"
-#include "../BSPCalculation.h"
 #include "Asset/IAssetCreator.h"
+#include "BSP/BSP.h"
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
 

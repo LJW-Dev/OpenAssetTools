@@ -1,6 +1,7 @@
 #include "ClipMapLinker.h"
 
-#include "../BSPUtil.h"
+#include "BSP/BSPUtil.h"
+#include "BSPCalculation.h"
 
 namespace
 {
