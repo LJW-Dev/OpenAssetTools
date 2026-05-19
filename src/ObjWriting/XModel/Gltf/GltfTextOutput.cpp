@@ -1,6 +1,6 @@
 #include "GltfTextOutput.h"
 
-#include "XModel/Gltf/GltfConstants.h"
+#include "Gltf/GltfConstants.h"
 
 #include <iomanip>
 #include <nlohmann/json.hpp>

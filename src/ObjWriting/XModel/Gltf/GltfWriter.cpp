@@ -1,8 +1,8 @@
 #include "GltfWriter.h"
 
 #include "GitVersion.h"
-#include "XModel/Gltf/GltfConstants.h"
-#include "XModel/Gltf/JsonGltf.h"
+#include "Gltf/GltfConstants.h"
+#include "Gltf/JsonGltf.h"
 
 #pragma warning(push, 0)
 #include <Eigen>

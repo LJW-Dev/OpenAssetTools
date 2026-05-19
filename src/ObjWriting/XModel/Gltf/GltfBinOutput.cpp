@@ -1,7 +1,7 @@
 #include "GltfBinOutput.h"
 
+#include "Gltf/GltfConstants.h"
 #include "Utils/Alignment.h"
-#include "XModel/Gltf/GltfConstants.h"
 
 #include <cstdint>
 #include <nlohmann/json.hpp>

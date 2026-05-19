@@ -540,12 +540,6 @@ public:
         return true;
     }
 
-    struct mnode_t
-    {
-        unsigned __int16 cellIndex;
-        unsigned __int16 rightChildOffset;
-    };
-
     void loadGfxCells(GfxWorld* gfxWorld)
     {
         // Cells are basically data used to determine what can be seen and what cant be seen

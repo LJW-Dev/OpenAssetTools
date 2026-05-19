@@ -1,7 +1,7 @@
 #pragma once
 
+#include "Gltf/JsonGltf.h"
 #include "GltfOutput.h"
-#include "XModel/Gltf/JsonGltf.h"
 #include "XModel/XModelWriter.h"
 
 #include <memory>

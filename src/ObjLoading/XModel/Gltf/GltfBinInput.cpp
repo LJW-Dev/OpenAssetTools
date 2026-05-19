@@ -1,7 +1,7 @@
 #include "GltfBinInput.h"
 
+#include "Gltf/GltfConstants.h"
 #include "Utils/Logging/Log.h"
-#include "XModel/Gltf/GltfConstants.h"
 
 #include <exception>
 #include <format>

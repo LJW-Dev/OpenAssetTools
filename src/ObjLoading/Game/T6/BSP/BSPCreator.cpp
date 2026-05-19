@@ -1,13 +1,13 @@
 #include "BSPCreator.h"
 
 #include "BSPUtil.h"
+#include "Gltf/JsonGltf.h"
 #include "Utils/StringUtils.h"
 #include "XModel/Gltf/GltfBinInput.h"
 #include "XModel/Gltf/GltfTextInput.h"
 #include "XModel/Gltf/Internal/GltfAccessor.h"
 #include "XModel/Gltf/Internal/GltfBuffer.h"
 #include "XModel/Gltf/Internal/GltfBufferView.h"
-#include "XModel/Gltf/JsonGltf.h"
 #include "XModel/Tangentspace.h"
 
 #pragma warning(push, 0)
@@ -1101,14 +1101,15 @@ namespace
 
                     material.surfaceFlags = 0;
                     material.contentFlags = 1; // all materials start out as solid
-                    if (jsMaterial.extras && jsMaterial.extras->type)
+                    if (jsMaterial.extras && jsMaterial.extras->contains("type"))
                     {
+                        std::string typeStr = jsMaterial.extras->at("type");
                         bool foundType = false;
                         size_t typeNameCount = std::extent<decltype(BSPFlags::materialTypes)>::value;
                         for (size_t typeIdx = 0; typeIdx < typeNameCount; typeIdx++)
                         {
                             BSPFlags::SurfaceType surfType = BSPFlags::materialTypes[typeIdx];
-                            if (!jsMaterial.extras->type->compare(BSPFlags::surfaceTypeToNameMap[surfType]))
+                            if (!typeStr.compare(BSPFlags::surfaceTypeToNameMap[surfType]))
                             {
                                 BSPFlags::s_SurfaceTypeFlags flags = BSPFlags::surfaceTypeToFlagMap[surfType];
                                 material.surfaceFlags |= flags.surfaceFlags;
@@ -1118,7 +1119,7 @@ namespace
                             }
                         }
                         if (!foundType)
-                            con::warn("material {} with invalid type name: {}", material.materialName, *jsMaterial.extras->type);
+                            con::warn("material {} with invalid type name: {}", material.materialName, typeStr);
                     }
 
                     m_curr_bsp_world->materials.emplace_back(material);

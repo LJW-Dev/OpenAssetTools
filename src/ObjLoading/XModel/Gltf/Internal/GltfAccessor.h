@@ -1,6 +1,6 @@
 #pragma once
+#include "Gltf/JsonGltf.h"
 #include "GltfBufferView.h"
-#include "XModel/Gltf/JsonGltf.h"
 
 namespace gltf
 {

@@ -1,7 +1,7 @@
 #include "GltfBuffer.h"
 
 #include "Base64.h"
-#include "XModel/Gltf/GltfConstants.h"
+#include "Gltf/GltfConstants.h"
 
 #include <cassert>
 #include <cstdint>

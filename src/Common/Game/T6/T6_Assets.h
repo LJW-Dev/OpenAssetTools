@@ -1191,11 +1191,17 @@ namespace T6
         float factor1;
     };
 
+    struct mnode_t
+    {
+        unsigned __int16 cellIndex;
+        unsigned __int16 rightChildOffset;
+    };
+
     struct GfxWorldDpvsPlanes
     {
         int cellCount;
         cplane_s* planes;
-        uint16_t* nodes;
+        uint16_t* nodes; // mnode_t
         unsigned int* sceneEntCellBits;
     };
 

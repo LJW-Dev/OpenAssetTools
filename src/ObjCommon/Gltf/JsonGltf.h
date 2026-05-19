@@ -292,14 +292,6 @@ namespace gltf
 
     NLOHMANN_DEFINE_TYPE_EXTENSION(JsonNormalTextureInfo, index);
 
-    class JsonMaterialExtras
-    {
-    public:
-        std::optional<std::string> type;
-    };
-
-    NLOHMANN_DEFINE_TYPE_EXTENSION(JsonMaterialExtras, type);
-
     class JsonMaterial
     {
     public:
@@ -308,7 +300,7 @@ namespace gltf
         std::optional<JsonNormalTextureInfo> normalTexture;
         std::optional<bool> doubleSided;
 
-        std::optional<JsonMaterialExtras> extras;
+        std::optional<nlohmann::json> extras;
     };
 
     NLOHMANN_DEFINE_TYPE_EXTENSION(JsonMaterial, name, pbrMetallicRoughness, normalTexture, doubleSided, extras);
