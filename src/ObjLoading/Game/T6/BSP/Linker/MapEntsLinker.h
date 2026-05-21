@@ -5,12 +5,19 @@
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
 
-class MapEntsLinker
+namespace T6
 {
-public:
-    virtual ~MapEntsLinker() = default;
+    namespace BSP
+    {
+        class MapEntsLinker
+        {
+        public:
+            virtual ~MapEntsLinker() = default;
 
-    static std::unique_ptr<MapEntsLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
+            static std::unique_ptr<MapEntsLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
 
-    virtual MapEnts* linkMapEnts(BSP::BSPData* bsp) = 0;
-};
+            virtual MapEnts* linkMapEnts(BSP::BSPData* bsp) = 0;
+        };
+    } // namespace BSP
+
+} // namespace T6

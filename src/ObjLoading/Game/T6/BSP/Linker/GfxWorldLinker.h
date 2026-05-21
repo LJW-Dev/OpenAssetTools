@@ -5,12 +5,18 @@
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
 
-class GfxWorldLinker
+namespace T6
 {
-public:
-    virtual ~GfxWorldLinker() = default;
+    namespace BSP
+    {
+        class GfxWorldLinker
+        {
+        public:
+            virtual ~GfxWorldLinker() = default;
 
-    static std::unique_ptr<GfxWorldLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
+            static std::unique_ptr<GfxWorldLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
 
-    virtual GfxWorld* linkGfxWorld(BSP::BSPData* bsp) = 0;
-};
+            virtual GfxWorld* linkGfxWorld(BSP::BSPData* bsp) = 0;
+        };
+    } // namespace BSP
+} // namespace T6

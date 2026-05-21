@@ -5,12 +5,18 @@
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
 
-class ClipMapLinker
+namespace T6
 {
-public:
-    virtual ~ClipMapLinker() = default;
+    namespace BSP
+    {
+        class ClipMapLinker
+        {
+        public:
+            virtual ~ClipMapLinker() = default;
 
-    static std::unique_ptr<ClipMapLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
+            static std::unique_ptr<ClipMapLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
 
-    virtual clipMap_t* linkClipMap(BSP::BSPData* bsp) = 0;
-};
+            virtual clipMap_t* linkClipMap(BSP::BSPData* bsp) = 0;
+        };
+    } // namespace BSP
+} // namespace T6

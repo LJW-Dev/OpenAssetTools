@@ -8,182 +8,235 @@
 #include <memory>
 #include <string>
 #include <vector>
-using namespace T6;
 
-namespace BSP
+namespace T6
 {
-    enum BSPMaterialType
+    namespace BSP
     {
-        MATERIAL_TYPE_COLOUR,
-        MATERIAL_TYPE_TEXTURE
-    };
+        struct BSPVertex
+        {
+            vec3_t pos;
+            vec4_t color;
+            vec2_t texCoord;
+            vec3_t normal;
+            vec3_t tangent;
+            vec3_t binormal;
+        };
 
-    struct BSPVertex
-    {
-        vec3_t pos;
-        vec4_t color;
-        vec2_t texCoord;
-        vec3_t normal;
-        vec3_t tangent;
-        vec3_t binormal;
-    };
+        enum BSPMaterialType
+        {
+            MATERIAL_TYPE_COLOUR,
+            MATERIAL_TYPE_TEXTURE
+        };
 
-    struct BSPMaterial
-    {
-        std::string materialName;
-        BSPMaterialType materialType;
-        vec4_t materialColour;
+        struct BSPMaterial
+        {
+            std::string materialName;
+            BSPMaterialType materialType;
+            vec4_t materialColour;
 
-        int surfaceFlags;
-        int contentFlags;
-    };
+            int surfaceFlags;
+            int contentFlags;
+        };
 
-    struct BSPSurface
-    {
-        size_t materialIndex;
-        uint16_t vertexCount;
-        uint16_t triCount;
-        int indexOfFirstVertex;
-        int indexOfFirstIndex;
-    };
+        struct BSPSurface
+        {
+            size_t materialIndex;
+            size_t vertexCount;
+            size_t triCount;
+            size_t indexOfFirstVertex;
+            size_t indexOfFirstIndex;
+        };
 
-    struct BSPXModel
-    {
-        std::string name;
+        struct BSPXModel
+        {
+            std::string name;
 
-        vec3_t origin;
-        vec4_t rotationQuaternion;
-        float scale;
+            vec3_t origin;
+            vec4_t rotationQuaternion;
+            float scale;
 
-        bool areBoundsValid;
-        vec3_t mins;
-        vec3_t maxs;
+            bool areBoundsValid;
+            vec3_t mins;
+            vec3_t maxs;
 
-        bool doesCastShadow;
-    };
+            bool doesCastShadow;
+        };
 
-    struct BSPBoxBrush
-    {
-        size_t vertexIndex;
-        size_t vertexCount;
+        struct BSPWorld
+        {
+            std::vector<BSPSurface> surfaces;
+            std::vector<BSPVertex> vertices;
+            std::vector<uint16_t> indices;
+            std::vector<BSPMaterial> materials;
+            std::vector<BSPXModel> xmodels;
+        };
 
-        int surfaceFlags;
-        int contentFlags;
-    };
+        enum BSPLightType
+        {
+            LIGHT_TYPE_DIRECTIONAL,
+            LIGHT_TYPE_SPOT
+        };
 
-    struct BSPWorld
-    {
-        std::vector<BSPSurface> staticSurfaces;
-        std::vector<BSPSurface> scriptSurfaces;
+        struct BSPLight
+        {
+            BSPLightType type;
+            vec3_t colour;
+            float range;
+            float intensity;
 
-        std::vector<BSPVertex> vertices;
-        std::vector<uint16_t> indices;
-        std::vector<BSPMaterial> materials;
-        std::vector<BSPXModel> xmodels;
+            vec3_t pos;
+            vec3_t direction;
 
-        std::vector<BSPBoxBrush> scriptBoxBrushes;
-        std::vector<vec3_t> boxBrushVerts;
-    };
+            // angle is in radians. only used on spot lights
+            float innerConeAngle;
+            float outerConeAngle;
+        };
 
-    enum BSPLightType
-    {
-        LIGHT_TYPE_DIRECTIONAL,
-        LIGHT_TYPE_SPOT
-    };
+        struct BSPSpawnPoint
+        {
+            vec3_t origin;
+            vec3_t forward;
+            std::string spawnpointGroupName;
+        };
 
-    struct BSPLight
-    {
-        BSPLightType type;
-        vec3_t colour;
-        float range;
-        float intensity;
+        struct BSPZoneZM
+        {
+            vec3_t origin;
+            std::string zoneName;
+            std::string spawnerGroupName;
+            std::string spawnpointGroupName;
+            size_t modelIndex;
+        };
 
-        vec3_t pos;
-        vec3_t direction;
+        struct BSPZSpawnerZM
+        {
+            std::string spawnerGroupName;
+            vec3_t origin;
+            vec3_t forward;
+        };
 
-        // angle is in radians. only used on spot lights
-        float innerConeAngle;
-        float outerConeAngle;
-    };
+        constexpr const char* bspEntityTypeNames[] = {"Weapons",
+                                                      "Volumes",
+                                                      "Triggers",
+                                                      "Pathnodes",
+                                                      "Lights",
+                                                      "Structs",
+                                                      "Vehicles",
+                                                      "Models",
+                                                      "Brushmodels",
+                                                      "ZBarriers",
+                                                      "Points",
+                                                      "Actors",
+                                                      "Glass",
+                                                      "Ropes",
+                                                      "Other"};
 
-    struct BSPSpawnPoint
-    {
-        vec3_t origin;
-        vec3_t forward;
-        std::string spawnpointGroupName;
-    };
+        enum bspEntityType
+        {
+            ET_WEAPON,
+            ET_VOLUME,
+            ET_TRIGGER,
+            ET_PATHNODE,
+            ET_LIGHT,
+            ET_STRUCT,
+            ET_VEHICLE,
+            ET_MODEL,
+            ET_BRUSHMODEL,
+            ET_ZBARRIER,
+            ET_POINT,
+            ET_ACTOR,
+            ET_GLASS,
+            ET_ROPE,
+            ET_OTHER,
+            ET_COUNT
+        };
 
-    struct BSPZoneZM
-    {
-        vec3_t origin;
-        std::string zoneName;
-        std::string spawnerGroupName;
-        std::string spawnpointGroupName;
-        size_t modelIndex;
-    };
+        enum bspModelSurfType
+        {
+            MST_NONE,
+            MST_BRUSH,
+            MST_TERRAIN,
+            MST_BOTH
+        };
 
-    struct BSPZSpawnerZM
-    {
-        std::string spawnerGroupName;
-        vec3_t origin;
-        vec3_t forward;
-    };
+        enum bspModelSurfSide
+        {
+            MSS_NONE,
+            MSS_GFX,
+            MSS_COL,
+            MSS_BOTH
+        };
 
-    struct BSPModel
-    {
-        bool isGfxModel;
+        struct BSPModel
+        {
+            bspModelSurfSide surfaceSide;
+            bspModelSurfType surfaceType;
+            size_t gfxSurfaceIndex;
+            size_t gfxSurfaceCount;
+            size_t colBrushSurfaceIndex;
+            size_t colBrushSurfaceCount;
+            size_t colTerrainSurfaceIndex;
+            size_t colTerrainSurfaceCount;
+        };
 
-        size_t surfaceIndex;
-        size_t surfaceCount;
+        struct BSPEntityEntry
+        {
+            std::string key;
+            std::string value;
+        };
 
-        bool hasBrush;
-        size_t brushIndex;
-    };
+        struct BSPEntity
+        {
+            size_t uniqueEntityNumber;
 
-    struct BSPEntityEntry
-    {
-        std::string key;
-        std::string value;
-    };
+            vec3_t origin;
+            vec4_t rotationQuaternion;
+            size_t modelIndex;
 
-    struct BSPEntity
-    {
-        vec3_t origin;
-        vec4_t rotationQuaternion;
-        size_t modelIndex;
+            bspEntityType type;
+            std::string classname;
+            std::vector<BSPEntityEntry> entries;
+        };
 
-        std::vector<BSPEntityEntry> entries;
-    };
+        struct BSPData
+        {
+            std::string name;
+            std::string bspName;
+            bool isZombiesMap;
 
-    struct BSPData
-    {
-        std::string name;
-        std::string bspName;
-        bool isZombiesMap;
+            size_t staticSurfaceStart;
+            size_t staticSurfaceCount;
+            BSPWorld gfxWorld;
 
-        BSPWorld gfxWorld;
-        BSPWorld colWorld;
+            size_t staticTerrainSurfaceStart;
+            size_t staticTerrainSurfaceCount;
+            size_t staticBrushSurfaceStart;
+            size_t staticBrushSurfaceCount;
+            BSPWorld colWorld;
 
-        bool hasSunlightBeenSet;
-        BSPLight sunlight;
-        std::vector<BSPLight> lights;
+            bool hasSunlightBeenSet;
+            BSPLight sunlight;
+            std::vector<BSPLight> lights;
 
-        std::vector<BSPSpawnPoint> spawnpoints;
-        std::vector<BSPZoneZM> zm_zones;
-        std::vector<BSPZSpawnerZM> zm_spawners;
+            std::vector<BSPSpawnPoint> spawnpoints;
+            std::vector<BSPZoneZM> zm_zones;
+            std::vector<BSPZSpawnerZM> zm_spawners;
 
-        bool containsWorldspawn;
-        bool containsIntermssion;
-        std::vector<BSPEntity> entities;
-        BSPEntity worldspawn;
+            bool containsWorldspawn;
+            bool containsIntermssion;
+            std::vector<BSPEntity> entities;
+            BSPEntity worldspawn;
 
-        std::vector<BSPModel> models;
-    };
+            std::vector<BSPModel> models;
+        };
 
-    enum BSPDefaultLights
-    {
-        EMPTY_LIGHT_INDEX = 0,
-        SUN_LIGHT_INDEX = 1,
-        BSP_DEFAULT_LIGHT_COUNT = 2
-    };
-} // namespace BSP
+        enum BSPDefaultLights
+        {
+            EMPTY_LIGHT_INDEX = 0,
+            SUN_LIGHT_INDEX = 1,
+            BSP_DEFAULT_LIGHT_COUNT = 2
+        };
+    } // namespace BSP
+
+} // namespace T6

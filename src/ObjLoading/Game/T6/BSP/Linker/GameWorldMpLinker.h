@@ -5,12 +5,18 @@
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
 
-class GameWorldMpLinker
+namespace T6
 {
-public:
-    virtual ~GameWorldMpLinker() = default;
+    namespace BSP
+    {
+        class GameWorldMpLinker
+        {
+        public:
+            virtual ~GameWorldMpLinker() = default;
 
-    static std::unique_ptr<GameWorldMpLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
+            static std::unique_ptr<GameWorldMpLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
 
-    virtual GameWorldMp* linkGameWorldMp(BSP::BSPData* bsp) = 0;
-};
+            virtual GameWorldMp* linkGameWorldMp(BSP::BSPData* bsp) = 0;
+        };
+    } // namespace BSP
+} // namespace T6

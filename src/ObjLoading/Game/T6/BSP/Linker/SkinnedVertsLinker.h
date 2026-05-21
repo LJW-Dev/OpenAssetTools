@@ -5,12 +5,19 @@
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
 
-class SkinnedVertsLinker
+namespace T6
 {
-public:
-    virtual ~SkinnedVertsLinker() = default;
+    namespace BSP
+    {
+        class SkinnedVertsLinker
+        {
+        public:
+            virtual ~SkinnedVertsLinker() = default;
 
-    static std::unique_ptr<SkinnedVertsLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
+            static std::unique_ptr<SkinnedVertsLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
 
-    virtual SkinnedVertsDef* linkSkinnedVerts(BSP::BSPData* bsp) = 0;
-};
+            virtual SkinnedVertsDef* linkSkinnedVerts(BSPData* bsp) = 0;
+        };
+    } // namespace BSP
+
+} // namespace T6

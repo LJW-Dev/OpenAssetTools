@@ -2,70 +2,74 @@
 
 #include "BSP/BSP.h"
 
-namespace BSP
+namespace T6
 {
-    enum PlaneAxis
+    namespace BSP
     {
-        AXIS_X,
-        AXIS_Y,
-        AXIS_Z
-    };
+        enum PlaneAxis
+        {
+            AXIS_X,
+            AXIS_Y,
+            AXIS_Z
+        };
 
-    enum PlaneSide
-    {
-        SIDE_FRONT,
-        SIDE_BACK,
-        SIDE_INTERSECTS
-    };
+        enum PlaneSide
+        {
+            SIDE_FRONT,
+            SIDE_BACK,
+            SIDE_INTERSECTS
+        };
 
-    class BSPObject
-    {
-    public:
-        vec3_t min;
-        vec3_t max;
-        size_t partitionIndex; // index of the partition the object is contained in
+        class BSPObject
+        {
+        public:
+            vec3_t min;
+            vec3_t max;
+            size_t objIndex; // index of the partition the object is contained in
+            bool isBrush;
 
-        BSPObject(float xMin, float yMin, float zMin, float xMax, float yMax, float zMax, size_t objPartitionIndex);
-    };
+            BSPObject(float xMin, float yMin, float zMin, float xMax, float yMax, float zMax, bool isBrush, size_t objIndex);
+        };
 
-    class BSPLeaf
-    {
-    public:
-        std::vector<std::shared_ptr<BSPObject>> objectList;
+        class BSPLeaf
+        {
+        public:
+            std::vector<std::shared_ptr<BSPObject>> objectList;
 
-        void addObject(std::shared_ptr<BSPObject> object);
-        BSPObject* getObject(size_t index);
-        size_t getObjectCount();
-    };
+            void addObject(std::shared_ptr<BSPObject> object);
+            BSPObject* getObject(size_t index);
+            size_t getObjectCount();
+        };
 
-    class BSPTree;
+        class BSPTree;
 
-    class BSPNode
-    {
-    public:
-        std::unique_ptr<BSPTree> front;
-        std::unique_ptr<BSPTree> back;
+        class BSPNode
+        {
+        public:
+            std::unique_ptr<BSPTree> front;
+            std::unique_ptr<BSPTree> back;
 
-        PlaneAxis axis; // axis that the split plane is on
-        float distance; // distance from the origin (0, 0, 0) to the plane
+            PlaneAxis axis; // axis that the split plane is on
+            float distance; // distance from the origin (0, 0, 0) to the plane
 
-        BSPNode(std::unique_ptr<BSPTree> frontTree, std::unique_ptr<BSPTree> backTree, PlaneAxis nodeAxis, float nodeDistance);
-        PlaneSide objectIsInFront(BSPObject* object);
-    };
+            BSPNode(std::unique_ptr<BSPTree> frontTree, std::unique_ptr<BSPTree> backTree, PlaneAxis nodeAxis, float nodeDistance);
+            PlaneSide objectIsInFront(BSPObject* object);
+        };
 
-    class BSPTree
-    {
-    public:
-        bool isLeaf;
-        std::unique_ptr<BSPLeaf> leaf;
-        std::unique_ptr<BSPNode> node;
+        class BSPTree
+        {
+        public:
+            bool isLeaf;
+            std::unique_ptr<BSPLeaf> leaf;
+            std::unique_ptr<BSPNode> node;
 
-        size_t level; // level in the BSP tree
-        vec3_t min;
-        vec3_t max;
+            size_t level; // level in the BSP tree
+            vec3_t min;
+            vec3_t max;
 
-        BSPTree(float xMin, float yMin, float zMin, float xMax, float yMax, float zMax, size_t treeLevel);
-        void splitTree();
-        void addObjectToTree(std::shared_ptr<BSPObject> object);
-    };
-} // namespace BSP
+            BSPTree(float xMin, float yMin, float zMin, float xMax, float yMax, float zMax, size_t treeLevel);
+            void splitTree();
+            void addObjectToTree(std::shared_ptr<BSPObject> object);
+        };
+    } // namespace BSP
+} // namespace T6

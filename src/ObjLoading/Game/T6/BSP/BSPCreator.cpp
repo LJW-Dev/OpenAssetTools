@@ -22,7 +22,10 @@
 #include <numbers>
 #include <string>
 
+using namespace T6;
+using namespace BSP;
 using namespace BSPFlags;
+using namespace gltf;
 
 namespace
 {
@@ -62,12 +65,46 @@ namespace
         indices[1] = two[1];
         indices[2] = two[0];
     }
-} // namespace
 
-namespace
-{
-    using namespace BSP;
-    using namespace gltf;
+    bool flagsMatchExact(int flag1, int flag2)
+    {
+        return (flag1 & flag2) == flag1;
+    }
+
+    bool flagsMatchAny(int flag1, int flag2)
+    {
+        return (flag1 & flag2) != 0;
+    }
+
+    bool convertStringToFlags(const std::string& flagStr, int& surfaceFlags, int& contentFlags)
+    {
+        surfaceFlags = 0;
+        contentFlags = 1;
+        bool matchedAnyFlag = false;
+        std::vector<std::string> flagStrVec = utils::StringSplit(flagStr, ',');
+        for (std::string& flag : flagStrVec)
+        {
+            utils::MakeStringLowerCase(flag);
+            utils::StringTrim(flag);
+            for (size_t typeIdx = 0; typeIdx < BSP_SURF_TYPE_COUNT; typeIdx++)
+            {
+                if (!flag.compare(surfaceTypeToNameMap[typeIdx]))
+                {
+                    s_SurfaceTypeFlags flags = surfaceTypeToFlagMap[typeIdx];
+                    surfaceFlags |= flags.surfaceFlags;
+                    contentFlags |= flags.contentFlags;
+                    matchedAnyFlag = true;
+
+                    if (typeIdx == BSP_SURF_TYPE_NONSOLID)
+                        contentFlags &= 0xFFFFFFFE;
+
+                    break;
+                }
+            }
+        }
+
+        return matchedAnyFlag;
+    }
 
     class GltfLoadException final : std::exception
     {
@@ -98,6 +135,7 @@ namespace
         BSPWorld* m_curr_bsp_world;
         bool m_is_world_gfx;
         size_t m_emptyMaterialIndex;
+        std::map<size_t, size_t> gfxToColModelLinkMap; // key: unique entity number, value: model index
 
         std::vector<std::unique_ptr<Accessor>> m_accessors;
         std::vector<std::unique_ptr<BufferView>> m_buffer_views;
@@ -144,8 +182,6 @@ namespace
             if (accessor->GetCount() != vertexCount)
                 throw GltfLoadException(std::format("Element count of {} accessor does not match expected vertex count of {}", accessorType, vertexCount));
         }
-
-        using Transform3f = Eigen::Transform<float, 3, Eigen::Affine>;
 
         Eigen::Matrix4f createNodeMatrix(const gltf::JsonNode& node)
         {
@@ -205,17 +241,16 @@ namespace
             Eigen::Quaternionf rotation(localRotation[3], localRotation[0], localRotation[1], localRotation[2]); // GLTF is XYZW, Eigen is WXYZ
             Eigen::Vector3f scale(localScale[0], localScale[1], localScale[2]);
 
-            Transform3f T;
+            Eigen::Transform<float, 3, Eigen::Affine> T;
             T = T.fromPositionOrientationScale(translation, rotation, scale);
             return T.matrix();
         }
 
         unsigned CreateSurface(const AccessorsForVertex& accessorsForVertex,
-                               Eigen::Matrix4f& nodeMatrix,
+                               const Eigen::Matrix4f& nodeMatrix,
                                size_t materialIndex,
                                bool convertWorldToLocalPos,
-                               const gltf::JsonNode& node,
-                               BSPSurface& out_surface)
+                               const std::string& nodeName)
         {
             // clang-format off
             const auto* positionAccessor = GetAccessorForIndex(
@@ -271,16 +306,18 @@ namespace
                 throw GltfLoadException("Index count must be dividable by 3 for triangles");
             const auto faceCount = indexCount / 3u;
             if (faceCount > UINT16_MAX)
-                throw GltfLoadException(std::format("Face count ({}) on node {} exceeded the UINT16_MAX", faceCount, node.name.value_or("unnamed node")));
+                throw GltfLoadException(std::format("Face count ({}) on node {} exceeded the UINT16_MAX", faceCount, nodeName));
             if (vertexCount > UINT16_MAX)
-                throw GltfLoadException(std::format("Vertex count ({}) on node {} exceeded the UINT16_MAX", vertexCount, node.name.value_or("unnamed node")));
+                throw GltfLoadException(std::format("Vertex count ({}) on node {} exceeded the UINT16_MAX", vertexCount, nodeName));
 
+            BSPSurface out_surface;
             out_surface.vertexCount = static_cast<uint16_t>(vertexCount);
             out_surface.triCount = static_cast<uint16_t>(faceCount);
             out_surface.indexOfFirstIndex = static_cast<int>(m_curr_bsp_world->indices.size());
             out_surface.indexOfFirstVertex = static_cast<int>(m_curr_bsp_world->vertices.size());
             out_surface.materialIndex = materialIndex;
             vec4_t materialColor = m_curr_bsp_world->materials.at(materialIndex).materialColour;
+            m_curr_bsp_world->surfaces.emplace_back(out_surface);
 
             Eigen::Vector4f tempPosition(0, 0, 0, 1.0f);
             Eigen::Vector4f transformedPosition = nodeMatrix * tempPosition;
@@ -362,12 +399,10 @@ namespace
             return vertexOffset;
         }
 
-        bool addLightNode(const JsonRoot& jRoot, const gltf::JsonNode& node, Eigen::Matrix4f& nodeMatrix)
+        bool addLightNode(const JsonRoot& jRoot, const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix)
         {
             if (!m_is_world_gfx || !jRoot.extensions || !jRoot.extensions->KHR_lights_punctual || !jRoot.extensions->KHR_lights_punctual->lights)
                 return false;
-            assert(node.extensions);
-            assert(node.extensions->KHR_lights_punctual);
 
             int lightIndex = node.extensions->KHR_lights_punctual->light;
             const JsonPunctualLight& jsLight = jRoot.extensions->KHR_lights_punctual->lights->at(lightIndex);
@@ -447,72 +482,23 @@ namespace
             return true;
         }
 
-        bool getSurfaceAndContentFlags(const std::string& flagStr, int& surfaceFlags, int& contentFlags)
-        {
-            bool matchedAnyFlag = false;
-            std::vector<std::string> flagStrVec = utils::StringSplit(flagStr, ',');
-            for (std::string& flag : flagStrVec)
-            {
-                utils::MakeStringLowerCase(flag);
-                utils::StringTrim(flag);
-                for (size_t typeIdx = 0; typeIdx < BSPFlags::SURF_TYPE_COUNT; typeIdx++)
-                {
-                    if (!flag.compare(BSPFlags::surfaceTypeToNameMap[typeIdx]))
-                    {
-                        BSPFlags::s_SurfaceTypeFlags flags = BSPFlags::surfaceTypeToFlagMap[typeIdx];
-                        surfaceFlags |= flags.surfaceFlags;
-                        contentFlags |= flags.contentFlags;
-                        matchedAnyFlag = true;
-                        break;
-                    }
-                }
-            }
-            return matchedAnyFlag;
-        }
-
         size_t createMaterialWithFlags(size_t originalMaterialIdx, const std::string& flags)
         {
-            BSPMaterial newMaterial = m_curr_bsp_world->materials.at(originalMaterialIdx);
-
-            bool matchedAnyFlag = false;
-            std::vector<std::string> flagStrVec = utils::StringSplit(flags, ',');
-            for (std::string& flag : flagStrVec)
-            {
-                bool foundMatchingName = false;
-                utils::MakeStringLowerCase(flag);
-                utils::StringTrim(flag);
-                size_t typeNameCount = std::extent<decltype(BSPFlags::materialFlags)>::value;
-                for (size_t typeIdx = 0; typeIdx < typeNameCount; typeIdx++)
-                {
-                    BSPFlags::SurfaceType surfType = BSPFlags::materialFlags[typeIdx];
-                    if (!flag.compare(BSPFlags::surfaceTypeToNameMap[surfType]))
-                    {
-                        BSPFlags::s_SurfaceTypeFlags flags = BSPFlags::surfaceTypeToFlagMap[surfType];
-                        newMaterial.surfaceFlags |= flags.surfaceFlags;
-                        newMaterial.contentFlags |= flags.contentFlags;
-                        foundMatchingName = true;
-                        matchedAnyFlag = true;
-                        break;
-                    }
-                }
-                if (!foundMatchingName)
-                    con::warn("material {} has invalid flag name: {}", newMaterial.materialName, flag);
-            }
+            int surfaceFlags = 0;
+            int contentFlags = 0;
+            bool matchedAnyFlag = convertStringToFlags(flags, surfaceFlags, contentFlags);
             if (!matchedAnyFlag)
                 return originalMaterialIdx;
 
-            // the first content flag bit must be set to 1 for the surface to have collision
-            if ((newMaterial.surfaceFlags & BSPFlags::surfaceTypeToFlagMap[BSPFlags::SURF_TYPE_NONSOLID].surfaceFlags) != 0)
-                newMaterial.contentFlags &= 0xFFFFFFFE;
-            else
-                newMaterial.contentFlags |= 1;
-
+            BSPMaterial duplicateMaterial = m_curr_bsp_world->materials.at(originalMaterialIdx);
+            duplicateMaterial.surfaceFlags = surfaceFlags;
+            duplicateMaterial.contentFlags = contentFlags;
             size_t newMaterialIndex = m_curr_bsp_world->materials.size();
-            m_curr_bsp_world->materials.emplace_back(newMaterial);
+            m_curr_bsp_world->materials.emplace_back(duplicateMaterial);
             return newMaterialIndex;
         }
 
-        bool addMeshNode(const JsonRoot& jRoot, const gltf::JsonNode& node, Eigen::Matrix4f& nodeMatrix)
+        bool addMeshNode(const JsonRoot& jRoot, const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix, bool convertWorldToLocalPos)
         {
             assert(node.mesh);
             assert(jRoot.meshes);
@@ -545,15 +531,13 @@ namespace
                 if (node.extras && node.extras->contains("flags"))
                     materialIndex = createMaterialWithFlags(materialIndex, node.extras->at("flags"));
 
-                BSPSurface surface;
-                CreateSurface(accessorsForVertex, nodeMatrix, materialIndex, false, node, surface);
-                m_curr_bsp_world->staticSurfaces.emplace_back(surface);
+                CreateSurface(accessorsForVertex, nodeMatrix, materialIndex, convertWorldToLocalPos, node.name.value_or("unnamed node"));
             }
 
             return true;
         }
 
-        void calculateXmodelBounds(BSPXModel& xmodel, std::optional<int> meshIndex, Eigen::Matrix4f& nodeMatrix, const JsonRoot& jRoot)
+        void calculateXmodelBounds(BSPXModel& xmodel, std::optional<int> meshIndex, const Eigen::Matrix4f& nodeMatrix, const JsonRoot& jRoot)
         {
             if (meshIndex)
             {
@@ -622,7 +606,7 @@ namespace
             }
         }
 
-        bool addXModelNode(const JsonRoot& jRoot, const gltf::JsonNode& node, Eigen::Matrix4f& nodeMatrix)
+        bool addXModelNode(const JsonRoot& jRoot, const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix)
         {
             assert(node.extras);
             assert(node.extras->contains("xmodel"));
@@ -633,11 +617,11 @@ namespace
             int surfaceFlags = 0;
             int contentFlags = 0;
             if (node.extras && node.extras->contains("flags"))
-                getSurfaceAndContentFlags(node.extras->at("flags"), surfaceFlags, contentFlags);
+                convertStringToFlags(node.extras->at("flags"), surfaceFlags, contentFlags);
 
-            bool isNoDraw = (surfaceFlags & BSPFlags::surfaceTypeToFlagMap[BSPFlags::SURF_TYPE_NODRAW].surfaceFlags) != 0;
-            bool isNoCastShadow = (surfaceFlags & BSPFlags::surfaceTypeToFlagMap[BSPFlags::SURF_TYPE_NOCASTSHADOW].surfaceFlags) != 0;
-            bool isNonSolid = (surfaceFlags & BSPFlags::surfaceTypeToFlagMap[BSPFlags::SURF_TYPE_NONSOLID].surfaceFlags) != 0;
+            bool isNoDraw = (surfaceFlags & surfaceTypeToFlagMap[BSP_SURF_TYPE_NODRAW].surfaceFlags) != 0;
+            bool isNoCastShadow = (surfaceFlags & surfaceTypeToFlagMap[BSP_SURF_TYPE_NOCASTSHADOW].surfaceFlags) != 0;
+            bool isNonSolid = (surfaceFlags & surfaceTypeToFlagMap[BSP_SURF_TYPE_NONSOLID].surfaceFlags) != 0;
             if (m_is_world_gfx && isNoDraw)
                 return true;
             if (!m_is_world_gfx && isNonSolid)
@@ -669,8 +653,11 @@ namespace
             return true;
         }
 
-        bool addSpawnPointNode(const gltf::JsonNode& node, Eigen::Matrix4f& nodeMatrix)
+        bool addSpawnPointNode(const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix)
         {
+            if (m_is_world_gfx)
+                return true;
+
             assert(node.extras);
             assert(node.extras->contains("spawnpoint"));
 
@@ -710,147 +697,110 @@ namespace
             return true;
         }
 
-        size_t addScriptBrushModel(const JsonRoot& jRoot, const gltf::JsonNode& node, Eigen::Matrix4f& nodeMatrix)
+        size_t addScriptModel(const JsonRoot& jRoot,
+                              const std::optional<std::vector<unsigned>>& modelNodes,
+                              const Eigen::Matrix4f& nodeMatrix,
+                              std::optional<size_t> gfxAndColLinkNum)
         {
-            assert(!m_is_world_gfx);
+            if (!modelNodes)
+                throw GltfLoadException("Script Model was made with no children");
 
-            if (!node.mesh || !jRoot.meshes)
-                throw new GltfLoadException("Script model created with no mesh data");
-
-            const auto& mesh = jRoot.meshes.value()[node.mesh.value()];
-
-            if (mesh.primitives.size() == 0)
-                throw new GltfLoadException("Script model created with no mesh data");
-
-            Eigen::Vector4f tempPosition(0, 0, 0, 1.0f);
-            Eigen::Vector4f transformedPosition = nodeMatrix * tempPosition;
-            vec3_t origin;
-            origin.x = transformedPosition.x();
-            origin.y = transformedPosition.y();
-            origin.z = transformedPosition.z();
-            RhcToLhcCoordinates(origin.v);
-
-            BSPModel model;
-            model.isGfxModel = m_is_world_gfx;
-            model.surfaceIndex = 0;
-            model.surfaceCount = 0;
-            model.hasBrush = true;
-            model.brushIndex = m_curr_bsp_world->scriptBoxBrushes.size();
-            m_bsp->models.emplace_back(model);
-
-            size_t materialIndex = m_emptyMaterialIndex;
-            if (node.extras && node.extras->contains("flags"))
-                materialIndex = createMaterialWithFlags(materialIndex, node.extras->at("flags"));
-            BSPBoxBrush boxBrush;
-            boxBrush.vertexIndex = m_curr_bsp_world->boxBrushVerts.size();
-            boxBrush.contentFlags = m_curr_bsp_world->materials.at(materialIndex).contentFlags;
-            boxBrush.surfaceFlags = m_curr_bsp_world->materials.at(materialIndex).surfaceFlags;
-            for (size_t primIdx = 0; primIdx < mesh.primitives.size(); primIdx++)
+            std::vector<const JsonNode*> terrainNodes;
+            std::vector<const JsonNode*> brushNodes;
+            for (unsigned nodeIdx : *modelNodes)
             {
-                const auto& primitive = mesh.primitives.at(primIdx);
+                const JsonNode& node = jRoot.nodes->at(nodeIdx);
 
-                if (!primitive.attributes.POSITION)
-                    throw GltfLoadException("Requires primitives attribute POSITION");
+                if (!node.extras || !node.extras->contains("model"))
+                    throw GltfLoadException(std::format("Script Model child {} has no model field", *node.name));
 
-                // clang-format off
-                 const auto* positionAccessor = GetAccessorForIndex(
-                     "POSITION",
-                     primitive.attributes.POSITION,
-                     { JsonAccessorType::VEC3 },
-                     { JsonAccessorComponentType::FLOAT }
-                 ).value_or(nullptr);
-                // clang-format on
-                assert(positionAccessor != nullptr);
-
-                if (positionAccessor->GetCount() == 0)
-                    throw GltfLoadException("positionAccessor has count of 0");
-
-                for (size_t vertexIndex = 0u; vertexIndex < positionAccessor->GetCount(); vertexIndex++)
+                std::string modelType = node.extras->at("model");
+                if (!modelType.compare("brush"))
                 {
-                    vec3_t vertex;
-                    if (!positionAccessor->GetFloatVec3(vertexIndex, vertex.v))
-                        assert(false);
-
-                    Eigen::Vector4f position(vertex.x, vertex.y, vertex.z, 1.0f);
-                    Eigen::Vector4f transformedPosition = nodeMatrix * position;
-                    vertex.x = transformedPosition.x();
-                    vertex.y = transformedPosition.y();
-                    vertex.z = transformedPosition.z();
-                    RhcToLhcCoordinates(vertex.v);
-
-                    // brush verts use local position
-                    vertex.x -= origin.x;
-                    vertex.y -= origin.y;
-                    vertex.z -= origin.z;
-
-                    m_curr_bsp_world->boxBrushVerts.emplace_back(vertex);
+                    if (m_is_world_gfx)
+                        throw GltfLoadException(std::format("Script Model child {} is a brush. Brushes can be used in collision files only.", *node.name));
+                    brushNodes.emplace_back(&node);
                 }
-            }
-            boxBrush.vertexCount = m_curr_bsp_world->boxBrushVerts.size() - boxBrush.vertexIndex;
-            m_curr_bsp_world->scriptBoxBrushes.emplace_back(boxBrush);
-
-            return m_bsp->models.size(); // script model index starts at 1
-        }
-
-        size_t addScriptTerrainModel(const JsonRoot& jRoot, const gltf::JsonNode& node, Eigen::Matrix4f& nodeMatrix)
-        {
-            if (!node.mesh || !jRoot.meshes)
-                throw new GltfLoadException("Script model created with no mesh data");
-
-            const auto& mesh = jRoot.meshes.value()[node.mesh.value()];
-
-            if (mesh.primitives.size() == 0)
-                throw new GltfLoadException("Script model created with no mesh data");
-
-            BSPModel model;
-            model.isGfxModel = m_is_world_gfx;
-            model.surfaceIndex = m_curr_bsp_world->scriptSurfaces.size();
-            model.surfaceCount = mesh.primitives.size();
-            model.hasBrush = false;
-            model.brushIndex = 0;
-            m_bsp->models.emplace_back(model);
-
-            for (const auto& primitive : mesh.primitives)
-            {
-                if (!primitive.indices)
-                    throw GltfLoadException("Requires primitives indices");
-                if (primitive.mode.value_or(JsonMeshPrimitivesMode::TRIANGLES) != JsonMeshPrimitivesMode::TRIANGLES)
-                    throw GltfLoadException("Only triangles are supported");
-                if (!primitive.attributes.POSITION)
-                    throw GltfLoadException("Requires primitives attribute POSITION");
-                if (!primitive.attributes.NORMAL)
-                    throw GltfLoadException("Requires primitives attribute NORMAL");
-
-                const AccessorsForVertex accessorsForVertex{
-                    .m_position_accessor = *primitive.attributes.POSITION,
-                    .m_normal_accessor = *primitive.attributes.NORMAL,
-                    .m_color_accessor = primitive.attributes.COLOR_0,
-                    .m_uv_accessor = primitive.attributes.TEXCOORD_0,
-                    .m_index_accessor = *primitive.indices,
-                };
-
-                size_t materialIndex;
-                if (primitive.material)
-                {
-                    size_t originalMaterialIdx = *primitive.material;
-                    if (node.extras && node.extras->contains("flags"))
-                        materialIndex = createMaterialWithFlags(originalMaterialIdx, node.extras->at("flags"));
-                    else
-                        materialIndex = originalMaterialIdx;
-                }
+                else if (!modelType.compare("terrain"))
+                    terrainNodes.emplace_back(&node);
                 else
-                    materialIndex = m_emptyMaterialIndex;
-
-                BSPSurface surface;
-                CreateSurface(accessorsForVertex, nodeMatrix, materialIndex, true, node, surface);
-                m_curr_bsp_world->scriptSurfaces.emplace_back(surface);
+                    throw GltfLoadException(std::format("Script Model child {} model field value isn't brush or terrain", *node.name));
             }
 
-            return m_bsp->models.size(); // script model index starts at 1
+            BSPModel model{};
+            if (m_is_world_gfx)
+            {
+                model.gfxSurfaceCount = terrainNodes.size();
+                model.gfxSurfaceIndex = m_curr_bsp_world->surfaces.size();
+                for (const auto& node : terrainNodes)
+                    addMeshNode(jRoot, *node, nodeMatrix, true);
+
+                model.surfaceSide = MSS_GFX;
+                model.surfaceType = MST_NONE;
+                if (gfxAndColLinkNum)
+                {
+                    if (gfxToColModelLinkMap.contains(*gfxAndColLinkNum))
+                        throw GltfLoadException(std::format("Script Model child GfxAndColLinkNumber {} is used by multiple gfx entities", *gfxAndColLinkNum));
+                    else
+                        gfxToColModelLinkMap[*gfxAndColLinkNum] = m_bsp->models.size();
+                }
+            }
+            else
+            {
+                BSPModel* modelPtr = &model;
+                if (gfxAndColLinkNum)
+                {
+                    if (!gfxToColModelLinkMap.contains(*gfxAndColLinkNum))
+                        throw GltfLoadException(
+                            std::format("Script Model child GfxAndColLinkNumber {} has a collision node but no gfx node", *gfxAndColLinkNum));
+
+                    modelPtr = &m_bsp->models.at(gfxToColModelLinkMap.at(*gfxAndColLinkNum));
+                }
+
+                modelPtr->colTerrainSurfaceCount = terrainNodes.size();
+                modelPtr->colTerrainSurfaceIndex = m_curr_bsp_world->surfaces.size();
+                for (const auto& node : terrainNodes)
+                    addMeshNode(jRoot, *node, nodeMatrix, true);
+
+                modelPtr->colBrushSurfaceCount = brushNodes.size();
+                modelPtr->colBrushSurfaceIndex = m_curr_bsp_world->surfaces.size();
+                for (const auto& node : brushNodes)
+                    addMeshNode(jRoot, *node, nodeMatrix, true);
+
+                if (modelPtr->colTerrainSurfaceCount != 0 && modelPtr->colBrushSurfaceCount != 0)
+                    modelPtr->surfaceType = MST_BOTH;
+                else if (modelPtr->colTerrainSurfaceCount != 0)
+                    modelPtr->surfaceType = MST_TERRAIN;
+                else if (modelPtr->colBrushSurfaceCount != 0)
+                    modelPtr->surfaceType = MST_BRUSH;
+                else
+                    modelPtr->surfaceType = MST_NONE;
+
+                if (modelPtr->surfaceType != MST_NONE && modelPtr->gfxSurfaceCount != 0)
+                    modelPtr->surfaceSide = MSS_BOTH;
+                else if (modelPtr->surfaceType != MST_NONE)
+                    modelPtr->surfaceSide = MSS_COL;
+                else if (modelPtr->gfxSurfaceCount != 0)
+                    modelPtr->surfaceSide = MSS_GFX;
+                else
+                    modelPtr->surfaceSide = MSS_NONE;
+            }
+            if (gfxAndColLinkNum)
+            {
+                return gfxToColModelLinkMap.at(*gfxAndColLinkNum) + 1;
+            }
+            else
+            {
+                m_bsp->models.emplace_back(model);
+                return m_bsp->models.size(); // script model index starts at 1
+            }
         }
 
-        bool addZoneNode(const JsonRoot& jRoot, const gltf::JsonNode& node, Eigen::Matrix4f& nodeMatrix)
+        bool addZoneNode(const JsonRoot& jRoot, const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix)
         {
+            if (m_is_world_gfx)
+                return true;
+
             assert(node.extras);
             assert(node.extras->contains("zone"));
 
@@ -873,14 +823,17 @@ namespace
             zone.zoneName = node.extras->at("zone");
             zone.spawnerGroupName = node.extras->at("spawner_group");
             zone.spawnpointGroupName = node.extras->at("spawnpoint_group");
-            zone.modelIndex = addScriptBrushModel(jRoot, node, nodeMatrix);
+            zone.modelIndex = addScriptModel(jRoot, node.children, nodeMatrix, std::nullopt);
             m_bsp->zm_zones.emplace_back(zone);
 
             return true;
         }
 
-        bool addZSpawnerNode(const gltf::JsonNode& node, Eigen::Matrix4f& nodeMatrix)
+        bool addZSpawnerNode(const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix)
         {
+            if (m_is_world_gfx)
+                return true;
+
             assert(node.extras);
             assert(node.extras->contains("spawner"));
 
@@ -913,25 +866,34 @@ namespace
             return true;
         }
 
-        bool addClassNode(const JsonRoot& jRoot, const gltf::JsonNode& node, Eigen::Matrix4f& nodeMatrix)
+        bool addClassNode(const JsonRoot& jRoot, const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix)
         {
             assert(node.extras);
             assert(node.extras->contains("classname"));
 
-            BSPEntity entity;
-
             std::string classname = node.extras->at("classname");
-            if (!classname.compare("script_brushmodel_gfx"))
-                entity.modelIndex = addScriptTerrainModel(jRoot, node, nodeMatrix);
-            else if (!classname.compare("script_brushmodel") || (classname.starts_with("trigger_") || !classname.compare("info_volume")))
-                entity.modelIndex = addScriptBrushModel(jRoot, node, nodeMatrix);
-            else
-                entity.modelIndex = 0;
+            if (m_is_world_gfx && classname.compare("script_brushmodel"))
+                return true; // skip any gfx node with classname not script_brushmodel
 
-            if (entity.modelIndex != 0 && node.extras->contains("model"))
+            BSPEntity entity{};
+
+            if (!node.extras->contains("model"))
+                entity.modelIndex = 0;
+            else
             {
-                con::error("Node {} cannot have a model property when its class is a trigger, info_volume, script_brushmodel_gfx or script_brushmodel");
-                return false;
+                std::string modelStr = node.extras->at("model");
+                if (!modelStr.compare("*"))
+                {
+                    if (node.extras->contains("GfxAndColLinkNumber"))
+                    {
+                        size_t linkNumber = node.extras->at("GfxAndColLinkNumber");
+                        entity.modelIndex = addScriptModel(jRoot, node.children, nodeMatrix, linkNumber);
+                        if (m_is_world_gfx) // we don't want both linked entities to be added, so only the col entity added to mapents
+                            return true;
+                    }
+                    else
+                        entity.modelIndex = addScriptModel(jRoot, node.children, nodeMatrix, std::nullopt);
+                }
             }
 
             for (auto& element : node.extras->items())
@@ -941,8 +903,8 @@ namespace
                 if (!key.compare("origin") || !key.compare("angles") || !key.compare("flags"))
                     continue;
 
-                if (!key.compare("classname") && !value.compare("script_brushmodel_gfx"))
-                    value = "script_brushmodel";
+                if (!key.compare("model") && entity.modelIndex != 0)
+                    continue;
 
                 BSPEntityEntry entry;
                 entry.key = key;
@@ -984,9 +946,9 @@ namespace
             return true;
         }
 
-        bool addNodeToBSP(const JsonRoot& jRoot, const gltf::JsonNode& node, Eigen::Matrix4f& nodeMatrix)
+        bool addNodeToBSP(const JsonRoot& jRoot, const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix)
         {
-            if (m_is_world_gfx && node.extensions && node.extensions->KHR_lights_punctual)
+            if (node.extensions && node.extensions->KHR_lights_punctual)
                 return addLightNode(jRoot, node, nodeMatrix);
 
             if (node.extras)
@@ -997,19 +959,8 @@ namespace
                 bool hasXmodel = node.extras->contains("xmodel");
                 bool hasClassname = node.extras->contains("classname");
 
-                if (m_is_world_gfx && (hasSpawnpoint || hasZone || hasSpawner))
-                    return true;
-
                 if (hasClassname)
-                {
-                    std::string classnameVal = node.extras->at("classname");
-                    if (m_is_world_gfx && classnameVal.compare("script_brushmodel_gfx"))
-                        return true; // skip any gfx node with classname not script_brushmodel_gfx
-                    if (!m_is_world_gfx && !classnameVal.compare("script_brushmodel_gfx"))
-                        return true; // skip any col node with classname script_brushmodel_gfx
-
                     return addClassNode(jRoot, node, nodeMatrix);
-                }
 
                 if (hasXmodel)
                     return addXModelNode(jRoot, node, nodeMatrix);
@@ -1028,18 +979,7 @@ namespace
             }
 
             if (node.mesh)
-            {
-                int surfaceFlags = 0;
-                int contentFlags = 0;
-                if (node.extras && node.extras->contains("flags"))
-                    getSurfaceAndContentFlags(node.extras->at("flags"), surfaceFlags, contentFlags);
-
-                bool isNoDraw = (surfaceFlags & BSPFlags::surfaceTypeToFlagMap[BSPFlags::SURF_TYPE_NODRAW].surfaceFlags) != 0;
-                if (m_is_world_gfx && isNoDraw)
-                    return true;
-
-                return addMeshNode(jRoot, node, nodeMatrix);
-            }
+                return addMeshNode(jRoot, node, nodeMatrix, false);
 
             return false;
         }
@@ -1079,66 +1019,6 @@ namespace
             return rootNodes;
         }
 
-        void LoadMaterials(const JsonRoot& jRoot)
-        {
-            if (jRoot.materials)
-            {
-                m_curr_bsp_world->materials.reserve((*jRoot.materials).size());
-                for (auto& jsMaterial : *jRoot.materials)
-                {
-                    BSPMaterial material;
-
-                    if (jsMaterial.name && (*jsMaterial.name).length() != 0)
-                        material.materialName = *jsMaterial.name;
-                    else
-                        throw GltfLoadException("Materials must have a name.");
-
-                    material.materialType = MATERIAL_TYPE_TEXTURE;
-                    material.materialColour.x = 1.0f;
-                    material.materialColour.y = 1.0f;
-                    material.materialColour.z = 1.0f;
-                    material.materialColour.w = 1.0f;
-
-                    material.surfaceFlags = 0;
-                    material.contentFlags = 1; // all materials start out as solid
-                    if (jsMaterial.extras && jsMaterial.extras->contains("type"))
-                    {
-                        std::string typeStr = jsMaterial.extras->at("type");
-                        bool foundType = false;
-                        size_t typeNameCount = std::extent<decltype(BSPFlags::materialTypes)>::value;
-                        for (size_t typeIdx = 0; typeIdx < typeNameCount; typeIdx++)
-                        {
-                            BSPFlags::SurfaceType surfType = BSPFlags::materialTypes[typeIdx];
-                            if (!typeStr.compare(BSPFlags::surfaceTypeToNameMap[surfType]))
-                            {
-                                BSPFlags::s_SurfaceTypeFlags flags = BSPFlags::surfaceTypeToFlagMap[surfType];
-                                material.surfaceFlags |= flags.surfaceFlags;
-                                material.contentFlags |= flags.contentFlags;
-                                foundType = true;
-                                break;
-                            }
-                        }
-                        if (!foundType)
-                            con::warn("material {} with invalid type name: {}", material.materialName, typeStr);
-                    }
-
-                    m_curr_bsp_world->materials.emplace_back(material);
-                }
-            }
-
-            m_emptyMaterialIndex = m_curr_bsp_world->materials.size();
-            BSPMaterial emptyMaterial;
-            emptyMaterial.materialType = MATERIAL_TYPE_COLOUR;
-            emptyMaterial.surfaceFlags = 0;
-            emptyMaterial.contentFlags = 1;
-            emptyMaterial.materialName = "";
-            emptyMaterial.materialColour.x = 1.0f;
-            emptyMaterial.materialColour.y = 1.0f;
-            emptyMaterial.materialColour.z = 1.0f;
-            emptyMaterial.materialColour.w = 1.0f;
-            m_curr_bsp_world->materials.emplace_back(emptyMaterial);
-        }
-
         void TraverseNodes(const JsonRoot& jRoot)
         {
             // Make sure there are any nodes to traverse
@@ -1147,7 +1027,7 @@ namespace
 
             struct s_nodes
             {
-                unsigned int nodeIndex;
+                size_t nodeIndex;
                 Eigen::Matrix4f parentNodeMatrix;
             };
 
@@ -1155,23 +1035,83 @@ namespace
             for (const auto rootNode : GetRootNodes(jRoot))
                 nodeQueue.emplace_back(s_nodes{rootNode, Eigen::Matrix4f::Identity()});
 
+            std::vector<s_nodes> staticNodes;
+            std::vector<s_nodes> staticBrushNodes;
+            std::vector<s_nodes> scriptNodes;
             while (!nodeQueue.empty())
             {
-                const auto& node = jRoot.nodes.value()[nodeQueue.front().nodeIndex];
+                size_t nodeIndex = nodeQueue.front().nodeIndex;
+                const auto& node = jRoot.nodes.value()[nodeIndex];
                 Eigen::Matrix4f parentNodeMatrix = nodeQueue.front().parentNodeMatrix;
                 nodeQueue.pop_front();
 
                 Eigen::Matrix4f nodeMatrix = createNodeMatrix(node);
                 Eigen::Matrix4f transformedNodeMatrix = parentNodeMatrix * nodeMatrix;
 
-                if (node.children)
+                if (node.extras && node.extras->contains("classname"))
+                    scriptNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                else
                 {
-                    for (const auto childIndex : *node.children)
-                        nodeQueue.emplace_back(s_nodes{childIndex, transformedNodeMatrix});
-                }
+                    if (node.children)
+                    {
+                        for (const auto childIndex : *node.children)
+                            nodeQueue.emplace_back(s_nodes{childIndex, transformedNodeMatrix});
+                    }
 
-                if (!addNodeToBSP(jRoot, node, transformedNodeMatrix))
-                    con::warn("({}) Ignoring node: {}", getWorldTypeName(), node.name.value_or("unnamed node"));
+                    if (node.extras && node.extras->contains("model"))
+                    {
+                        std::string modelStr = node.extras->at("model");
+                        if (!modelStr.compare("brush"))
+                        {
+                            if (m_is_world_gfx)
+                                throw GltfLoadException(std::format("Brushmodel in gfx is not allowed, node name: {}", node.name.value_or("unnamed node")));
+                            else
+                                staticBrushNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                        }
+                        else if (!modelStr.compare("terrain"))
+                            staticNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                        else
+                            throw GltfLoadException(std::format("Node {} has model property but isn't brush or terrain ", node.name.value_or("unnamed node")));
+                    }
+                    else
+                        staticNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                }
+            }
+
+            if (m_is_world_gfx)
+            {
+                m_bsp->staticSurfaceStart = m_curr_bsp_world->surfaces.size();
+                assert(m_bsp->staticSurfaceStart == 0);
+                for (const auto& node : staticNodes)
+                {
+                    if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
+                        con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
+                }
+                m_bsp->staticSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->staticSurfaceStart;
+            }
+            else
+            {
+                m_bsp->staticTerrainSurfaceStart = m_curr_bsp_world->surfaces.size();
+                for (const auto& node : staticNodes)
+                {
+                    if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
+                        con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
+                }
+                m_bsp->staticTerrainSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->staticTerrainSurfaceStart;
+
+                m_bsp->staticBrushSurfaceStart = m_curr_bsp_world->surfaces.size();
+                for (const auto& node : staticBrushNodes)
+                {
+                    if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
+                        con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
+                }
+                m_bsp->staticBrushSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->staticBrushSurfaceStart;
+            }
+
+            for (const auto& node : scriptNodes)
+            {
+                if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
+                    con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
             }
         }
 
@@ -1262,6 +1202,50 @@ namespace
             }
         }
 
+        void LoadMaterials(const JsonRoot& jRoot)
+        {
+            if (jRoot.materials)
+            {
+                m_curr_bsp_world->materials.reserve((*jRoot.materials).size());
+                for (auto& jsMaterial : *jRoot.materials)
+                {
+                    BSPMaterial material;
+
+                    if (jsMaterial.extras && jsMaterial.extras->contains("name"))
+                        material.materialName = jsMaterial.extras->at("name");
+                    else if (jsMaterial.name && (*jsMaterial.name).length() != 0)
+                        material.materialName = *jsMaterial.name;
+                    else
+                        throw GltfLoadException("Materials must have a name.");
+
+                    material.materialType = MATERIAL_TYPE_TEXTURE;
+                    material.materialColour.x = 1.0f;
+                    material.materialColour.y = 1.0f;
+                    material.materialColour.z = 1.0f;
+                    material.materialColour.w = 1.0f;
+
+                    material.surfaceFlags = 0;
+                    material.contentFlags = 1; // all materials start out as solid
+                    if (jsMaterial.extras && jsMaterial.extras->contains("flags"))
+                        convertStringToFlags(jsMaterial.extras->at("flags"), material.surfaceFlags, material.contentFlags);
+
+                    m_curr_bsp_world->materials.emplace_back(material);
+                }
+            }
+
+            m_emptyMaterialIndex = m_curr_bsp_world->materials.size();
+            BSPMaterial emptyMaterial;
+            emptyMaterial.materialType = MATERIAL_TYPE_COLOUR;
+            emptyMaterial.surfaceFlags = 0;
+            emptyMaterial.contentFlags = 1;
+            emptyMaterial.materialName = "";
+            emptyMaterial.materialColour.x = 1.0f;
+            emptyMaterial.materialColour.y = 1.0f;
+            emptyMaterial.materialColour.z = 1.0f;
+            emptyMaterial.materialColour.w = 1.0f;
+            m_curr_bsp_world->materials.emplace_back(emptyMaterial);
+        }
+
     public:
         bool addGLTFDataToBSP(Input& gltfInput, bool isGfxWorld)
         {
@@ -1312,137 +1296,129 @@ namespace
     };
 } // namespace
 
-namespace BSP
+std::unique_ptr<BSPData> T6::BSP::createBSPData(std::string& mapName, ISearchPath& searchPath, bool isZombiesMap)
 {
-    std::unique_ptr<BSPData> createBSPData(std::string& mapName, ISearchPath& searchPath, bool isZombiesMap)
-    {
-        bool seperateColFile = true;
-        bool isGfxFileGltf = true;
-        bool isColFileGltf = true;
+    bool seperateColFile = true;
+    bool isGfxFileGltf = true;
+    bool isColFileGltf = true;
 
-        std::string gfxFilePath = BSPUtil::getFileNameForBSPAsset("map_gfx.gltf");
-        auto gfxFile = searchPath.Open(gfxFilePath);
+    std::string gfxFilePath = BSPUtil::getFileNameForBSPAsset("map_gfx.gltf");
+    auto gfxFile = searchPath.Open(gfxFilePath);
+    if (!gfxFile.IsOpen())
+    {
+        isGfxFileGltf = false;
+        gfxFilePath = BSPUtil::getFileNameForBSPAsset("map_gfx.glb");
+        gfxFile = searchPath.Open(gfxFilePath);
         if (!gfxFile.IsOpen())
         {
-            isGfxFileGltf = false;
-            gfxFilePath = BSPUtil::getFileNameForBSPAsset("map_gfx.glb");
-            gfxFile = searchPath.Open(gfxFilePath);
-            if (!gfxFile.IsOpen())
-            {
-                con::error("BSP Creator: Can't find map_gfx.gltf or map_gfx.glb.");
-                return nullptr;
-            }
+            con::error("BSP Creator: Can't find map_gfx.gltf or map_gfx.glb.");
+            return nullptr;
         }
+    }
 
-        std::string colFilePath = BSPUtil::getFileNameForBSPAsset("map_col.gltf");
-        auto colFile = searchPath.Open(colFilePath);
+    std::string colFilePath = BSPUtil::getFileNameForBSPAsset("map_col.gltf");
+    auto colFile = searchPath.Open(colFilePath);
+    if (!colFile.IsOpen())
+    {
+        isColFileGltf = false;
+        colFilePath = BSPUtil::getFileNameForBSPAsset("map_col.glb");
+        colFile = searchPath.Open(colFilePath);
         if (!colFile.IsOpen())
         {
-            isColFileGltf = false;
-            colFilePath = BSPUtil::getFileNameForBSPAsset("map_col.glb");
-            colFile = searchPath.Open(colFilePath);
-            if (!colFile.IsOpen())
-            {
-                con::info("BSP Creator: generating colision data from GLTF graphics data.");
-                seperateColFile = false;
-            }
+            con::info("BSP Creator: generating colision data from GLTF graphics data.");
+            seperateColFile = false;
         }
+    }
 
-        std::unique_ptr<BSPData> bsp = std::make_unique<BSPData>();
-        bsp->name = mapName;
-        bsp->bspName = "maps/mp/" + mapName + ".d3dbsp";
-        bsp->isZombiesMap = isZombiesMap;
-        bsp->hasSunlightBeenSet = false;
-        bsp->containsIntermssion = false;
-        bsp->containsWorldspawn = false;
+    std::unique_ptr<BSPData> bsp = std::make_unique<BSPData>();
+    bsp->name = mapName;
+    bsp->bspName = "maps/mp/" + mapName + ".d3dbsp";
+    bsp->isZombiesMap = isZombiesMap;
+    bsp->hasSunlightBeenSet = false;
+    bsp->containsIntermssion = false;
+    bsp->containsWorldspawn = false;
 
-        con::warn("XModels don't support scale currently, keep it at 1 in your editor");
-        con::warn("All brushmodels, zones, triggers, and info_volumes must be an axis aligned box with 6 sides to work correctly.");
+    BSPLoader loader(bsp.get());
+    if (isGfxFileGltf)
+    {
+        gltf::TextInput input;
+        if (!input.ReadGltfData(*gfxFile.m_stream))
+            return nullptr;
+        if (!loader.addGLTFDataToBSP(input, true))
+            return nullptr;
+        if (!seperateColFile)
+            if (!loader.addGLTFDataToBSP(input, false))
+                return nullptr;
+    }
+    else
+    {
+        gltf::BinInput input;
+        if (!input.ReadGltfData(*gfxFile.m_stream))
+            return nullptr;
+        if (!loader.addGLTFDataToBSP(input, true))
+            return nullptr;
+        if (!seperateColFile)
+            if (!loader.addGLTFDataToBSP(input, false))
+                return nullptr;
+    }
 
-        BSPLoader loader(bsp.get());
-        if (isGfxFileGltf)
+    if (seperateColFile)
+    {
+        if (isColFileGltf)
         {
             gltf::TextInput input;
-            if (!input.ReadGltfData(*gfxFile.m_stream))
+            if (!input.ReadGltfData(*colFile.m_stream))
                 return nullptr;
-            if (!loader.addGLTFDataToBSP(input, true))
+            if (!loader.addGLTFDataToBSP(input, false))
                 return nullptr;
-            if (!seperateColFile)
-                if (!loader.addGLTFDataToBSP(input, false))
-                    return nullptr;
         }
         else
         {
             gltf::BinInput input;
-            if (!input.ReadGltfData(*gfxFile.m_stream))
+            if (!input.ReadGltfData(*colFile.m_stream))
                 return nullptr;
-            if (!loader.addGLTFDataToBSP(input, true))
+            if (!loader.addGLTFDataToBSP(input, false))
                 return nullptr;
-            if (!seperateColFile)
-                if (!loader.addGLTFDataToBSP(input, false))
-                    return nullptr;
         }
-
-        if (seperateColFile)
-        {
-            if (isColFileGltf)
-            {
-                gltf::TextInput input;
-                if (!input.ReadGltfData(*colFile.m_stream))
-                    return nullptr;
-                if (!loader.addGLTFDataToBSP(input, false))
-                    return nullptr;
-            }
-            else
-            {
-                gltf::BinInput input;
-                if (!input.ReadGltfData(*colFile.m_stream))
-                    return nullptr;
-                if (!loader.addGLTFDataToBSP(input, false))
-                    return nullptr;
-            }
-        }
-
-        if (!bsp->hasSunlightBeenSet)
-        {
-            con::info("Writing default sun values");
-            bsp->sunlight.type = LIGHT_TYPE_DIRECTIONAL;
-            bsp->sunlight.colour = {1.0f, 1.0f, 1.0f};
-            bsp->sunlight.range = 1000.0f;
-            bsp->sunlight.intensity = 1000.0f;
-            bsp->sunlight.pos = {0.0f, 0.0f, 0.0f};
-            bsp->sunlight.direction = {0.0f, -1.0f, 0.0f};
-            bsp->sunlight.innerConeAngle = 0.0f;
-            bsp->sunlight.outerConeAngle = 0.0f;
-        }
-        if (!bsp->containsIntermssion)
-        {
-            con::error("Map does not contain a mp_global_intermission class");
-            return nullptr;
-        }
-        if (!bsp->containsWorldspawn)
-        {
-            con::error("Map does not contain a worldspawn class");
-            return nullptr;
-        }
-        if (bsp->spawnpoints.size() == 0)
-        {
-            con::error("Map must have spawn points!");
-            return nullptr;
-        }
-        if (bsp->gfxWorld.staticSurfaces.size() + bsp->gfxWorld.scriptSurfaces.size() == 0 || bsp->gfxWorld.vertices.size() == 0
-            || bsp->gfxWorld.indices.size() == 0)
-        {
-            con::error("GFX world has no surfaces, indicies or vertices!");
-            return nullptr;
-        }
-        if (bsp->colWorld.staticSurfaces.size() + bsp->colWorld.scriptSurfaces.size() == 0 || bsp->colWorld.vertices.size() == 0
-            || bsp->colWorld.indices.size() == 0)
-        {
-            con::error("Collision world has no surfaces, indicies or vertices!");
-            return nullptr;
-        }
-
-        return bsp;
     }
-} // namespace BSP
+
+    if (!bsp->hasSunlightBeenSet)
+    {
+        con::info("Writing default sun values");
+        bsp->sunlight.type = LIGHT_TYPE_DIRECTIONAL;
+        bsp->sunlight.colour = {1.0f, 1.0f, 1.0f};
+        bsp->sunlight.range = 1000.0f;
+        bsp->sunlight.intensity = 1000.0f;
+        bsp->sunlight.pos = {0.0f, 0.0f, 0.0f};
+        bsp->sunlight.direction = {0.0f, -1.0f, 0.0f};
+        bsp->sunlight.innerConeAngle = 0.0f;
+        bsp->sunlight.outerConeAngle = 0.0f;
+    }
+    if (!bsp->containsIntermssion)
+    {
+        con::error("Map does not contain a mp_global_intermission class");
+        return nullptr;
+    }
+    if (!bsp->containsWorldspawn)
+    {
+        con::error("Map does not contain a worldspawn class");
+        return nullptr;
+    }
+    if (bsp->spawnpoints.size() == 0)
+    {
+        con::error("Map must have spawn points!");
+        return nullptr;
+    }
+    if (bsp->gfxWorld.surfaces.size() || bsp->gfxWorld.vertices.size() == 0 || bsp->gfxWorld.indices.size() == 0)
+    {
+        con::error("GFX world has no surfaces, indicies or vertices!");
+        return nullptr;
+    }
+    if (bsp->colWorld.surfaces.size() || bsp->colWorld.vertices.size() == 0 || bsp->colWorld.indices.size() == 0)
+    {
+        con::error("Collision world has no surfaces, indicies or vertices!");
+        return nullptr;
+    }
+
+    return bsp;
+}

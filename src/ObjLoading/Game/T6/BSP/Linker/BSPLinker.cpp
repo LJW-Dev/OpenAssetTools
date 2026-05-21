@@ -7,6 +7,7 @@
 #include "MapEntsLinker.h"
 #include "SkinnedVertsLinker.h"
 
+using namespace T6;
 using namespace BSP;
 
 class BSPLinkerImpl : public BSPLinker

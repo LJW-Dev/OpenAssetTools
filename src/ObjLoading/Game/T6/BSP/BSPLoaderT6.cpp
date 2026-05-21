@@ -1,13 +1,13 @@
 #include "BSPLoaderT6.h"
 
-#include "BSP/BSPUtil.h"
 #include "BSPCreator.h"
 #include "Linker/BSPLinker.h"
 
+using namespace T6;
+using namespace BSP;
+
 namespace
 {
-    using namespace BSP;
-
     class BSPLoader final : public IAssetCreator
     {
     public:
@@ -33,7 +33,7 @@ namespace
 
         bool FinalizeZone(AssetCreationContext& context) override
         {
-            std::unique_ptr<BSPData> bsp = BSP::createBSPData(m_zone.m_name, m_search_path, m_mapType == ZoneDefinitionMapType::ZM);
+            std::unique_ptr<BSPData> bsp = createBSPData(m_zone.m_name, m_search_path, m_mapType == ZoneDefinitionMapType::ZM);
             if (bsp == nullptr)
                 return false;
 
@@ -53,10 +53,7 @@ namespace
     };
 } // namespace
 
-namespace BSP
+std::unique_ptr<IAssetCreator> T6::BSP::CreateLoaderT6(MemoryManager& memory, ISearchPath& searchPath, Zone& zone, ZoneDefinitionMapType mapType)
 {
-    std::unique_ptr<IAssetCreator> CreateLoaderT6(MemoryManager& memory, ISearchPath& searchPath, Zone& zone, ZoneDefinitionMapType mapType)
-    {
-        return std::make_unique<BSPLoader>(memory, searchPath, zone, mapType);
-    }
-} // namespace BSP
+    return std::make_unique<BSPLoader>(memory, searchPath, zone, mapType);
+}

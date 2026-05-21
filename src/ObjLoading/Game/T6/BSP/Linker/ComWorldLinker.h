@@ -5,12 +5,18 @@
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
 
-class ComWorldLinker
+namespace T6
 {
-public:
-    virtual ~ComWorldLinker() = default;
+    namespace BSP
+    {
+        class ComWorldLinker
+        {
+        public:
+            virtual ~ComWorldLinker() = default;
 
-    static std::unique_ptr<ComWorldLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
+            static std::unique_ptr<ComWorldLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
 
-    virtual ComWorld* linkComWorld(BSP::BSPData* bsp) = 0;
-};
+            virtual ComWorld* linkComWorld(BSP::BSPData* bsp) = 0;
+        };
+    } // namespace BSP
+} // namespace T6

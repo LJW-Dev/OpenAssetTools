@@ -2,6 +2,9 @@
 
 #include "BSP/BSPUtil.h"
 
+using namespace T6;
+using namespace BSP;
+
 namespace
 {
     inline const std::vector<const char*> DEFENDER_SPAWN_POINT_NAMES = {"mp_ctf_spawn_allies",
@@ -39,9 +42,9 @@ namespace
                 entityString.append("{\n");
                 entityString.append("\"classname\" \"script_struct\"\n");
                 entityString.append(std::format("\"targetname\" \"{}\"\n", spawnPoint.spawnpointGroupName));
-                entityString.append(std::format("\"origin\" \"{}\"\n", BSP::BSPUtil::convertVec3ToString(spawnPoint.origin)));
-                vec3_t angles = BSP::BSPUtil::convertForwardVectorToViewAngles(spawnPoint.forward);
-                entityString.append(std::format("\"angles\" \"{}\"\n", BSP::BSPUtil::convertVec3ToString(angles)));
+                entityString.append(std::format("\"origin\" \"{}\"\n", BSPUtil::convertVec3ToString(spawnPoint.origin)));
+                vec3_t angles = BSPUtil::convertForwardVectorToViewAngles(spawnPoint.forward);
+                entityString.append(std::format("\"angles\" \"{}\"\n", BSPUtil::convertVec3ToString(angles)));
                 entityString.append("}\n");
             }
             return;
@@ -54,10 +57,10 @@ namespace
         for (auto& spawnPoint : bsp->spawnpoints)
         {
             vec3_t origin = spawnPoint.origin;
-            vec3_t angles = BSP::BSPUtil::convertForwardVectorToViewAngles(spawnPoint.forward);
+            vec3_t angles = BSPUtil::convertForwardVectorToViewAngles(spawnPoint.forward);
 
-            std::string originStr = std::format("\"origin\" \"{}\"\n", BSP::BSPUtil::convertVec3ToString(origin));
-            std::string anglesStr = std::format("\"angles\" \"{}\"\n", BSP::BSPUtil::convertVec3ToString(angles));
+            std::string originStr = std::format("\"origin\" \"{}\"\n", BSPUtil::convertVec3ToString(origin));
+            std::string anglesStr = std::format("\"angles\" \"{}\"\n", BSPUtil::convertVec3ToString(angles));
 
             const std::vector<const char*>* spawnPointList;
             if (!spawnPoint.spawnpointGroupName.compare("defender"))
@@ -87,7 +90,7 @@ namespace
             entityString.append("\"script_noteworthy\" \"player_volume\"\n");
             entityString.append(std::format("\"targetname\" \"{}\"\n", zone.zoneName));
             entityString.append(std::format("\"target\" \"{}\"\n", zone.spawnerGroupName));
-            entityString.append(std::format("\"origin\" \"{}\"\n", BSP::BSPUtil::convertVec3ToString(zone.origin)));
+            entityString.append(std::format("\"origin\" \"{}\"\n", BSPUtil::convertVec3ToString(zone.origin)));
             entityString.append(std::format("\"model\" \"*{}\"\n", zone.modelIndex));
             entityString.append("}\n");
 
@@ -106,9 +109,9 @@ namespace
             entityString.append("\"script_noteworthy\" \"riser_location\"\n");
             entityString.append("\"script_string\" \"find_flesh\"\n");
             entityString.append(std::format("\"targetname\" \"{}\"\n", zSpawner.spawnerGroupName));
-            entityString.append(std::format("\"origin\" \"{}\"\n", BSP::BSPUtil::convertVec3ToString(zSpawner.origin)));
-            vec3_t angles = BSP::BSPUtil::convertForwardVectorToViewAngles(zSpawner.forward);
-            entityString.append(std::format("\"angles\" \"{}\"\n", BSP::BSPUtil::convertVec3ToString(angles)));
+            entityString.append(std::format("\"origin\" \"{}\"\n", BSPUtil::convertVec3ToString(zSpawner.origin)));
+            vec3_t angles = BSPUtil::convertForwardVectorToViewAngles(zSpawner.forward);
+            entityString.append(std::format("\"angles\" \"{}\"\n", BSPUtil::convertVec3ToString(angles)));
             entityString.append("}\n");
         }
     }
@@ -119,67 +122,65 @@ namespace
         {
             vec3_t origin = entity.origin;
             vec3_t axis[3];
-            BSP::BSPUtil::convertQuaternionToAxis(&entity.rotationQuaternion, axis);
-            vec3_t angles = BSP::BSPUtil::convertAxisToAngles(axis);
+            BSPUtil::convertQuaternionToAxis(&entity.rotationQuaternion, axis);
+            vec3_t angles = BSPUtil::convertAxisToAngles(axis);
 
             entityString.append("{\n");
-            entityString.append(std::format("\"origin\" \"{}\"\n", BSP::BSPUtil::convertVec3ToString(origin)));
+            entityString.append(std::format("\"origin\" \"{}\"\n", BSPUtil::convertVec3ToString(origin)));
 
             for (auto& entry : entity.entries)
                 entityString.append(std::format("\"{}\" \"{}\"\n", entry.key, entry.value));
             if (entity.modelIndex != 0)
                 entityString.append(std::format("\"model\" \"*{}\"\n", entity.modelIndex));
             else // entities with generated models can't have rotation data
-                entityString.append(std::format("\"angles\" \"{}\"\n", BSP::BSPUtil::convertVec3ToString(angles)));
+                entityString.append(std::format("\"angles\" \"{}\"\n", BSPUtil::convertVec3ToString(angles)));
 
             entityString.append("}\n");
         }
     }
+
+    class MapEntsLinkerImpl : public MapEntsLinker
+    {
+    private:
+        MemoryManager& m_memory;
+        ISearchPath& m_search_path;
+        AssetCreationContext& m_context;
+
+    public:
+        explicit MapEntsLinkerImpl(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+            : m_memory(memory),
+              m_search_path(searchPath),
+              m_context(context)
+        {
+        }
+
+        MapEnts* linkMapEnts(BSPData* bsp) override
+        {
+            std::string entityString;
+
+            // worldspawn must be the first entity
+            entityString.append("{\n");
+            for (auto& entry : bsp->worldspawn.entries)
+                entityString.append(std::format("\"{}\" \"{}\"\n", entry.key, entry.value));
+            entityString.append("}\n");
+
+            addSpawnsToEntString(bsp, entityString);
+
+            if (bsp->isZombiesMap)
+                addZombiesEntitiesToEntString(bsp, entityString);
+
+            addClassEntitiesToEntString(bsp, entityString);
+
+            MapEnts* mapEnts = m_memory.Alloc<MapEnts>();
+            mapEnts->name = m_memory.Dup(bsp->bspName.c_str());
+
+            mapEnts->entityString = m_memory.Dup(entityString.c_str());
+            mapEnts->numEntityChars = static_cast<int>(entityString.length() + 1); // numEntityChars includes the null character
+
+            return mapEnts;
+        }
+    };
 } // namespace
-
-using namespace BSP;
-
-class MapEntsLinkerImpl : public MapEntsLinker
-{
-private:
-    MemoryManager& m_memory;
-    ISearchPath& m_search_path;
-    AssetCreationContext& m_context;
-
-public:
-    explicit MapEntsLinkerImpl(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
-        : m_memory(memory),
-          m_search_path(searchPath),
-          m_context(context)
-    {
-    }
-
-    MapEnts* linkMapEnts(BSPData* bsp) override
-    {
-        std::string entityString;
-
-        // worldspawn must be the first entity
-        entityString.append("{\n");
-        for (auto& entry : bsp->worldspawn.entries)
-            entityString.append(std::format("\"{}\" \"{}\"\n", entry.key, entry.value));
-        entityString.append("}\n");
-
-        addSpawnsToEntString(bsp, entityString);
-
-        if (bsp->isZombiesMap)
-            addZombiesEntitiesToEntString(bsp, entityString);
-
-        addClassEntitiesToEntString(bsp, entityString);
-
-        MapEnts* mapEnts = m_memory.Alloc<MapEnts>();
-        mapEnts->name = m_memory.Dup(bsp->bspName.c_str());
-
-        mapEnts->entityString = m_memory.Dup(entityString.c_str());
-        mapEnts->numEntityChars = static_cast<int>(entityString.length() + 1); // numEntityChars includes the null character
-
-        return mapEnts;
-    }
-};
 
 std::unique_ptr<MapEntsLinker> MapEntsLinker::Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
 {

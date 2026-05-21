@@ -1,45 +1,50 @@
 #include "GameWorldMpLinker.h"
 
+using namespace T6;
 using namespace BSP;
 
-class GameWorldMpLinkerImpl : public GameWorldMpLinker
+namespace
 {
-private:
-    MemoryManager& m_memory;
-    ISearchPath& m_search_path;
-    AssetCreationContext& m_context;
 
-public:
-    explicit GameWorldMpLinkerImpl(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
-        : m_memory(memory),
-          m_search_path(searchPath),
-          m_context(context)
+    class GameWorldMpLinkerImpl : public GameWorldMpLinker
     {
-    }
+    private:
+        MemoryManager& m_memory;
+        ISearchPath& m_search_path;
+        AssetCreationContext& m_context;
 
-    GameWorldMp* linkGameWorldMp(BSPData* bsp) override
-    {
-        GameWorldMp* gameWorldMp = m_memory.Alloc<GameWorldMp>();
+    public:
+        explicit GameWorldMpLinkerImpl(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+            : m_memory(memory),
+              m_search_path(searchPath),
+              m_context(context)
+        {
+        }
 
-        gameWorldMp->name = m_memory.Dup(bsp->bspName.c_str());
+        GameWorldMp* linkGameWorldMp(BSPData* bsp) override
+        {
+            GameWorldMp* gameWorldMp = m_memory.Alloc<GameWorldMp>();
 
-        gameWorldMp->path.nodeCount = 0;
-        gameWorldMp->path.originalNodeCount = 0;
-        gameWorldMp->path.visBytes = 0;
-        gameWorldMp->path.smoothBytes = 0;
-        gameWorldMp->path.nodeTreeCount = 0;
+            gameWorldMp->name = m_memory.Dup(bsp->bspName.c_str());
 
-        // The game has 128 empty nodes allocated
-        int extraNodeCount = gameWorldMp->path.nodeCount + 128;
-        gameWorldMp->path.nodes = m_memory.Alloc<pathnode_t>(extraNodeCount);
-        gameWorldMp->path.basenodes = m_memory.Alloc<pathbasenode_t>(extraNodeCount);
-        gameWorldMp->path.pathVis = nullptr;
-        gameWorldMp->path.smoothCache = nullptr;
-        gameWorldMp->path.nodeTree = nullptr;
+            gameWorldMp->path.nodeCount = 0;
+            gameWorldMp->path.originalNodeCount = 0;
+            gameWorldMp->path.visBytes = 0;
+            gameWorldMp->path.smoothBytes = 0;
+            gameWorldMp->path.nodeTreeCount = 0;
 
-        return gameWorldMp;
-    }
-};
+            // The game has 128 empty nodes allocated
+            int extraNodeCount = gameWorldMp->path.nodeCount + 128;
+            gameWorldMp->path.nodes = m_memory.Alloc<pathnode_t>(extraNodeCount);
+            gameWorldMp->path.basenodes = m_memory.Alloc<pathbasenode_t>(extraNodeCount);
+            gameWorldMp->path.pathVis = nullptr;
+            gameWorldMp->path.smoothCache = nullptr;
+            gameWorldMp->path.nodeTree = nullptr;
+
+            return gameWorldMp;
+        }
+    };
+} // namespace
 
 std::unique_ptr<GameWorldMpLinker> GameWorldMpLinker::Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
 {
