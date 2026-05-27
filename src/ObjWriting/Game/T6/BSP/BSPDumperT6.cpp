@@ -424,6 +424,7 @@ namespace
             BSPEntity entity{};
             entity.rotationQuaternion = {0.0f, 0.0f, 0.0f, 1.0f};
             entity.type = ET_OTHER;
+            entity.hasModel = false;
             entity.classname = "unknown";
             entity.uniqueEntityNumber = entIdx++;
             while (true)
@@ -503,7 +504,10 @@ namespace
                     LhcToRhcQuaternion(entity.rotationQuaternion.v);
                 }
                 else if (!strcmp(keyStrPtr, "model") && *valueStrPtr == '*')
+                {
+                    entity.hasModel = true;
                     entity.modelIndex = createModelFromIndex(atol(valueStrPtr + 1), dumpData, gfxworld, clipmap);
+                }
                 else
                 {
                     BSPEntityEntry entry = {keyStrPtr, valueStrPtr};
@@ -536,7 +540,8 @@ namespace
         for (size_t matIdx = 0; matIdx < dumpData.gfxWorld.materials.size(); matIdx++)
         {
             auto& mat = dumpData.gfxWorld.materials.at(matIdx);
-            if (!mat.materialName.compare(material->info.name) && flagsMatchExact(sflags, mat.surfaceFlags) && flagsMatchExact(cflags, mat.contentFlags))
+            if (!mat.materialName.compare(material->info.name) && (mat.surfaceFlags == 0 || flagsMatchExact(sflags, mat.surfaceFlags))
+                && (mat.contentFlags == 0 || flagsMatchExact(cflags, mat.contentFlags)))
                 return matIdx;
         }
 
@@ -559,11 +564,11 @@ namespace
         for (int surfIdx = 0; surfIdx < gfxWorld->surfaceCount; surfIdx++)
         {
             GfxSurface* inSurface = &gfxWorld->dpvs.surfaces[surfIdx];
-            int vd0Offset = inSurface->tris.vertexDataOffset0;
+            size_t vd0Offset = inSurface->tris.vertexDataOffset0;
 
             uint16_t largestIndex = 0;
             uint16_t* surfTriIndicies = &gfxWorld->draw.indices[inSurface->tris.baseIndex];
-            for (int vertIdx = 0; vertIdx < inSurface->tris.triCount * 3; vertIdx++)
+            for (size_t vertIdx = 0; vertIdx < static_cast<size_t>(inSurface->tris.triCount) * 3; vertIdx++)
             {
                 if (surfTriIndicies[vertIdx] > largestIndex)
                     largestIndex = surfTriIndicies[vertIdx];
@@ -583,7 +588,7 @@ namespace
         for (const auto& pair : vd0Offsets)
         {
             size_t vd0Offset = pair.first;
-            size_t vertexCount = pair.second;
+            size_t vertexCount = pair.second + 1;
             vd0OffsetToGltf[vd0Offset] = {totalVertexCount, vertexCount};
 
             for (size_t idx = 0; idx < vertexCount; idx++)
@@ -962,18 +967,24 @@ namespace
         for (BSPEntity& entity : dumpData.entities)
         {
             BSPModel* model;
-            if (entity.modelIndex != 0)
+            if (entity.hasModel)
                 model = &dumpData.models.at(entity.modelIndex);
             else
                 model = nullptr;
 
-            if (isGfxWorld && model != nullptr && model->surfaceSide != MSS_GFX && model->surfaceSide != MSS_BOTH)
-                continue;
+            if (model != nullptr)
+            {
+                if (isGfxWorld && model->surfaceSide == MSS_COL)
+                    continue;
+                if (!isGfxWorld && model->surfaceSide == MSS_GFX)
+                    continue;
+            }
 
             JsonNode node;
             node.name = std::format("entity_{}_{}", entity.classname, entIdx++);
             node.children.emplace();
             node.translation.emplace();
+            node.rotation.emplace();
             (*node.translation)[0] = entity.origin.x;
             (*node.translation)[1] = entity.origin.y;
             (*node.translation)[2] = entity.origin.z;
@@ -1000,15 +1011,32 @@ namespace
 
             if (model != nullptr && model->surfaceSide != MSS_NONE)
             {
-                if (model->surfaceSide == MSS_BOTH || (model->surfaceSide == MSS_GFX && isGfxWorld))
+                if (model->surfaceSide == MSS_BOTH)
+                {
+                    if (isGfxWorld)
+                        addNodesFromTerrainSurfaces(root, dumpData, model->gfxSurfaceIndex, model->gfxSurfaceCount, nodeIdx, isGfxWorld);
+                    else
+                    {
+                        if (model->surfaceType == MST_TERRAIN)
+                            addNodesFromTerrainSurfaces(root, dumpData, model->colTerrainSurfaceIndex, model->colTerrainSurfaceCount, nodeIdx, isGfxWorld);
+                        else if (model->surfaceType == MST_BRUSH)
+                            addNodesFromBrushSurfaces(root, dumpData, model->colBrushSurfaceIndex, model->colBrushSurfaceCount, nodeIdx, isGfxWorld);
+                        else if (model->surfaceType == MST_BOTH)
+                        {
+                            addNodesFromTerrainSurfaces(root, dumpData, model->colTerrainSurfaceIndex, model->colTerrainSurfaceCount, nodeIdx, isGfxWorld);
+                            addNodesFromBrushSurfaces(root, dumpData, model->colBrushSurfaceIndex, model->colBrushSurfaceCount, nodeIdx, isGfxWorld);
+                        }
+                    }
+                }
+                else if (model->surfaceSide == MSS_GFX)
                     addNodesFromTerrainSurfaces(root, dumpData, model->gfxSurfaceIndex, model->gfxSurfaceCount, nodeIdx, isGfxWorld);
-                else if (model->surfaceSide == MSS_BOTH || (model->surfaceSide == MSS_COL && !isGfxWorld))
+                else if (model->surfaceSide == MSS_COL)
                 {
                     if (model->surfaceType == MST_TERRAIN)
                         addNodesFromTerrainSurfaces(root, dumpData, model->colTerrainSurfaceIndex, model->colTerrainSurfaceCount, nodeIdx, isGfxWorld);
                     else if (model->surfaceType == MST_BRUSH)
                         addNodesFromBrushSurfaces(root, dumpData, model->colBrushSurfaceIndex, model->colBrushSurfaceCount, nodeIdx, isGfxWorld);
-                    else // MST_BOTH
+                    else if (model->surfaceType == MST_BOTH)
                     {
                         addNodesFromTerrainSurfaces(root, dumpData, model->colTerrainSurfaceIndex, model->colTerrainSurfaceCount, nodeIdx, isGfxWorld);
                         addNodesFromBrushSurfaces(root, dumpData, model->colBrushSurfaceIndex, model->colBrushSurfaceCount, nodeIdx, isGfxWorld);

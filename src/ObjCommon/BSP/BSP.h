@@ -192,6 +192,7 @@ namespace T6
 
             vec3_t origin;
             vec4_t rotationQuaternion;
+            bool hasModel;
             size_t modelIndex;
 
             bspEntityType type;
