@@ -347,13 +347,29 @@ namespace
             const auto vertexOffset = static_cast<unsigned>(m_curr_bsp_world->vertices.size());
             for (auto vertexIndex = 0u; vertexIndex < vertexCount; vertexIndex++)
             {
-                BSPVertex vertex;
+                BSPVertex vertex{};
 
-                if (!positionAccessor->GetFloatVec3(vertexIndex, vertex.pos.v) || !normalAccessor->GetFloatVec3(vertexIndex, vertex.normal.v)
-                    || !colorAccessor->GetFloatVec4(vertexIndex, vertex.color.v) || !uvAccessor->GetFloatVec2(vertexIndex, vertex.texCoord.v))
-                {
+                if (!positionAccessor->GetFloatVec3(vertexIndex, vertex.pos.v))
                     assert(false);
-                }
+                if (!normalAccessor->GetFloatVec3(vertexIndex, vertex.normal.v))
+                    assert(false);
+                if (colorAccessor->GetType().value() == JsonAccessorType::VEC4)
+                    if (!colorAccessor->GetFloatVec4(vertexIndex, vertex.color.v))
+                        assert(false);
+                    else if (colorAccessor->GetType().value() == JsonAccessorType::VEC3)
+                    {
+                        vec3_t colorout{};
+                        if (!colorAccessor->GetFloatVec3(vertexIndex, colorout.v))
+                            assert(false);
+                        vertex.color.x = colorout.x;
+                        vertex.color.y = colorout.y;
+                        vertex.color.z = colorout.z;
+                        vertex.color.w = 1.0f;
+                    }
+                    else
+                        assert(false);
+                if (!uvAccessor->GetFloatVec2(vertexIndex, vertex.texCoord.v))
+                    assert(false);
 
                 vertex.color.x *= materialColor.x;
                 vertex.color.y *= materialColor.y;
@@ -926,7 +942,16 @@ namespace
             for (auto& element : node.extras->items())
             {
                 std::string key = element.key();
-                std::string value = element.value();
+                std::string value;
+                if (element.value().is_string())
+                    value = element.value();
+                else if (element.value().is_number())
+                {
+                    size_t valNum = element.value();
+                    value = std::format("{}", valNum);
+                }
+                else
+                    assert(false);
                 if (!key.compare("origin") || !key.compare("angles") || !key.compare("flags"))
                     continue;
 
@@ -963,11 +988,7 @@ namespace
                 m_bsp->containsWorldspawn = true;
             }
             else if (!classname.compare("mp_global_intermission"))
-            {
-                if (m_bsp->containsIntermssion)
-                    con::warn("WARNING: multiple mp_global_intermission classes found, only one will be used.");
                 m_bsp->containsIntermssion = true;
-            }
             else
                 m_bsp->entities.emplace_back(entity);
             return true;
@@ -1431,17 +1452,12 @@ std::unique_ptr<BSPData> T6::BSP::createBSPData(std::string& mapName, ISearchPat
         con::error("Map does not contain a worldspawn class");
         return nullptr;
     }
-    if (bsp->spawnpoints.size() == 0)
-    {
-        con::error("Map must have spawn points!");
-        return nullptr;
-    }
-    if (bsp->gfxWorld.surfaces.size() || bsp->gfxWorld.vertices.size() == 0 || bsp->gfxWorld.indices.size() == 0)
+    if (bsp->gfxWorld.surfaces.size() == 0 || bsp->gfxWorld.vertices.size() == 0 || bsp->gfxWorld.indices.size() == 0)
     {
         con::error("GFX world has no surfaces, indicies or vertices!");
         return nullptr;
     }
-    if (bsp->colWorld.surfaces.size() || bsp->colWorld.vertices.size() == 0 || bsp->colWorld.indices.size() == 0)
+    if (bsp->colWorld.surfaces.size() == 0 || bsp->colWorld.vertices.size() == 0 || bsp->colWorld.indices.size() == 0)
     {
         con::error("Collision world has no surfaces, indicies or vertices!");
         return nullptr;
