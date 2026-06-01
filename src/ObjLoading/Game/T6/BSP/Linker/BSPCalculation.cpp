@@ -5,10 +5,10 @@ using namespace BSP;
 
 namespace
 {
-    constexpr int MAX_NODE_SIZE = 512; // maximum size a BSP node can be before it becomes a leaf
+    constexpr int MAX_NODE_SIZE = 1024; // maximum size a BSP node can be before it becomes a leaf
 }
 
-BSPObject::BSPObject(float xMin, float yMin, float zMin, float xMax, float yMax, float zMax, bool isBrush, size_t objIndex)
+BSPObject::BSPObject(float xMin, float yMin, float zMin, float xMax, float yMax, float zMax, bool _isBrush, size_t _objIndex)
 {
     min.x = xMin;
     min.y = yMin;
@@ -16,8 +16,8 @@ BSPObject::BSPObject(float xMin, float yMin, float zMin, float xMax, float yMax,
     max.x = xMax;
     max.y = yMax;
     max.z = zMax;
-    objIndex = objIndex;
-    isBrush = isBrush;
+    objIndex = _objIndex;
+    isBrush = _isBrush;
 }
 
 void BSPLeaf::addObject(std::shared_ptr<BSPObject> object)
