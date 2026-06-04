@@ -519,9 +519,6 @@ namespace
             assert(jRoot.meshes);
 
             const auto& mesh = jRoot.meshes.value()[node.mesh.value()];
-            size_t totalSurfCount = 0;
-            size_t totalVertCount = 0;
-            size_t totalIndexCount = 0;
             for (const auto& primitive : mesh.primitives)
             {
                 if (!primitive.indices)
@@ -533,31 +530,6 @@ namespace
                 if (!primitive.attributes.NORMAL)
                     throw GltfLoadException("Requires primitives attribute NORMAL");
 
-                const auto* positionAccessor =
-                    GetAccessorForIndex("POSITION", primitive.attributes.POSITION, {JsonAccessorType::VEC3}, {JsonAccessorComponentType::FLOAT})
-                        .value_or(nullptr);
-                assert(positionAccessor != nullptr);
-
-                const auto* indexAccessor =
-                    GetAccessorForIndex(
-                        "INDICES",
-                        primitive.indices,
-                        {JsonAccessorType::SCALAR},
-                        {JsonAccessorComponentType::UNSIGNED_BYTE, JsonAccessorComponentType::UNSIGNED_SHORT, JsonAccessorComponentType::UNSIGNED_INT})
-                        .value_or(nullptr);
-                assert(indexAccessor != nullptr);
-
-                totalVertCount += positionAccessor->GetCount();
-                totalIndexCount += indexAccessor->GetCount();
-
-                totalSurfCount++;
-            }
-            m_curr_bsp_world->vertices.reserve(m_curr_bsp_world->vertices.size() + totalVertCount);
-            m_curr_bsp_world->indices.reserve(m_curr_bsp_world->indices.size() + totalIndexCount);
-            m_curr_bsp_world->surfaces.reserve(m_curr_bsp_world->surfaces.size() + totalSurfCount);
-
-            for (const auto& primitive : mesh.primitives)
-            {
                 const AccessorsForVertex accessorsForVertex{
                     .m_position_accessor = *primitive.attributes.POSITION,
                     .m_normal_accessor = *primitive.attributes.NORMAL,

@@ -970,7 +970,11 @@ namespace
             if (entity.hasModel)
                 model = &dumpData.models.at(entity.modelIndex);
             else
+            {
+                if (isGfxWorld)
+                    continue;
                 model = nullptr;
+            }
 
             if (model != nullptr)
             {
