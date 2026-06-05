@@ -1075,7 +1075,37 @@ namespace
         bNode.name = "Brushes";
         bNode.children.emplace();
         size_t brushNodeIdx = addNodeToGltf(root, bNode, ROOT_NODE_IDX);
-        addNodesFromBrushSurfaces(root, dumpData, dumpData.staticBrushSurfaceStart, dumpData.staticBrushSurfaceCount, brushNodeIdx, false);
+
+        bNode.name = "solid";
+        size_t solidBrushNodeIdx = addNodeToGltf(root, bNode, brushNodeIdx);
+        bNode.name = "nonsolid";
+        size_t nonSolidBrushNodeIdx = addNodeToGltf(root, bNode, brushNodeIdx);
+
+        std::map<std::string, std::pair<bool, std::vector<size_t>>> uniqueMaterials;
+        for (size_t brushIdx = dumpData.staticBrushSurfaceStart; brushIdx < dumpData.staticBrushSurfaceStart + dumpData.staticBrushSurfaceCount; brushIdx++)
+        {
+            BSPMaterial& material = dumpData.colWorld.materials.at(dumpData.colWorld.surfaces.at(brushIdx).materialIndex);
+            if (uniqueMaterials.contains(material.materialName))
+            {
+                uniqueMaterials.at(material.materialName).second.emplace_back(brushIdx);
+            }
+            else
+            {
+                bool isSolid = !convertFlagsToString(material.surfaceFlags, material.contentFlags).contains("nonsolid");
+                uniqueMaterials[material.materialName] = {isSolid, std::vector<size_t>({brushIdx})};
+            }
+        }
+
+        for (const auto& material : uniqueMaterials)
+        {
+            JsonNode mNode;
+            mNode.name = material.first;
+            mNode.children.emplace();
+            size_t parentIdx = material.second.first ? solidBrushNodeIdx : nonSolidBrushNodeIdx;
+            size_t matNodeIdx = addNodeToGltf(root, mNode, parentIdx);
+            for (const auto& brushIdx : material.second.second)
+                addNodesFromBrushSurfaces(root, dumpData, brushIdx, 1, matNodeIdx, false);
+        }
     }
 
     void CreateMaterials(JsonRoot& root, BSPData& dumpData, bool isGfxWorld)
