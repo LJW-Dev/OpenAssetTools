@@ -5,8 +5,17 @@ using namespace BSP;
 
 namespace
 {
-    constexpr int MAX_NODE_SIZE = 1024; // maximum size a BSP node can be before it becomes a leaf
-}
+    constexpr __int64 MAX_NODE_SIZE = 1024; // maximum size a BSP node can be before it becomes a leaf
+
+    float alignFloatByNodeSize(float input)
+    {
+        __int64 intInput = static_cast<__int64>(ceilf(input));
+        if (intInput < 0)
+            return static_cast<float>((intInput) & ~(MAX_NODE_SIZE - 1));
+        else
+            return static_cast<float>((intInput + MAX_NODE_SIZE - 1) & ~(MAX_NODE_SIZE - 1));
+    }
+} // namespace
 
 BSPObject::BSPObject(float xMin, float yMin, float zMin, float xMax, float yMax, float zMax, bool _isBrush, size_t _objIndex)
 {
@@ -88,6 +97,16 @@ BSPTree::BSPTree(float xMin, float yMin, float zMin, float xMax, float yMax, flo
     max.y = yMax;
     max.z = zMax;
     level = treeLevel;
+
+    if (treeLevel == 0)
+    {
+        min.x = alignFloatByNodeSize(min.x);
+        min.y = alignFloatByNodeSize(min.y);
+        min.z = alignFloatByNodeSize(min.z);
+        max.x = alignFloatByNodeSize(max.x);
+        max.y = alignFloatByNodeSize(max.y);
+        max.z = alignFloatByNodeSize(max.z);
+    }
     splitTree();
 }
 
@@ -97,7 +116,7 @@ void BSPTree::splitTree()
     std::unique_ptr<BSPTree> back;
     float halfLength;
 
-    if (max.x - min.x > MAX_NODE_SIZE)
+    if (max.x - min.x > static_cast<float>(MAX_NODE_SIZE))
     {
         // split along the x axis
         halfLength = (min.x + max.x) * 0.5f;
@@ -108,9 +127,9 @@ void BSPTree::splitTree()
         node = std::make_unique<BSPNode>(std::move(front), std::move(back), AXIS_X, halfLength);
         leaf = nullptr;
     }
-    else if (max.y - min.y > MAX_NODE_SIZE)
+    else if (max.y - min.y > static_cast<float>(MAX_NODE_SIZE))
     {
-        // split along the x axis
+        // split along the y axis
         halfLength = (min.y + max.y) * 0.5f;
         front = std::make_unique<BSPTree>(min.x, halfLength, min.z, max.x, max.y, max.z, level + 1);
         back = std::make_unique<BSPTree>(min.x, min.y, min.z, max.x, halfLength, max.z, level + 1);
@@ -119,7 +138,7 @@ void BSPTree::splitTree()
         node = std::make_unique<BSPNode>(std::move(front), std::move(back), AXIS_Y, halfLength);
         leaf = nullptr;
     }
-    else if (max.z - min.z > MAX_NODE_SIZE)
+    else if (max.z - min.z > static_cast<float>(MAX_NODE_SIZE))
     {
         // split along the z axis
         halfLength = (min.z + max.z) * 0.5f;
@@ -161,4 +180,32 @@ void BSPTree::addObjectToTree(std::shared_ptr<BSPObject> object)
             node->back->addObjectToTree(object);
         }
     }
+}
+
+bool BSPTree::optimiseTree()
+{
+    if (isLeaf)
+        return leaf->getObjectCount() == 0;
+
+    bool canOptimiseFront = node->front->optimiseTree();
+    bool canOptimiseBack = node->back->optimiseTree();
+
+    if (canOptimiseFront && canOptimiseBack)
+        return true;
+
+    if (canOptimiseFront)
+    {
+        node->front->isLeaf = true;
+        node->front->node.reset();
+        node->front->leaf = std::make_unique<BSPLeaf>();
+    }
+
+    if (canOptimiseBack)
+    {
+        node->back->isLeaf = true;
+        node->back->node.reset();
+        node->back->leaf = std::make_unique<BSPLeaf>();
+    }
+
+    return false;
 }

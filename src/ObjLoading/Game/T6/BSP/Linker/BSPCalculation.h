@@ -70,6 +70,7 @@ namespace T6
             BSPTree(float xMin, float yMin, float zMin, float xMax, float yMax, float zMax, size_t treeLevel);
             void splitTree();
             void addObjectToTree(std::shared_ptr<BSPObject> object);
+            bool optimiseTree();
         };
     } // namespace BSP
 } // namespace T6
