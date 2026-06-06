@@ -125,12 +125,12 @@ void BSPUtil::calculateXmodelBounds(XModel* xmodel, vec3_t axis[3], vec3_t& out_
 
 void BSPUtil::convertAnglesToAxis(vec3_t* angles, vec3_t axis[3])
 {
-    float cosX = cos(angles->x);
-    float sinX = sin(angles->x);
-    float cosY = cos(angles->y);
-    float sinY = sin(angles->y);
-    float cosZ = cos(angles->z);
-    float sinZ = sin(angles->z);
+    float cosX = cos(angles->x * (std::numbers::pi_v<float> / 180.0f));
+    float sinX = sin(angles->x * (std::numbers::pi_v<float> / 180.0f));
+    float cosY = cos(angles->y * (std::numbers::pi_v<float> / 180.0f));
+    float sinY = sin(angles->y * (std::numbers::pi_v<float> / 180.0f));
+    float cosZ = cos(angles->z * (std::numbers::pi_v<float> / 180.0f));
+    float sinZ = sin(angles->z * (std::numbers::pi_v<float> / 180.0f));
 
     axis[0].x = cosX * cosY;
     axis[0].y = cosX * sinY;
