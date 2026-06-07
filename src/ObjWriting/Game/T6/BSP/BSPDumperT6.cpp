@@ -123,6 +123,11 @@ namespace
     {
         size_t partitionIdx;
         size_t materialIdx;
+
+        bool operator==(const PartitionData& other) const
+        {
+            return partitionIdx == other.partitionIdx && materialIdx == other.materialIdx;
+        }
     };
 
     void getPartitionsFromAABBTree(const clipMap_t* clipmap, size_t aabbStartIndex, size_t aabbCount, std::vector<PartitionData>& partitionList)
@@ -139,7 +144,7 @@ namespace
             CollisionAabbTree* aabb = &clipmap->aabbTrees[aabbIdx];
             if (aabb->childCount == 0)
             {
-                PartitionData data;
+                PartitionData data{};
                 data.partitionIdx = static_cast<size_t>(aabb->u.partitionIndex);
                 data.materialIdx = static_cast<size_t>(aabb->materialIndex);
                 partitionList.emplace_back(data);
@@ -154,57 +159,120 @@ namespace
 
     void createSurfacesFromPartitions(const clipMap_t* clipmap, BSPData& dumpData, std::vector<PartitionData>& partitionList, OutSurface& result)
     {
-        result.surfaceCount = 0;
-        result.surfaceStart = dumpData.colWorld.surfaces.size();
-        size_t totalVertexCount = dumpData.colWorld.vertices.size();
-        size_t totalIndexCount = dumpData.colWorld.indices.size();
-        std::unordered_set<size_t> uniquePartitions;
+        std::vector<std::pair<size_t, std::vector<size_t>>> materialPartitions;
         for (PartitionData partitionData : partitionList)
         {
-            if (uniquePartitions.contains(partitionData.partitionIdx))
-                continue;
-            uniquePartitions.emplace(partitionData.partitionIdx);
-
-            BSPSurface surface;
-            CollisionPartition* partition = &clipmap->partitions[partitionData.partitionIdx];
-
-            surface.indexOfFirstVertex = totalVertexCount;
-            surface.triCount = static_cast<size_t>(partition->triCount);
-            surface.vertexCount = static_cast<size_t>(partition->triCount) * 3;
-            surface.materialIndex = partitionData.materialIdx;
-            surface.indexOfFirstIndex = totalIndexCount;
-            dumpData.colWorld.surfaces.emplace_back(surface);
-
-            for (size_t k = 0; k < surface.triCount; k++)
+            bool found = false;
+            for (auto& matSurf : materialPartitions)
             {
-                uint16_t* vertIndices = clipmap->triIndices[static_cast<size_t>(partition->firstTri) + k];
+                if (matSurf.first == partitionData.materialIdx)
+                {
+                    bool foundInner = false;
+                    for (size_t partIdx : matSurf.second)
+                    {
+                        if (partitionData.partitionIdx == partIdx)
+                        {
+                            foundInner = true;
+                            break;
+                        }
+                    }
+                    if (!foundInner)
+                        matSurf.second.emplace_back(partitionData.partitionIdx);
 
-                BSPVertex vert0{};
-                BSPVertex vert1{};
-                BSPVertex vert2{};
-                vert0.pos = clipmap->verts[vertIndices[0]];
-                vert1.pos = clipmap->verts[vertIndices[1]];
-                vert2.pos = clipmap->verts[vertIndices[2]];
-
-                LhcToRhcCoordinates(vert0.pos.v);
-                LhcToRhcCoordinates(vert1.pos.v);
-                LhcToRhcCoordinates(vert2.pos.v);
-
-                dumpData.colWorld.vertices.emplace_back(vert0);
-                dumpData.colWorld.vertices.emplace_back(vert1);
-                dumpData.colWorld.vertices.emplace_back(vert2);
-
-                // equivalent of LhcToRhcIndices
-                dumpData.colWorld.indices.emplace_back(static_cast<uint16_t>((k * 3) + 2));
-                dumpData.colWorld.indices.emplace_back(static_cast<uint16_t>((k * 3) + 1));
-                dumpData.colWorld.indices.emplace_back(static_cast<uint16_t>((k * 3) + 0));
+                    found = true;
+                    break;
+                }
             }
-
-            totalVertexCount += surface.vertexCount;
-            totalIndexCount += surface.vertexCount;
+            if (!found)
+                materialPartitions.emplace_back(std::pair(partitionData.materialIdx, std::vector<size_t>({static_cast<size_t>(partitionData.partitionIdx)})));
         }
 
-        result.surfaceCount = uniquePartitions.size();
+        result.surfaceCount = materialPartitions.size();
+        result.surfaceStart = dumpData.colWorld.surfaces.size();
+
+        for (const auto& matPartition : materialPartitions)
+        {
+            std::vector<BSPVertex> tempVertices;
+            std::vector<size_t> tempIndices;
+            size_t tempTriCount = 0;
+            for (const auto& partIdx : matPartition.second)
+            {
+                CollisionPartition* partition = &clipmap->partitions[partIdx];
+
+                size_t partitionStartVertex = tempVertices.size();
+                tempTriCount += partition->triCount;
+                for (size_t k = 0; k < partition->triCount; k++)
+                {
+                    uint16_t* vertIndices = clipmap->triIndices[static_cast<size_t>(partition->firstTri) + k];
+
+                    BSPVertex vert0{};
+                    BSPVertex vert1{};
+                    BSPVertex vert2{};
+                    vert0.pos = clipmap->verts[vertIndices[0]];
+                    vert1.pos = clipmap->verts[vertIndices[1]];
+                    vert2.pos = clipmap->verts[vertIndices[2]];
+
+                    LhcToRhcCoordinates(vert0.pos.v);
+                    LhcToRhcCoordinates(vert1.pos.v);
+                    LhcToRhcCoordinates(vert2.pos.v);
+
+                    vert0.color = {1.0f, 1.0f, 1.0f, 1.0f};
+                    vert1.color = {1.0f, 1.0f, 1.0f, 1.0f};
+                    vert2.color = {1.0f, 1.0f, 1.0f, 1.0f};
+
+                    tempVertices.emplace_back(vert0);
+                    tempVertices.emplace_back(vert1);
+                    tempVertices.emplace_back(vert2);
+
+                    // equivalent of LhcToRhcIndices
+                    tempIndices.emplace_back(static_cast<uint16_t>(partitionStartVertex + (k * 3) + 2));
+                    tempIndices.emplace_back(static_cast<uint16_t>(partitionStartVertex + (k * 3) + 1));
+                    tempIndices.emplace_back(static_cast<uint16_t>(partitionStartVertex + (k * 3) + 0));
+                }
+            }
+
+            std::vector<BSPVertex> outputVertexBuffer;
+            std::shared_ptr<size_t[]> indexMap = std::make_shared<size_t[]>(tempVertices.size());
+            for (size_t i = 0; i < tempVertices.size(); i++)
+            {
+                bool found = false;
+                size_t foundIdx = 0;
+                const auto& testVertex = tempVertices.at(i);
+                for (size_t j = 0; j < outputVertexBuffer.size(); j++)
+                {
+                    const auto& inVertex = outputVertexBuffer.at(j);
+                    if (inVertex.pos.x == testVertex.pos.x && inVertex.pos.y == testVertex.pos.y && inVertex.pos.z == testVertex.pos.z)
+                    {
+                        found = true;
+                        foundIdx = j;
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    indexMap[i] = outputVertexBuffer.size();
+                    outputVertexBuffer.emplace_back(testVertex);
+                }
+                else
+                    indexMap[i] = foundIdx;
+            }
+            assert(outputVertexBuffer.size() != 0);
+
+            BSPSurface outSurface{};
+            outSurface.materialIndex = matPartition.first;
+            outSurface.triCount = tempTriCount;
+            outSurface.vertexCount = outputVertexBuffer.size();
+            outSurface.indexOfFirstVertex = dumpData.colWorld.vertices.size();
+            outSurface.indexOfFirstIndex = dumpData.colWorld.indices.size();
+            dumpData.colWorld.surfaces.emplace_back(outSurface);
+
+            dumpData.colWorld.vertices.insert(dumpData.colWorld.vertices.end(), outputVertexBuffer.begin(), outputVertexBuffer.end());
+            for (size_t idx : tempIndices)
+            {
+                assert(indexMap[idx] <= UINT16_MAX);
+                dumpData.colWorld.indices.emplace_back(static_cast<uint16_t>(indexMap[idx]));
+            }
+        }
     }
 
     void createSurfacesFromBrushes(const clipMap_t* clipmap, BSPData& dumpData, std::vector<size_t>& brushList, OutSurface& result)
@@ -352,6 +420,62 @@ namespace
         }
     }
 
+    void getStaticCollisionList(const clipMap_t* clipmap, std::vector<PartitionData>& partitionList, std::vector<size_t>& brushList)
+    {
+        std::deque<int16_t> nodeQueue;
+        nodeQueue.emplace_back(0);
+        while (!nodeQueue.empty())
+        {
+            int16_t nodeIdx = nodeQueue.front();
+            nodeQueue.pop_front();
+
+            if (nodeIdx < 0)
+            {
+                int leafIndex = -1 - nodeIdx;
+                cLeaf_s* leaf = &clipmap->leafs[leafIndex];
+
+                if (leaf->collAabbCount != 0)
+                    getPartitionsFromAABBTree(clipmap, leaf->firstCollAabbIndex, leaf->collAabbCount, partitionList);
+                if (leaf->leafBrushNode != 0)
+                    getBrushesFromLeafBrushNode(clipmap, leaf->leafBrushNode, brushList);
+            }
+            else
+            {
+
+                nodeQueue.emplace_back(clipmap->nodes[nodeIdx].children[0]);
+                nodeQueue.emplace_back(clipmap->nodes[nodeIdx].children[1]);
+            }
+        }
+    }
+
+    void dumpClipmap(BSPData& dumpData, const clipMap_t* clipmap)
+    {
+        for (unsigned int i = 0; i < clipmap->info.numMaterials; i++)
+        {
+            auto colMaterial = &clipmap->info.materials[i];
+            BSPMaterial bspMaterial;
+            bspMaterial.materialName = colMaterial->name;
+            bspMaterial.materialType = MATERIAL_TYPE_TEXTURE;
+            bspMaterial.materialColour = whiteColour;
+            bspMaterial.surfaceFlags = colMaterial->surfaceFlags;
+            bspMaterial.contentFlags = colMaterial->contentFlags;
+            dumpData.colWorld.materials.emplace_back(bspMaterial);
+        }
+
+        std::vector<PartitionData> partitionList;
+        std::vector<size_t> brushList;
+        getStaticCollisionList(clipmap, partitionList, brushList);
+
+        OutSurface result;
+        createSurfacesFromPartitions(clipmap, dumpData, partitionList, result);
+        dumpData.staticTerrainSurfaceCount = result.surfaceCount;
+        dumpData.staticTerrainSurfaceStart = result.surfaceStart;
+
+        createSurfacesFromBrushes(clipmap, dumpData, brushList, result);
+        dumpData.staticBrushSurfaceCount = result.surfaceCount;
+        dumpData.staticBrushSurfaceStart = result.surfaceStart;
+    }
+
     size_t createModelFromIndex(size_t modelIndex, BSPData& dumpData, const GfxWorld* gfxworld, const clipMap_t* clipmap)
     {
         assert(modelIndex != 0);
@@ -362,7 +486,11 @@ namespace
         {
             model.surfaceSide = MSS_GFX;
             model.gfxSurfaceCount = static_cast<size_t>(gfxworld->models[modelIndex].surfaceCount);
-            model.gfxSurfaceIndex = static_cast<size_t>(gfxworld->models[modelIndex].startSurfIndex);
+
+            // static surfas are always first, followed by ent surfs
+            size_t updatedSurfIndex = static_cast<size_t>(gfxworld->models[modelIndex].startSurfIndex) - gfxworld->dpvs.staticSurfaceCount;
+            updatedSurfIndex += dumpData.staticSurfaceStart + dumpData.staticSurfaceCount;
+            model.gfxSurfaceIndex = updatedSurfIndex;
         }
 
         cLeaf_s* leaf = &clipmap->cmodels[modelIndex].leaf;
@@ -520,28 +648,10 @@ namespace
 
     size_t createBspMaterial(BSPData& dumpData, Material* material, GfxSurfaceFlags surfFlags)
     {
-        int sflags = 0;
-        int cflags = 1;
-        if ((surfFlags & GFX_SURFACE_IS_SKY) != 0)
-        {
-            sflags |= surfaceTypeToFlagMap[BSP_SURF_TYPE_SKY].surfaceFlags;
-            cflags |= surfaceTypeToFlagMap[BSP_SURF_TYPE_SKY].contentFlags;
-        }
-        if ((surfFlags & GFX_SURFACE_CASTS_SUN_SHADOW) != 0)
-        {
-            sflags |= surfaceTypeToFlagMap[BSP_SURF_TYPE_ONLYCASTSHADOW].surfaceFlags;
-            cflags |= surfaceTypeToFlagMap[BSP_SURF_TYPE_ONLYCASTSHADOW].contentFlags;
-        }
-        if ((surfFlags & GFX_SURFACE_NO_DRAW) != 0)
-        {
-            sflags |= surfaceTypeToFlagMap[BSP_SURF_TYPE_NODRAW].surfaceFlags;
-            cflags |= surfaceTypeToFlagMap[BSP_SURF_TYPE_NODRAW].contentFlags;
-        }
         for (size_t matIdx = 0; matIdx < dumpData.gfxWorld.materials.size(); matIdx++)
         {
             auto& mat = dumpData.gfxWorld.materials.at(matIdx);
-            if (!mat.materialName.compare(material->info.name) && (mat.surfaceFlags == 0 || flagsMatchExact(sflags, mat.surfaceFlags))
-                && (mat.contentFlags == 0 || flagsMatchExact(cflags, mat.contentFlags)))
+            if (!mat.materialName.compare(material->info.name) && (mat.surfaceFlags == surfFlags))
                 return matIdx;
         }
 
@@ -549,17 +659,52 @@ namespace
         bspMaterial.materialName = material->info.name;
         bspMaterial.materialType = MATERIAL_TYPE_TEXTURE;
         bspMaterial.materialColour = whiteColour;
-        bspMaterial.surfaceFlags = sflags;
-        bspMaterial.contentFlags = cflags;
+        bspMaterial.surfaceFlags = surfFlags;
+        bspMaterial.contentFlags = surfFlags;
         size_t matIndex = dumpData.gfxWorld.materials.size();
         dumpData.gfxWorld.materials.emplace_back(bspMaterial);
         return matIndex;
     }
 
+    std::shared_ptr<size_t[]>
+        simplifyVertexBuffer(std::vector<BSPVertex>& in_vertexBuffer, std::unique_ptr<bool[]>& in_isVertUsedMap, std::vector<BSPVertex>& out_vertexBuffer)
+    {
+        assert(out_vertexBuffer.size() == 0);
+        std::shared_ptr<size_t[]> indexMap = std::make_shared<size_t[]>(in_vertexBuffer.size());
+        for (size_t i = 0; i < in_vertexBuffer.size(); i++)
+        {
+            if (!in_isVertUsedMap[i])
+                continue;
+            bool found = false;
+            size_t foundIdx = 0;
+            const auto& testVertex = in_vertexBuffer.at(i);
+            for (size_t j = 0; j < out_vertexBuffer.size(); j++)
+            {
+                const auto& inVertex = out_vertexBuffer.at(j);
+                if (inVertex.pos.x == testVertex.pos.x && inVertex.pos.y == testVertex.pos.y && inVertex.pos.z == testVertex.pos.z
+                    && inVertex.normal.x == testVertex.normal.x && inVertex.normal.y == testVertex.normal.y && inVertex.normal.z == testVertex.normal.z
+                    && inVertex.texCoord.x == testVertex.texCoord.x && inVertex.texCoord.y == testVertex.texCoord.y && inVertex.color.x == testVertex.color.x
+                    && inVertex.color.y == testVertex.color.y && inVertex.color.z == testVertex.color.z && inVertex.color.w == testVertex.color.w)
+                {
+                    found = true;
+                    foundIdx = j;
+                    break;
+                }
+            }
+            if (!found)
+            {
+                indexMap[i] = out_vertexBuffer.size();
+                out_vertexBuffer.emplace_back(testVertex);
+            }
+            else
+                indexMap[i] = foundIdx;
+        }
+
+        return indexMap;
+    }
+
     void dumpGfxWorld(BSPData& dumpData, const GfxWorld* gfxWorld)
     {
-        dumpData.staticSurfaceStart = dumpData.gfxWorld.surfaces.size();
-        dumpData.staticSurfaceCount = gfxWorld->dpvs.staticSurfaceCount;
         std::map<size_t, size_t> vd0Offsets; // maps unique vd0 offsets to their maximum index
         for (int surfIdx = 0; surfIdx < gfxWorld->surfaceCount; surfIdx++)
         {
@@ -584,111 +729,117 @@ namespace
         }
 
         size_t totalVertexCount = 0;
-        std::map<size_t, std::pair<size_t, size_t>> vd0OffsetToGltf; // maps unique vd0 offsets to their gltfvertex index equivalent and size
+        std::map<size_t, std::tuple<size_t, size_t>> vd0OffsetToGltf; // maps unique vd0 offsets to their gltfvertex index equivalent, and size
+
+        std::vector<BSPVertex> allVertices;
         for (const auto& pair : vd0Offsets)
         {
             size_t vd0Offset = pair.first;
             size_t vertexCount = pair.second + 1;
-            vd0OffsetToGltf[vd0Offset] = {totalVertexCount, vertexCount};
 
             for (size_t idx = 0; idx < vertexCount; idx++)
             {
                 GfxPackedWorldVertex* inVertex = (GfxPackedWorldVertex*)&gfxWorld->draw.vd0.data[vd0Offset + sizeof(GfxPackedWorldVertex) * idx];
-                BSPVertex outVertex;
+                BSPVertex outVertex{};
                 outVertex.pos = inVertex->xyz;
                 LhcToRhcCoordinates(outVertex.pos.v);
                 Common::Vec3UnpackUnitVec(inVertex->normal, outVertex.normal.v);
                 LhcToRhcCoordinates(outVertex.normal.v);
                 Common::Vec2UnpackTexCoords(inVertex->texCoord, outVertex.texCoord.v);
                 Common::Vec4UnpackGfxColor(inVertex->color, outVertex.color.v);
-                dumpData.gfxWorld.vertices.emplace_back(outVertex);
+                allVertices.emplace_back(outVertex);
             }
+
+            vd0OffsetToGltf[vd0Offset] = {totalVertexCount, vertexCount};
             totalVertexCount += vertexCount;
         }
 
-        size_t indexBufferSize = 0;
-        for (int surfIdx = 0; surfIdx < gfxWorld->surfaceCount; surfIdx++)
+        std::vector<std::pair<size_t, std::vector<size_t>>> materialSurfs;
+        for (unsigned int surfIdx = 0; surfIdx < gfxWorld->dpvs.staticSurfaceCount; surfIdx++)
         {
             GfxSurface* inSurface = &gfxWorld->dpvs.surfaces[surfIdx];
-            BSPSurface outSurface;
-
-            outSurface.materialIndex = createBspMaterial(dumpData, inSurface->material, (GfxSurfaceFlags)inSurface->flags);
-            outSurface.triCount = inSurface->tris.triCount;
-
-            assert(vd0OffsetToGltf.contains(inSurface->tris.vertexDataOffset0));
-            auto data = vd0OffsetToGltf.at(inSurface->tris.vertexDataOffset0);
-            outSurface.indexOfFirstVertex = data.first;
-            outSurface.vertexCount = data.second;
-
-            outSurface.indexOfFirstIndex = indexBufferSize;
-            indexBufferSize += inSurface->tris.triCount * 3;
-            uint16_t* surfTriIndicies = &gfxWorld->draw.indices[inSurface->tris.baseIndex];
-            for (uint16_t triIdx = 0; triIdx < inSurface->tris.triCount; triIdx++)
+            size_t materialIndex = createBspMaterial(dumpData, inSurface->material, (GfxSurfaceFlags)inSurface->flags);
+            bool found = false;
+            for (auto& matSurf : materialSurfs)
             {
-                // equivalent to LhcToRhcIndices
-                dumpData.gfxWorld.indices.emplace_back(surfTriIndicies[triIdx * 3 + 2]);
-                dumpData.gfxWorld.indices.emplace_back(surfTriIndicies[triIdx * 3 + 1]);
-                dumpData.gfxWorld.indices.emplace_back(surfTriIndicies[triIdx * 3]);
+                if (matSurf.first == materialIndex)
+                {
+                    matSurf.second.emplace_back(surfIdx);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                materialSurfs.emplace_back(std::pair(materialIndex, std::vector<size_t>({static_cast<size_t>(surfIdx)})));
+        }
+
+        assert(dumpData.gfxWorld.surfaces.size() == 0);
+        dumpData.staticSurfaceStart = dumpData.gfxWorld.surfaces.size();
+        dumpData.staticSurfaceCount = 0;
+        dumpData.staticSurfaceCount += materialSurfs.size();
+
+        // script surfaces need to stay unmerged or it will mess with entities that use them
+        for (int surfIdx = gfxWorld->dpvs.staticSurfaceCount; surfIdx < gfxWorld->surfaceCount; surfIdx++)
+        {
+            GfxSurface* inSurface = &gfxWorld->dpvs.surfaces[surfIdx];
+            size_t materialIndex = createBspMaterial(dumpData, inSurface->material, (GfxSurfaceFlags)inSurface->flags);
+            materialSurfs.emplace_back(std::pair(materialIndex, std::vector<size_t>({static_cast<size_t>(surfIdx)})));
+        }
+
+        for (const auto& matSurf : materialSurfs)
+        {
+            std::vector<BSPVertex> tempVertices;
+            std::vector<size_t> tempIndices;
+            size_t tempTriCount = 0;
+            size_t tempVertCount = 0;
+            for (const auto& surfIdx : matSurf.second)
+            {
+                GfxSurface* inSurface = &gfxWorld->dpvs.surfaces[surfIdx];
+
+                assert(vd0OffsetToGltf.contains(inSurface->tris.vertexDataOffset0));
+                auto data = vd0OffsetToGltf.at(inSurface->tris.vertexDataOffset0);
+
+                size_t firstVertex = std::get<0>(data);
+                size_t vertexCount = std::get<1>(data);
+
+                tempTriCount += inSurface->tris.triCount;
+                tempVertCount += vertexCount;
+
+                uint16_t* surfTriIndicies = &gfxWorld->draw.indices[inSurface->tris.baseIndex];
+                for (uint16_t triIdx = 0; triIdx < inSurface->tris.triCount; triIdx++)
+                {
+                    // equivalent to LhcToRhcIndices
+                    tempIndices.emplace_back(tempVertices.size() + (size_t)surfTriIndicies[triIdx * 3 + 2]);
+                    tempIndices.emplace_back(tempVertices.size() + (size_t)surfTriIndicies[triIdx * 3 + 1]);
+                    tempIndices.emplace_back(tempVertices.size() + (size_t)surfTriIndicies[triIdx * 3]);
+                }
+
+                tempVertices.insert(tempVertices.end(), allVertices.begin() + firstVertex, allVertices.begin() + firstVertex + vertexCount);
             }
 
+            std::unique_ptr<bool[]> isVertUsedMap = std::make_unique<bool[]>(tempVertCount);
+            for (size_t idx : tempIndices)
+                isVertUsedMap[idx] = true;
+
+            std::vector<BSPVertex> outputVertexBuffer;
+            auto indexMap = simplifyVertexBuffer(tempVertices, isVertUsedMap, outputVertexBuffer);
+            assert(outputVertexBuffer.size() != 0);
+
+            BSPSurface outSurface{};
+            outSurface.materialIndex = matSurf.first;
+            outSurface.triCount = tempTriCount;
+            outSurface.vertexCount = outputVertexBuffer.size();
+            outSurface.indexOfFirstVertex = dumpData.gfxWorld.vertices.size();
+            outSurface.indexOfFirstIndex = dumpData.gfxWorld.indices.size();
             dumpData.gfxWorld.surfaces.emplace_back(outSurface);
-        }
-    }
 
-    void getStaticCollisionList(const clipMap_t* clipmap, std::vector<PartitionData>& partitionList, std::vector<size_t>& brushList)
-    {
-        std::deque<int16_t> nodeQueue;
-        nodeQueue.emplace_back(0);
-        while (!nodeQueue.empty())
-        {
-            int16_t nodeIdx = nodeQueue.front();
-            nodeQueue.pop_front();
-
-            if (nodeIdx < 0)
+            dumpData.gfxWorld.vertices.insert(dumpData.gfxWorld.vertices.end(), outputVertexBuffer.begin(), outputVertexBuffer.end());
+            for (size_t idx : tempIndices)
             {
-                int leafIndex = -1 - nodeIdx;
-                cLeaf_s* leaf = &clipmap->leafs[leafIndex];
-
-                if (leaf->collAabbCount != 0)
-                    getPartitionsFromAABBTree(clipmap, leaf->firstCollAabbIndex, leaf->collAabbCount, partitionList);
-                if (leaf->leafBrushNode != 0)
-                    getBrushesFromLeafBrushNode(clipmap, leaf->leafBrushNode, brushList);
-            }
-            else
-            {
-
-                nodeQueue.emplace_back(clipmap->nodes[nodeIdx].children[0]);
-                nodeQueue.emplace_back(clipmap->nodes[nodeIdx].children[1]);
+                assert(indexMap[idx] <= UINT16_MAX);
+                dumpData.gfxWorld.indices.emplace_back(static_cast<uint16_t>(indexMap[idx]));
             }
         }
-    }
-
-    void dumpClipmap(BSPData& dumpData, const clipMap_t* clipmap)
-    {
-        for (unsigned int i = 0; i < clipmap->info.numMaterials; i++)
-        {
-            auto colMaterial = &clipmap->info.materials[i];
-            BSPMaterial bspMaterial;
-            bspMaterial.materialName = colMaterial->name;
-            bspMaterial.materialType = MATERIAL_TYPE_TEXTURE;
-            bspMaterial.materialColour = whiteColour;
-            bspMaterial.surfaceFlags = colMaterial->surfaceFlags;
-            bspMaterial.contentFlags = colMaterial->contentFlags;
-            dumpData.colWorld.materials.emplace_back(bspMaterial);
-        }
-
-        std::vector<PartitionData> partitionList;
-        std::vector<size_t> brushList;
-        getStaticCollisionList(clipmap, partitionList, brushList);
-
-        OutSurface result;
-        createSurfacesFromPartitions(clipmap, dumpData, partitionList, result);
-        dumpData.staticTerrainSurfaceCount = result.surfaceCount;
-        dumpData.staticTerrainSurfaceStart = result.surfaceStart;
-
-        createSurfacesFromBrushes(clipmap, dumpData, brushList, result);
-        dumpData.staticBrushSurfaceCount = result.surfaceCount;
-        dumpData.staticBrushSurfaceStart = result.surfaceStart;
     }
 
     struct BSPAssetPtrs
@@ -809,70 +960,6 @@ namespace
         }
     }
 
-    void CreateAccessors(JsonRoot& gltf, BSPData& dumpData, bool isGfxWorld)
-    {
-        m_position_accessor_start = 0;
-        m_normal_accessor_start = 1;
-        m_uv_accessor_start = 2;
-        m_color_accessor_start = 3;
-        m_index_accessor_start = 4;
-
-        gltf.accessors.emplace();
-
-        size_t surfCount;
-        if (isGfxWorld)
-            surfCount = dumpData.gfxWorld.surfaces.size();
-        else
-            surfCount = dumpData.colWorld.surfaces.size();
-        for (size_t i = 0; i < surfCount; i++)
-        {
-            BSPSurface surf;
-            if (isGfxWorld)
-                surf = dumpData.gfxWorld.surfaces.at(i);
-            else
-                surf = dumpData.colWorld.surfaces.at(i);
-            JsonAccessor positionAccessor;
-            positionAccessor.bufferView = m_vertex_buffer_view;
-            positionAccessor.byteOffset = (unsigned)surf.indexOfFirstVertex * (unsigned)sizeof(BSPVertex) + static_cast<unsigned>(offsetof(BSPVertex, pos));
-            positionAccessor.componentType = JsonAccessorComponentType::FLOAT;
-            positionAccessor.count = (unsigned int)surf.vertexCount;
-            positionAccessor.type = JsonAccessorType::VEC3;
-            gltf.accessors->emplace_back(positionAccessor);
-
-            JsonAccessor normalAccessor;
-            normalAccessor.bufferView = m_vertex_buffer_view;
-            normalAccessor.byteOffset = (unsigned)surf.indexOfFirstVertex * (unsigned)sizeof(BSPVertex) + static_cast<unsigned>(offsetof(BSPVertex, normal));
-            normalAccessor.componentType = JsonAccessorComponentType::FLOAT;
-            normalAccessor.count = (unsigned int)surf.vertexCount;
-            normalAccessor.type = JsonAccessorType::VEC3;
-            gltf.accessors->emplace_back(normalAccessor);
-
-            JsonAccessor uvAccessor;
-            uvAccessor.bufferView = m_vertex_buffer_view;
-            uvAccessor.byteOffset = (unsigned)surf.indexOfFirstVertex * (unsigned)sizeof(BSPVertex) + static_cast<unsigned>(offsetof(BSPVertex, texCoord));
-            uvAccessor.componentType = JsonAccessorComponentType::FLOAT;
-            uvAccessor.count = (unsigned int)surf.vertexCount;
-            uvAccessor.type = JsonAccessorType::VEC2;
-            gltf.accessors->emplace_back(uvAccessor);
-
-            JsonAccessor colorAccessor;
-            colorAccessor.bufferView = m_vertex_buffer_view;
-            colorAccessor.byteOffset = (unsigned)surf.indexOfFirstVertex * (unsigned)sizeof(BSPVertex) + static_cast<unsigned>(offsetof(BSPVertex, color));
-            colorAccessor.componentType = JsonAccessorComponentType::FLOAT;
-            colorAccessor.count = (unsigned int)surf.vertexCount;
-            colorAccessor.type = JsonAccessorType::VEC4;
-            gltf.accessors->emplace_back(colorAccessor);
-
-            JsonAccessor indicesAccessor;
-            indicesAccessor.bufferView = m_index_buffer_view;
-            indicesAccessor.byteOffset = (unsigned)surf.indexOfFirstIndex * (unsigned)sizeof(uint16_t);
-            indicesAccessor.componentType = JsonAccessorComponentType::UNSIGNED_SHORT;
-            indicesAccessor.count = (unsigned int)surf.triCount * 3;
-            indicesAccessor.type = JsonAccessorType::SCALAR;
-            gltf.accessors->emplace_back(indicesAccessor);
-        }
-    }
-
     constexpr size_t ROOT_NODE_IDX = 0;
 
     size_t addNodeToGltf(JsonRoot& root, JsonNode& node, std::optional<size_t> parentIdx)
@@ -882,6 +969,63 @@ namespace
             root.nodes->at(*parentIdx).children->emplace_back((unsigned)nodeIdx);
         root.nodes->emplace_back(node);
         return nodeIdx;
+    }
+
+    JsonMeshPrimitives createPrimitiveFromSurfaces(JsonRoot& gltf, BSPData& dumpData, BSPSurface& surface, bool isGfxWorld)
+    {
+        if (!gltf.accessors)
+            gltf.accessors.emplace();
+
+        JsonMeshPrimitives primitive;
+        primitive.material = (unsigned)surface.materialIndex;
+        primitive.mode = JsonMeshPrimitivesMode::TRIANGLES;
+
+        JsonAccessor positionAccessor;
+        positionAccessor.bufferView = m_vertex_buffer_view;
+        positionAccessor.byteOffset = (unsigned)surface.indexOfFirstVertex * (unsigned)sizeof(BSPVertex) + static_cast<unsigned>(offsetof(BSPVertex, pos));
+        positionAccessor.componentType = JsonAccessorComponentType::FLOAT;
+        positionAccessor.count = (unsigned int)surface.vertexCount;
+        positionAccessor.type = JsonAccessorType::VEC3;
+        primitive.attributes.POSITION = (unsigned)gltf.accessors->size();
+        gltf.accessors->emplace_back(positionAccessor);
+
+        JsonAccessor normalAccessor;
+        normalAccessor.bufferView = m_vertex_buffer_view;
+        normalAccessor.byteOffset = (unsigned)surface.indexOfFirstVertex * (unsigned)sizeof(BSPVertex) + static_cast<unsigned>(offsetof(BSPVertex, normal));
+        normalAccessor.componentType = JsonAccessorComponentType::FLOAT;
+        normalAccessor.count = (unsigned int)surface.vertexCount;
+        normalAccessor.type = JsonAccessorType::VEC3;
+        primitive.attributes.NORMAL = (unsigned)gltf.accessors->size();
+        gltf.accessors->emplace_back(normalAccessor);
+
+        JsonAccessor uvAccessor;
+        uvAccessor.bufferView = m_vertex_buffer_view;
+        uvAccessor.byteOffset = (unsigned)surface.indexOfFirstVertex * (unsigned)sizeof(BSPVertex) + static_cast<unsigned>(offsetof(BSPVertex, texCoord));
+        uvAccessor.componentType = JsonAccessorComponentType::FLOAT;
+        uvAccessor.count = (unsigned int)surface.vertexCount;
+        uvAccessor.type = JsonAccessorType::VEC2;
+        primitive.attributes.TEXCOORD_0 = (unsigned)gltf.accessors->size();
+        gltf.accessors->emplace_back(uvAccessor);
+
+        JsonAccessor colorAccessor;
+        colorAccessor.bufferView = m_vertex_buffer_view;
+        colorAccessor.byteOffset = (unsigned)surface.indexOfFirstVertex * (unsigned)sizeof(BSPVertex) + static_cast<unsigned>(offsetof(BSPVertex, color));
+        colorAccessor.componentType = JsonAccessorComponentType::FLOAT;
+        colorAccessor.count = (unsigned int)surface.vertexCount;
+        colorAccessor.type = JsonAccessorType::VEC4;
+        primitive.attributes.COLOR_0 = (unsigned)gltf.accessors->size();
+        gltf.accessors->emplace_back(colorAccessor);
+
+        JsonAccessor indicesAccessor;
+        indicesAccessor.bufferView = m_index_buffer_view;
+        indicesAccessor.byteOffset = (unsigned)surface.indexOfFirstIndex * (unsigned)sizeof(uint16_t);
+        indicesAccessor.componentType = JsonAccessorComponentType::UNSIGNED_SHORT;
+        indicesAccessor.count = (unsigned int)surface.triCount * 3;
+        indicesAccessor.type = JsonAccessorType::SCALAR;
+        primitive.indices = (unsigned)gltf.accessors->size();
+        gltf.accessors->emplace_back(indicesAccessor);
+
+        return primitive;
     }
 
     size_t addMeshFromSurface(JsonRoot& root, BSPData& dumpData, size_t startSurf, size_t count, bool isGfxWorld)
@@ -895,15 +1039,7 @@ namespace
             else
                 surface = dumpData.colWorld.surfaces[surfIdx];
 
-            JsonMeshPrimitives primitive;
-            primitive.material = (unsigned)surface.materialIndex;
-            primitive.mode = JsonMeshPrimitivesMode::TRIANGLES;
-            primitive.indices = ((unsigned)surfIdx * m_total_accessor_types) + m_index_accessor_start;
-            primitive.attributes.COLOR_0 = ((unsigned)surfIdx * m_total_accessor_types) + m_color_accessor_start;
-            primitive.attributes.NORMAL = ((unsigned)surfIdx * m_total_accessor_types) + m_normal_accessor_start;
-            primitive.attributes.POSITION = ((unsigned)surfIdx * m_total_accessor_types) + m_position_accessor_start;
-            primitive.attributes.TEXCOORD_0 = ((unsigned)surfIdx * m_total_accessor_types) + m_uv_accessor_start;
-            mesh.primitives.emplace_back(primitive);
+            mesh.primitives.emplace_back(createPrimitiveFromSurfaces(root, dumpData, surface, isGfxWorld));
         }
         size_t meshIdx = root.meshes->size();
         root.meshes->emplace_back(mesh);
@@ -1091,8 +1227,7 @@ namespace
             }
             else
             {
-                bool isSolid = !convertFlagsToString(material.surfaceFlags, material.contentFlags).contains("nonsolid");
-                uniqueMaterials[material.materialName] = {isSolid, std::vector<size_t>({brushIdx})};
+                uniqueMaterials[material.materialName] = {true, std::vector<size_t>({brushIdx})};
             }
         }
 
@@ -1124,7 +1259,8 @@ namespace
             material.pbrMetallicRoughness.emplace();
             material.pbrMetallicRoughness->baseColorFactor = {mat.materialColour.x, mat.materialColour.y, mat.materialColour.z, mat.materialColour.w};
             nlohmann::json extrasJs;
-            extrasJs["flags"] = convertFlagsToString(mat.surfaceFlags, mat.contentFlags);
+            extrasJs["sf"] = mat.surfaceFlags;
+            extrasJs["cf"] = mat.contentFlags;
             extrasJs["name"] = mat.materialName; // duplicate name incase editor changes the mat name
             material.extras = extrasJs;
             root.materials->emplace_back(material);
@@ -1159,7 +1295,6 @@ namespace
     {
         createJsonHeader(root, dumpData.name, isGfxWorld);
         CreateBufferViews(root, dumpData, bufferData, isGfxWorld);
-        CreateAccessors(root, dumpData, isGfxWorld); // requires buffer views
 
         CreateMaterials(root, dumpData, isGfxWorld);
 

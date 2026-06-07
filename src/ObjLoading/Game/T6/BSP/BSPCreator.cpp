@@ -354,20 +354,22 @@ namespace
                 if (!normalAccessor->GetFloatVec3(vertexIndex, vertex.normal.v))
                     assert(false);
                 if (colorAccessor->GetType().value() == JsonAccessorType::VEC4)
+                {
                     if (!colorAccessor->GetFloatVec4(vertexIndex, vertex.color.v))
                         assert(false);
-                    else if (colorAccessor->GetType().value() == JsonAccessorType::VEC3)
-                    {
-                        vec3_t colorout{};
-                        if (!colorAccessor->GetFloatVec3(vertexIndex, colorout.v))
-                            assert(false);
-                        vertex.color.x = colorout.x;
-                        vertex.color.y = colorout.y;
-                        vertex.color.z = colorout.z;
-                        vertex.color.w = 1.0f;
-                    }
-                    else
+                }
+                else if (colorAccessor->GetType().value() == JsonAccessorType::VEC3)
+                {
+                    vec3_t colorout{};
+                    if (!colorAccessor->GetFloatVec3(vertexIndex, colorout.v))
                         assert(false);
+                    vertex.color.x = colorout.x;
+                    vertex.color.y = colorout.y;
+                    vertex.color.z = colorout.z;
+                    vertex.color.w = 1.0f;
+                }
+                else
+                    assert(false);
                 if (!uvAccessor->GetFloatVec2(vertexIndex, vertex.texCoord.v))
                     assert(false);
 
@@ -543,8 +545,6 @@ namespace
                     materialIndex = *primitive.material;
                 else
                     materialIndex = m_emptyMaterialIndex;
-                if (node.extras && node.extras->contains("flags"))
-                    materialIndex = createMaterialWithFlags(materialIndex, node.extras->at("flags"));
 
                 CreateSurface(accessorsForVertex, nodeMatrix, materialIndex, convertWorldToLocalPos, node.name.value_or("unnamed node"));
             }
@@ -1245,9 +1245,14 @@ namespace
                     material.materialColour.w = 1.0f;
 
                     material.surfaceFlags = 0;
-                    material.contentFlags = 1; // all materials start out as solid
-                    if (jsMaterial.extras && jsMaterial.extras->contains("flags"))
-                        convertStringToFlags(jsMaterial.extras->at("flags"), material.surfaceFlags, material.contentFlags);
+                    material.contentFlags = 0;
+                    if (jsMaterial.extras && jsMaterial.extras->contains("sf") && jsMaterial.extras->contains("cf"))
+                    {
+                        material.surfaceFlags = jsMaterial.extras->at("sf");
+                        material.contentFlags = jsMaterial.extras->at("cf");
+                    }
+                    else
+                        con::info("mat with no extras or flags: {}", material.materialName);
 
                     m_curr_bsp_world->materials.emplace_back(material);
                 }
@@ -1257,7 +1262,7 @@ namespace
             BSPMaterial emptyMaterial;
             emptyMaterial.materialType = MATERIAL_TYPE_COLOUR;
             emptyMaterial.surfaceFlags = 0;
-            emptyMaterial.contentFlags = 1;
+            emptyMaterial.contentFlags = 0;
             emptyMaterial.materialName = "";
             emptyMaterial.materialColour.x = 1.0f;
             emptyMaterial.materialColour.y = 1.0f;

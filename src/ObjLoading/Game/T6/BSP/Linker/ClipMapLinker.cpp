@@ -11,17 +11,20 @@ using namespace BSP;
 
 namespace
 {
+    struct ColPartition
+    {
+        size_t parentSurfaceIndex;
+        size_t indexStartIndex;
+        size_t triCount;
+        vec3_t mins;
+        vec3_t maxs;
+    };
+
     struct ColSurface
     {
         size_t materialIndex;
+        size_t partitionIndex;
         size_t partitionCount;
-        size_t partitionStartIndex;
-    };
-
-    struct ColTerrainTri
-    {
-        size_t materialIndex;
-        size_t indexStartIndex;
     };
 
     struct ColBrush
@@ -29,6 +32,8 @@ namespace
         size_t materialIndex;
         size_t brushVertCount;
         size_t brushVertStartIndex;
+        vec3_t mins;
+        vec3_t maxs;
     };
 
     struct ColModel
@@ -36,16 +41,17 @@ namespace
         bspModelSurfType type;
         size_t colBrushIndex;
         size_t colBrushCount;
-        size_t colTerrainTriIndex;
-        size_t colTerrainTriCount;
+        size_t colSurfaceIndex;
+        size_t colSurfaceCount;
     };
 
     struct CollisionData
     {
-        size_t staticTerrainTriCount; // static terrain always starts at 0
-        std::vector<ColTerrainTri> terrainTriVec;
-        std::vector<uint16_t> terrainIndices;
-        std::vector<vec3_t> terrainVerts;
+        size_t staticSurfaceCount; // static terrain always starts at 0
+        std::vector<ColSurface> surfaceVec;
+        std::vector<ColPartition> partitionVec;
+        std::vector<uint16_t> surfaceIndices;
+        std::vector<vec3_t> surfaceVerts;
 
         size_t staticBrushCount; // static brushes always starts at 0
         std::vector<ColBrush> brushVec;
@@ -59,12 +65,19 @@ namespace
         std::vector<cNode_t> nodeVec;
         std::vector<cLeaf_s> leafVec;
         std::vector<cLeafBrushNode_s> brushNodeVec;
-        std::vector<cbrush_array_t> brushVec;
         std::vector<CollisionAabbTree> AABBTreeVec;
+
+        std::vector<CollisionPartition> partitionVec;
+        std::vector<uint16_t> uniqueVertIndexVec;
+
         std::vector<cmodel_t> modelVec;
     };
 
+    // BO2 has a maximum limit of 128 children per AABB tree (essentially),
+    // so this is fixed by adding multiple parent AABB trees that hold 128 children each
     constexpr size_t MAX_AABB_TREE_CHILDREN = 128;
+
+    constexpr size_t MAX_PARTITION_TRIS = 2;
 
     constexpr vec3_t normalX = {1.0f, 0.0f, 0.0f};
     constexpr vec3_t normalY = {0.0f, 1.0f, 0.0f};
@@ -134,8 +147,8 @@ namespace
             *(reinterpret_cast<unsigned int*>(&clipMap->box_model.leaf.maxs.x)) = box_maxs;
             *(reinterpret_cast<unsigned int*>(&clipMap->box_model.leaf.maxs.y)) = box_maxs;
             *(reinterpret_cast<unsigned int*>(&clipMap->box_model.leaf.maxs.z)) = box_maxs;
-            assert(clipMap->box_model.leaf.mins.x == std::numeric_limits<float>::max());
-            assert(clipMap->box_model.leaf.maxs.x == std::numeric_limits<float>::min());
+            // assert(clipMap->box_model.leaf.mins.x == std::numeric_limits<float>::max());
+            // assert(clipMap->box_model.leaf.maxs.x == std::numeric_limits<float>::min());
 
             clipMap->box_model.leaf.brushContents = -1;
             clipMap->box_model.leaf.terrainContents = 0;
@@ -281,28 +294,24 @@ namespace
         void addAABBTreeFromTerrain(BSPData* bsp,
                                     CollisionOutput& output,
                                     CollisionData& data,
-                                    std::vector<size_t>& triangles,
+                                    std::vector<size_t>& terrainPartitions,
                                     size_t* out_parentCount,
                                     size_t* out_parentStartIndex,
                                     vec3_t* out_mins,
                                     vec3_t* out_maxs,
                                     int* out_treeContents)
         {
-            // partitions have the same index as the collisiondata triangles
-            size_t partitionCount = triangles.size();
-            assert(partitionCount > 0);
-
+            assert(terrainPartitions.size() > 0);
             std::map<size_t, std::vector<size_t>> uniqueMaterials;
-            for (size_t partitionIdx = 0; partitionIdx < partitionCount; partitionIdx++)
+            for (size_t partIdx = 0; partIdx < terrainPartitions.size(); partIdx++)
             {
-                size_t materialIndex = data.terrainTriVec.at(triangles.at(partitionIdx)).materialIndex;
+                size_t parentSurfIndex = data.partitionVec.at(terrainPartitions.at(partIdx)).parentSurfaceIndex;
+                size_t materialIndex = data.surfaceVec.at(parentSurfIndex).materialIndex;
                 if (!uniqueMaterials.contains(materialIndex))
                     uniqueMaterials[materialIndex] = std::vector<size_t>();
-                uniqueMaterials.at(materialIndex).emplace_back(partitionIdx);
+                uniqueMaterials.at(materialIndex).emplace_back(partIdx);
             }
 
-            // BO2 has a maximum limit of 128 children per AABB tree (essentially),
-            // so this is fixed by adding multiple parent AABB trees that hold 128 children each
             size_t totalParentCount = 0;
             *out_treeContents = 0;
             for (auto& matData : uniqueMaterials)
@@ -325,13 +334,13 @@ namespace
 
             for (auto& matData : uniqueMaterials)
             {
-                size_t matPartCount = matData.second.size();
-                size_t parentCount = matPartCount / MAX_AABB_TREE_CHILDREN;
-                size_t remainder = matPartCount % MAX_AABB_TREE_CHILDREN;
+                size_t partitionCount = matData.second.size();
+                size_t parentCount = partitionCount / MAX_AABB_TREE_CHILDREN;
+                size_t remainder = partitionCount % MAX_AABB_TREE_CHILDREN;
                 if (remainder > 0)
                     parentCount++;
 
-                size_t unaddedObjectCount = matPartCount;
+                size_t unaddedObjectCount = partitionCount;
                 size_t addedObjectCount = 0;
                 for (size_t parentIdx = 0; parentIdx < parentCount; parentIdx++)
                 {
@@ -348,37 +357,26 @@ namespace
                     {
                         // create a child AABBTree with the partition and add it to AABBTreeVec
                         size_t partitionIndex = matData.second.at(addedObjectCount + objectIdx);
-                        size_t triIndexStartIndex = data.terrainTriVec.at(partitionIndex).indexStartIndex;
-                        vec3_t childMins;
-                        vec3_t childMaxs;
-                        for (size_t indexIdx = 0; indexIdx < 3; indexIdx++)
+
+                        ColPartition& partition = data.partitionVec.at(partitionIndex);
+                        vec3_t partitionMins = partition.mins;
+                        vec3_t partitionMaxs = partition.maxs;
+                        // update the parent AABB with the child AABB
+                        if (objectIdx == 0)
                         {
-                            vec3_t& vert = data.terrainVerts.at(data.terrainIndices.at(triIndexStartIndex + indexIdx));
-                            if (indexIdx == 0)
-                            {
-                                childMins = vert;
-                                childMaxs = vert;
-                            }
-                            else
-                                BSPUtil::updateAABBWithPoint(vert, childMins, childMaxs);
+                            parentMins = partitionMins;
+                            parentMaxs = partitionMaxs;
                         }
+                        else
+                            BSPUtil::updateAABB(partitionMins, partitionMaxs, parentMins, parentMaxs);
 
                         CollisionAabbTree childAABBTree;
                         childAABBTree.materialIndex = static_cast<uint16_t>(matData.first);
                         childAABBTree.childCount = 0;
                         childAABBTree.u.partitionIndex = static_cast<int>(partitionIndex);
-                        childAABBTree.origin = BSPUtil::calcMiddleOfAABB(childMins, childMaxs);
-                        childAABBTree.halfSize = BSPUtil::calcHalfSizeOfAABB(childMins, childMaxs);
+                        childAABBTree.origin = BSPUtil::calcMiddleOfAABB(partitionMins, partitionMaxs);
+                        childAABBTree.halfSize = BSPUtil::calcHalfSizeOfAABB(partitionMins, partitionMaxs);
                         output.AABBTreeVec.emplace_back(childAABBTree);
-
-                        // update the parent AABB with the child AABB
-                        if (objectIdx == 0)
-                        {
-                            parentMins = childMins;
-                            parentMaxs = childMaxs;
-                        }
-                        else
-                            BSPUtil::updateAABB(childMins, childMaxs, parentMins, parentMaxs);
                     }
 
                     CollisionAabbTree parentAABB;
@@ -410,21 +408,8 @@ namespace
             for (size_t brushIdx = 0; brushIdx < brushes.size(); brushIdx++)
             {
                 ColBrush& colBrush = data.brushVec.at(brushes.at(brushIdx));
-
-                vec3_t brushMins{};
-                vec3_t brushMaxs{};
-                assert(colBrush.brushVertCount != 0);
-                for (size_t vertIdx = 0; vertIdx < colBrush.brushVertCount; vertIdx++)
-                {
-                    vec3_t& vertex = data.brushVerts.at(vertIdx);
-                    if (vertIdx == 0)
-                    {
-                        brushMins = vertex;
-                        brushMaxs = vertex;
-                    }
-                    else
-                        BSPUtil::updateAABBWithPoint(vertex, brushMins, brushMaxs);
-                }
+                vec3_t brushMins = colBrush.mins;
+                vec3_t brushMaxs = colBrush.maxs;
                 if (brushIdx == 0)
                 {
                     totalMins = brushMins;
@@ -433,49 +418,35 @@ namespace
                 else
                     BSPUtil::updateAABB(brushMins, brushMaxs, totalMins, totalMaxs);
 
-                int brushSurfaceFlags = bsp->colWorld.materials.at(colBrush.materialIndex).surfaceFlags;
-                int brushContentFlags = bsp->colWorld.materials.at(colBrush.materialIndex).contentFlags;
-                totalBrushContents |= brushContentFlags;
-                cbrush_array_t outputBrush{};
-                outputBrush.numverts = static_cast<unsigned int>(colBrush.brushVertCount);
-                outputBrush.verts = m_memory.Alloc<vec3_t>(colBrush.brushVertCount);
-                for (size_t brushVertidx = 0; brushVertidx < colBrush.brushVertCount; brushVertidx++)
-                    outputBrush.verts[brushVertidx] = data.brushVerts.at(colBrush.brushVertStartIndex + brushVertidx);
-                outputBrush.contents = brushContentFlags;
-                outputBrush.mins = brushMins;
-                outputBrush.maxs = brushMaxs;
-                outputBrush.axial_cflags[0][0] = brushContentFlags;
-                outputBrush.axial_cflags[0][1] = brushContentFlags;
-                outputBrush.axial_cflags[0][2] = brushContentFlags;
-                outputBrush.axial_cflags[1][0] = brushContentFlags;
-                outputBrush.axial_cflags[1][1] = brushContentFlags;
-                outputBrush.axial_cflags[1][2] = brushContentFlags;
-                outputBrush.axial_sflags[0][0] = brushSurfaceFlags;
-                outputBrush.axial_sflags[0][1] = brushSurfaceFlags;
-                outputBrush.axial_sflags[0][2] = brushSurfaceFlags;
-                outputBrush.axial_sflags[1][0] = brushSurfaceFlags;
-                outputBrush.axial_sflags[1][1] = brushSurfaceFlags;
-                outputBrush.axial_sflags[1][2] = brushSurfaceFlags;
-                output.brushVec.emplace_back(outputBrush);
+                totalBrushContents |= bsp->colWorld.materials.at(colBrush.materialIndex).contentFlags;
             }
+
+            *out_brushContents = totalBrushContents;
+            *out_mins = totalMins;
+            *out_maxs = totalMaxs;
+
+            if (brushes.size() > INT16_MAX)
+                con::error("ERROR: BRUSH SIZE EXCEEDS INT16_MAX - NOT IMPLEMENTED YET ");
 
             cLeafBrushNode_s brushNode{};
             brushNode.axis = 0;
             brushNode.contents = totalBrushContents;
             brushNode.leafBrushCount = static_cast<int16_t>(brushes.size());
             brushNode.data.leaf.brushes = m_memory.Alloc<LeafBrush>(brushes.size());
-            size_t brushStartIdx = output.brushVec.size();
             for (size_t brushIdx = 0; brushIdx < brushes.size(); brushIdx++)
-                brushNode.data.leaf.brushes[0] = static_cast<unsigned short>(brushStartIdx + brushIdx);
+                brushNode.data.leaf.brushes[brushIdx] = static_cast<LeafBrush>(brushes.at(brushIdx));
             size_t brushNodeIdx = output.brushNodeVec.size();
             output.brushNodeVec.emplace_back(brushNode);
-
-            *out_brushContents = totalBrushContents;
-            *out_mins = totalMins;
-            *out_maxs = totalMaxs;
-
             return brushNodeIdx;
         }
+
+        size_t leafCt = 0;
+        size_t nodeCt = 0;
+        size_t emptyCt = 0;
+        size_t largestObjectCountLeaf = 0;
+        size_t largestBrushCountLeaf = 0;
+        size_t largestTriCountLeaf = 0;
+        size_t TOTALBRUSHES = 0;
 
         // returns the index of the node/leaf parsed by the function
         // Nodes are indexed by their index in the node array
@@ -490,14 +461,20 @@ namespace
                     cNode_t node{};
                     node.plane = m_memory.Alloc<cplane_s>();
                     node.plane->normal = normalX;
-                    node.children[0] = -1; // index first leaf
-                    node.children[1] = -1; // index first leaf
+                    uint16_t leafIndex = static_cast<uint16_t>(output.leafVec.size());
+                    node.children[0] = -1 - leafIndex; // index next leaf
+                    node.children[1] = -1 - leafIndex; // index next leaf
                     output.nodeVec.emplace_back(node);
                 }
 
-                cLeaf_s leaf{};
                 if (tree->leaf->getObjectCount() > 0)
                 {
+                    cLeaf_s leaf{};
+
+                    if (tree->leaf->getObjectCount() > largestObjectCountLeaf)
+                        largestObjectCountLeaf = tree->leaf->getObjectCount();
+
+                    leafCt++;
                     std::vector<size_t> brushes;
                     std::vector<size_t> triangles;
                     for (size_t objIdx = 0; objIdx < tree->leaf->getObjectCount(); objIdx++)
@@ -510,6 +487,14 @@ namespace
                             triangles.emplace_back(object->objIndex);
                     }
 
+                    if (brushes.size() > largestBrushCountLeaf)
+                        largestBrushCountLeaf = brushes.size();
+
+                    if (triangles.size() > largestTriCountLeaf)
+                        largestTriCountLeaf = triangles.size();
+
+                    TOTALBRUSHES += brushes.size();
+
                     if (!triangles.empty())
                     {
                         size_t parentCount = 0;
@@ -521,13 +506,20 @@ namespace
 
                     if (!brushes.empty())
                         leaf.leafBrushNode = static_cast<int>(addBrushNodeFromBrushes(bsp, output, data, brushes, &leaf.mins, &leaf.maxs, &leaf.brushContents));
+
+                    uint16_t leafIndex = static_cast<uint16_t>(output.leafVec.size());
+                    output.leafVec.emplace_back(leaf);
+                    return -1 - leafIndex;
                 }
-                uint16_t leafIndex = static_cast<uint16_t>(output.leafVec.size());
-                output.leafVec.emplace_back(leaf);
-                return -1 - leafIndex;
+                else
+                {
+                    emptyCt++;
+                    return -1 - 0; // first leaf is the empty leaf index
+                }
             }
             else
             {
+                nodeCt++;
                 cNode_t node;
                 node.plane = m_memory.Alloc<cplane_s>();
                 node.plane->dist = tree->node->distance;
@@ -566,9 +558,9 @@ namespace
         void loadModelCollision(BSPData* bsp, CollisionData& data, CollisionOutput& output)
         {
             cmodel_t worldModel{};
-            vec3_t worldMins = data.terrainVerts.at(0);
-            vec3_t worldMaxs = data.terrainVerts.at(0);
-            for (vec3_t& vertex : data.terrainVerts)
+            vec3_t worldMins = data.surfaceVerts.at(0);
+            vec3_t worldMaxs = data.surfaceVerts.at(0);
+            for (vec3_t& vertex : data.surfaceVerts)
                 BSPUtil::updateAABBWithPoint(vertex, worldMins, worldMaxs);
             for (vec3_t& vertex : data.brushVerts)
                 BSPUtil::updateAABBWithPoint(vertex, worldMins, worldMaxs);
@@ -591,11 +583,15 @@ namespace
                 {
                     size_t parentCount = 0;
                     size_t parentStartIndex = 0;
-                    std::vector<size_t> triangles;
-                    for (size_t triIdx = 0; triIdx < model.colTerrainTriCount; triIdx++)
-                        triangles.emplace_back(model.colTerrainTriIndex + triIdx);
+                    std::vector<size_t> partitions;
+                    for (size_t surfIdx = 0; surfIdx < model.colSurfaceCount; surfIdx++)
+                    {
+                        ColSurface& surf = data.surfaceVec.at(model.colSurfaceIndex + surfIdx);
+                        for (size_t partIdx = 0; partIdx < surf.partitionCount; partIdx++)
+                            partitions.emplace_back(surf.partitionIndex + partIdx);
+                    }
                     addAABBTreeFromTerrain(
-                        bsp, output, data, triangles, &parentCount, &parentStartIndex, &modelMins, &modelMaxs, &outputModel.leaf.terrainContents);
+                        bsp, output, data, partitions, &parentCount, &parentStartIndex, &modelMins, &modelMaxs, &outputModel.leaf.terrainContents);
                     outputModel.leaf.collAabbCount = static_cast<uint16_t>(parentCount);
                     outputModel.leaf.firstCollAabbIndex = static_cast<uint16_t>(parentStartIndex);
                 }
@@ -620,47 +616,179 @@ namespace
             }
         }
 
-        void loadCollisionData(CollisionData& data, BSPData* bsp)
+        void generateColBrushFromBsp(CollisionData& data, BSPData* bsp, BSPSurface& in_surface)
+        {
+            ColBrush brush{};
+            brush.materialIndex = in_surface.materialIndex;
+            brush.brushVertStartIndex = data.brushVerts.size();
+            brush.brushVertCount = in_surface.vertexCount;
+
+            vec3_t mins{};
+            vec3_t maxs{};
+            for (size_t vertIdx = 0; vertIdx < in_surface.vertexCount; vertIdx++)
+            {
+                vec3_t& vertex = bsp->colWorld.vertices.at(in_surface.indexOfFirstVertex + vertIdx).pos;
+                if (vertIdx == 0)
+                {
+                    mins = vertex;
+                    maxs = vertex;
+                }
+                else
+                    BSPUtil::updateAABBWithPoint(vertex, mins, maxs);
+                data.brushVerts.emplace_back(vertex);
+            }
+            brush.mins = mins;
+            brush.maxs = maxs;
+            data.brushVec.emplace_back(brush);
+        }
+
+        bool areVerticesEqual(BSPData* bsp, size_t vertIdx1, size_t vertIdx2)
+        {
+            const vec3_t& vert1 = bsp->colWorld.vertices.at(vertIdx1).pos;
+            const vec3_t& vert2 = bsp->colWorld.vertices.at(vertIdx2).pos;
+            return (vert1.x == vert2.x && vert1.y == vert2.y && vert1.z == vert2.z);
+        }
+
+        bool isTriConnectedToTri(BSPData* bsp, BSPSurface& in_surface, size_t triIdx1, size_t triIdx2)
+        {
+            size_t t1_index0 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx1 * 3));
+            size_t t1_index1 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx1 * 3) + 1);
+            size_t t1_index2 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx1 * 3) + 2);
+            size_t t2_index0 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx2 * 3));
+            size_t t2_index1 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx2 * 3) + 1);
+            size_t t2_index2 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx2 * 3) + 2);
+
+            size_t matchCount = 0;
+            if (areVerticesEqual(bsp, t1_index0, t2_index0) || areVerticesEqual(bsp, t1_index0, t2_index1) || areVerticesEqual(bsp, t1_index0, t2_index2))
+                matchCount++;
+            if (areVerticesEqual(bsp, t1_index1, t2_index0) || areVerticesEqual(bsp, t1_index1, t2_index1) || areVerticesEqual(bsp, t1_index1, t2_index2))
+                matchCount++;
+            if (areVerticesEqual(bsp, t1_index2, t2_index0) || areVerticesEqual(bsp, t1_index2, t2_index1) || areVerticesEqual(bsp, t1_index2, t2_index2))
+                matchCount++;
+
+            if (matchCount < 2)
+                return false;
+            else if (matchCount == 2)
+                return true;
+            else
+            {
+                con::warn("Warning: two comparsion tris had every index match.");
+                return true;
+            }
+        }
+
+        size_t generateColSurfaceFromBsp(CollisionData& data,
+                                         BSPData* bsp,
+                                         BSPSurface& in_surface,
+                                         std::vector<size_t>& out_terrainIndexBuffer,
+                                         std::vector<vec3_t>& out_terrainVertexBuffer)
+        {
+            size_t count = in_surface.triCount;
+            size_t maxElems = MAX_PARTITION_TRIS;
+
+            std::vector<std::vector<size_t>> generatedPartitions; // list of tri indexes of the surface (0 indexed in surf tris)
+            std::unique_ptr<bool[]> visitedTris = std::make_unique<bool[]>(in_surface.triCount);
+            for (size_t triIdx1 = 0; triIdx1 < in_surface.triCount; triIdx1++)
+            {
+                if (visitedTris[triIdx1])
+                    continue;
+                else
+                    visitedTris[triIdx1] = true;
+
+                bool foundConnection = false;
+                for (auto& genPart : generatedPartitions)
+                {
+                    if (genPart.size() == MAX_PARTITION_TRIS)
+                        continue;
+
+                    for (const auto& triIdx2 : genPart)
+                    {
+                        if (isTriConnectedToTri(bsp, in_surface, triIdx1, triIdx2))
+                        {
+                            genPart.emplace_back(triIdx1);
+                            foundConnection = true;
+                            break;
+                        }
+                    }
+                    if (foundConnection)
+                        break;
+                }
+                if (foundConnection)
+                    continue;
+
+                foundConnection = false;
+                for (size_t triIdx2 = 0; triIdx2 < in_surface.triCount; triIdx2++)
+                {
+                    if (visitedTris[triIdx2])
+                        continue;
+
+                    if (isTriConnectedToTri(bsp, in_surface, triIdx1, triIdx2))
+                    {
+                        std::vector<size_t> partitiontris = {triIdx1, triIdx2};
+                        visitedTris[triIdx2] = true;
+                        generatedPartitions.emplace_back(partitiontris);
+                        foundConnection = true;
+                        break;
+                    }
+                }
+                if (!foundConnection)
+                {
+                    std::vector<size_t> partitiontris = {triIdx1};
+                    generatedPartitions.emplace_back(partitiontris);
+                }
+            }
+
+            ColSurface surf{};
+            surf.materialIndex = in_surface.materialIndex;
+            surf.partitionCount = generatedPartitions.size();
+            surf.partitionIndex = data.partitionVec.size();
+            size_t surfaceIndex = data.surfaceVec.size();
+            data.surfaceVec.emplace_back(surf);
+
+            for (const auto& generatedPartition : generatedPartitions)
+            {
+                size_t triCount = generatedPartition.size();
+                ColPartition partition{};
+                partition.parentSurfaceIndex = surfaceIndex;
+                partition.indexStartIndex = out_terrainIndexBuffer.size();
+                partition.triCount = triCount;
+                // mins/maxs initialised later
+                data.partitionVec.emplace_back(partition);
+
+                for (size_t triIdx : generatedPartition)
+                {
+                    size_t index0 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx * 3));
+                    size_t index1 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx * 3) + 1);
+                    size_t index2 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx * 3) + 2);
+                    out_terrainIndexBuffer.emplace_back(out_terrainVertexBuffer.size() + index0); // indices cover the entire vert buffer
+                    out_terrainIndexBuffer.emplace_back(out_terrainVertexBuffer.size() + index1); // indices cover the entire vert buffer
+                    out_terrainIndexBuffer.emplace_back(out_terrainVertexBuffer.size() + index2); // indices cover the entire vert buffer
+                }
+            }
+
+            for (size_t vertIdx = 0; vertIdx < in_surface.vertexCount; vertIdx++)
+                out_terrainVertexBuffer.emplace_back(bsp->colWorld.vertices.at(in_surface.indexOfFirstVertex + vertIdx).pos);
+
+            return surfaceIndex;
+        }
+
+        bool loadCollisionData(CollisionData& data, BSPData* bsp)
         {
             std::vector<size_t> tempTerrainIndexBuffer;
-            assert(data.terrainTriVec.size() == 0);
+            std::vector<vec3_t> tempTerrainVertexBuffer;
+            assert(data.surfaceVec.size() == 0);
             for (size_t surfIdx = 0; surfIdx < bsp->staticTerrainSurfaceCount; surfIdx++)
             {
-                BSPSurface surface = bsp->colWorld.surfaces.at(bsp->staticTerrainSurfaceStart + surfIdx);
-                for (size_t triIdx = 0; triIdx < surface.triCount; triIdx++)
-                {
-                    ColTerrainTri tri{};
-                    tri.materialIndex = surface.materialIndex;
-                    tri.indexStartIndex = tempTerrainIndexBuffer.size();
-                    data.terrainTriVec.emplace_back(tri);
-
-                    size_t index0 = bsp->colWorld.indices.at(surface.indexOfFirstIndex + (triIdx * 3));
-                    size_t index1 = bsp->colWorld.indices.at(surface.indexOfFirstIndex + (triIdx * 3) + 1);
-                    size_t index2 = bsp->colWorld.indices.at(surface.indexOfFirstIndex + (triIdx * 3) + 2);
-                    tempTerrainIndexBuffer.emplace_back(data.terrainVerts.size() + index0); // indices cover the entire vert buffer
-                    tempTerrainIndexBuffer.emplace_back(data.terrainVerts.size() + index1); // indices cover the entire vert buffer
-                    tempTerrainIndexBuffer.emplace_back(data.terrainVerts.size() + index2); // indices cover the entire vert buffer
-                }
-
-                for (size_t vertIdx = 0; vertIdx < surface.vertexCount; vertIdx++)
-                    data.terrainVerts.emplace_back(bsp->colWorld.vertices.at(surface.indexOfFirstVertex + vertIdx).pos);
+                BSPSurface& surface = bsp->colWorld.surfaces.at(bsp->staticTerrainSurfaceStart + surfIdx);
+                generateColSurfaceFromBsp(data, bsp, surface, tempTerrainIndexBuffer, tempTerrainVertexBuffer);
             }
-            data.staticTerrainTriCount = data.terrainTriVec.size();
+            data.staticSurfaceCount = data.surfaceVec.size();
 
             assert(data.brushVec.size() == 0);
             for (size_t surfIdx = 0; surfIdx < bsp->staticBrushSurfaceCount; surfIdx++)
             {
-                ColBrush brush{};
                 BSPSurface surface = bsp->colWorld.surfaces.at(bsp->staticBrushSurfaceStart + surfIdx);
-
-                brush.materialIndex = surface.materialIndex;
-                brush.brushVertStartIndex = data.brushVerts.size();
-                brush.brushVertCount = surface.vertexCount;
-
-                for (size_t vertIdx = 0; vertIdx < surface.vertexCount; vertIdx++)
-                    data.brushVerts.emplace_back(bsp->colWorld.vertices.at(surface.indexOfFirstVertex + vertIdx).pos);
-
-                data.brushVec.emplace_back(brush);
+                generateColBrushFromBsp(data, bsp, surface);
             }
             data.staticBrushCount = data.brushVec.size();
 
@@ -677,29 +805,13 @@ namespace
                 colModel.type = model.surfaceType;
                 if (colModel.type == MST_TERRAIN || colModel.type == MST_BOTH)
                 {
-                    colModel.colTerrainTriIndex = data.terrainTriVec.size();
+                    colModel.colSurfaceIndex = data.surfaceVec.size();
                     for (size_t surfIdx = 0; surfIdx < model.colTerrainSurfaceCount; surfIdx++)
                     {
                         BSPSurface surface = bsp->colWorld.surfaces.at(model.colTerrainSurfaceIndex + surfIdx);
-                        for (size_t triIdx = 0; triIdx < surface.triCount * 3; triIdx++)
-                        {
-                            ColTerrainTri tri{};
-                            tri.materialIndex = surface.materialIndex;
-                            tri.indexStartIndex = tempTerrainIndexBuffer.size();
-                            data.terrainTriVec.emplace_back(tri);
-
-                            size_t index0 = bsp->colWorld.indices.at(surface.indexOfFirstIndex + (triIdx * 3));
-                            size_t index1 = bsp->colWorld.indices.at(surface.indexOfFirstIndex + (triIdx * 3) + 1);
-                            size_t index2 = bsp->colWorld.indices.at(surface.indexOfFirstIndex + (triIdx * 3) + 2);
-                            tempTerrainIndexBuffer.emplace_back(data.terrainVerts.size() + index0); // indices cover the entire vert buffer
-                            tempTerrainIndexBuffer.emplace_back(data.terrainVerts.size() + index1); // indices cover the entire vert buffer
-                            tempTerrainIndexBuffer.emplace_back(data.terrainVerts.size() + index2); // indices cover the entire vert buffer
-                        }
-
-                        for (size_t vertIdx = 0; vertIdx < surface.vertexCount; vertIdx++)
-                            data.terrainVerts.emplace_back(bsp->colWorld.vertices.at(surface.indexOfFirstVertex + vertIdx).pos);
+                        generateColSurfaceFromBsp(data, bsp, surface, tempTerrainIndexBuffer, tempTerrainVertexBuffer);
                     }
-                    colModel.colTerrainTriCount = data.terrainTriVec.size() - colModel.colTerrainTriIndex;
+                    colModel.colSurfaceCount = data.surfaceVec.size() - colModel.colSurfaceIndex;
                 }
 
                 if (colModel.type == MST_BRUSH || colModel.type == MST_BOTH)
@@ -708,92 +820,190 @@ namespace
                     colModel.colBrushCount = model.colBrushSurfaceCount;
                     for (size_t surfIdx = 0; surfIdx < model.colBrushSurfaceCount; surfIdx++)
                     {
-                        ColBrush brush{};
                         BSPSurface surface = bsp->colWorld.surfaces.at(model.colBrushSurfaceIndex + surfIdx);
-
-                        brush.materialIndex = surface.materialIndex;
-                        brush.brushVertStartIndex = data.brushVerts.size();
-                        brush.brushVertCount = surface.vertexCount;
-
-                        for (size_t vertIdx = 0; vertIdx < surface.vertexCount; vertIdx++)
-                            data.brushVerts.emplace_back(bsp->colWorld.vertices.at(surface.indexOfFirstVertex + vertIdx).pos);
-
-                        data.brushVec.emplace_back(brush);
+                        generateColBrushFromBsp(data, bsp, surface);
                     }
                 }
 
                 data.models.emplace_back(colModel);
             }
 
-            // TODO: simplify vertices and update index buffer
+            std::unique_ptr<size_t[]> resizedVertexMap = std::make_unique<size_t[]>(tempTerrainVertexBuffer.size());
+            for (size_t i = 0; i < tempTerrainVertexBuffer.size(); i++)
+            {
+                bool found = false;
+                size_t foundIdx = 0;
+                const auto& testVertex = tempTerrainVertexBuffer.at(i);
+                for (size_t j = 0; j < data.surfaceVerts.size(); j++)
+                {
+                    const auto& inVertex = data.surfaceVerts.at(j);
+                    if (inVertex.x == testVertex.x && inVertex.y == testVertex.y && inVertex.z == testVertex.z)
+                    {
+                        found = true;
+                        foundIdx = j;
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    if (data.surfaceVerts.size() == UINT16_MAX)
+                    {
+                        con::error("assert data.surfaceVerts.size() == UINT16_MAX");
+                        return false;
+                    }
+                    resizedVertexMap[i] = data.surfaceVerts.size();
+                    data.surfaceVerts.emplace_back(testVertex);
+                }
+                else
+                    resizedVertexMap[i] = foundIdx;
+            }
+
             for (size_t idx : tempTerrainIndexBuffer)
             {
-                assert(idx < 0xFFFF);
-                data.terrainIndices.emplace_back(static_cast<uint16_t>(idx));
+                if (resizedVertexMap[idx] > UINT16_MAX)
+                {
+                    con::error("assert(resizedVertexMap[idx] > UINT16_MAX);");
+                    return false;
+                }
+                data.surfaceIndices.emplace_back(static_cast<uint16_t>(resizedVertexMap[idx]));
             }
+
+            return true;
         }
 
         std::unique_ptr<BSPTree> createBSPTree(CollisionData& data)
         {
-            vec3_t worldMins = data.terrainVerts.at(0);
-            vec3_t worldMaxs = data.terrainVerts.at(0);
-            for (vec3_t& vertex : data.terrainVerts)
+            vec3_t worldMins = data.surfaceVerts.at(0);
+            vec3_t worldMaxs = data.surfaceVerts.at(0);
+            for (vec3_t& vertex : data.surfaceVerts)
                 BSPUtil::updateAABBWithPoint(vertex, worldMins, worldMaxs);
             for (vec3_t& vertex : data.brushVerts)
                 BSPUtil::updateAABBWithPoint(vertex, worldMins, worldMaxs);
 
             std::unique_ptr<BSPTree> tree = std::make_unique<BSPTree>(worldMins.x, worldMins.y, worldMins.z, worldMaxs.x, worldMaxs.y, worldMaxs.z, 0);
 
-            for (size_t triIdx = 0; triIdx < data.staticTerrainTriCount; triIdx++)
+            for (size_t surfIdx = 0; surfIdx < data.staticSurfaceCount; surfIdx++)
             {
-                ColTerrainTri& tri = data.terrainTriVec.at(triIdx);
-                vec3_t triMins;
-                vec3_t triMaxs;
-                for (size_t indexIdx = 0; indexIdx < 3; indexIdx++)
+                ColSurface& surf = data.surfaceVec.at(surfIdx);
+                for (size_t partIdx = 0; partIdx < surf.partitionCount; partIdx++)
                 {
-                    uint16_t index = data.terrainIndices.at(tri.indexStartIndex + indexIdx);
-                    vec3_t& vert = data.terrainVerts.at(index);
-                    if (indexIdx == 0)
-                    {
-                        triMins = vert;
-                        triMaxs = vert;
-                    }
-                    else
-                        BSPUtil::updateAABBWithPoint(vert, triMins, triMaxs);
+                    ColPartition& partition = data.partitionVec.at(surf.partitionIndex + partIdx);
+                    vec3_t partMins = partition.mins;
+                    vec3_t partMaxs = partition.maxs;
+                    std::shared_ptr<BSPObject> object = std::make_shared<BSPObject>(
+                        partMins.x, partMins.y, partMins.z, partMaxs.x, partMaxs.y, partMaxs.z, false, surf.partitionIndex + partIdx);
+                    tree->addObjectToTree(std::move(object));
                 }
-                std::shared_ptr<BSPObject> object =
-                    std::make_shared<BSPObject>(triMins.x, triMins.y, triMins.z, triMaxs.x, triMaxs.y, triMaxs.z, false, triIdx);
-                tree->addObjectToTree(std::move(object));
             }
 
             for (size_t brushIdx = 0; brushIdx < data.staticBrushCount; brushIdx++)
             {
                 ColBrush& brush = data.brushVec.at(brushIdx);
-                vec3_t brushMins;
-                vec3_t brushMaxs;
-                for (size_t vertIdx = 0; vertIdx < brush.brushVertCount; vertIdx++)
-                {
-                    vec3_t& vert = data.brushVerts.at(vertIdx);
-                    if (vertIdx == 0)
-                    {
-                        brushMins = vert;
-                        brushMaxs = vert;
-                    }
-                    else
-                        BSPUtil::updateAABBWithPoint(vert, brushMins, brushMaxs);
-                }
+                vec3_t brushMins = brush.mins;
+                vec3_t brushMaxs = brush.maxs;
                 std::shared_ptr<BSPObject> object =
                     std::make_shared<BSPObject>(brushMins.x, brushMins.y, brushMins.z, brushMaxs.x, brushMaxs.y, brushMaxs.z, true, brushIdx);
                 tree->addObjectToTree(std::move(object));
             }
 
+            tree->optimiseTree();
+
             return tree;
+        }
+
+        void calcColDataBounds(CollisionData& data)
+        {
+            for (ColPartition& partition : data.partitionVec)
+            {
+                assert(partition.triCount != 0);
+                for (size_t indexIdx = 0; indexIdx < partition.triCount * 3; indexIdx++)
+                {
+                    uint16_t index = data.surfaceIndices.at(partition.indexStartIndex + indexIdx);
+                    vec3_t& vert = data.surfaceVerts.at(index);
+                    if (indexIdx == 0)
+                    {
+                        partition.mins = vert;
+                        partition.maxs = vert;
+                    }
+                    else
+                        BSPUtil::updateAABBWithPoint(vert, partition.mins, partition.maxs);
+                }
+            }
+        }
+
+        void loadPartitions(BSPData* bsp, CollisionData& data, CollisionOutput& output)
+        {
+            for (const auto& in_partition : data.partitionVec)
+            {
+                assert(in_partition.triCount > 0 && in_partition.triCount <= MAX_PARTITION_TRIS);
+                assert(in_partition.indexStartIndex % 3 == 0);
+
+                CollisionPartition partition{};
+                partition.triCount = static_cast<char>(in_partition.triCount);
+                partition.firstTri = static_cast<int>(in_partition.indexStartIndex / 3);
+                uint16_t uniqueIndices[MAX_PARTITION_TRIS * 3];
+                size_t uniqueIndexSize = 0;
+                for (size_t triIdx = 0; triIdx < in_partition.triCount; triIdx++)
+                {
+                    uint16_t idx0 = data.surfaceIndices.at(in_partition.indexStartIndex + (triIdx * 3) + 0);
+                    uint16_t idx1 = data.surfaceIndices.at(in_partition.indexStartIndex + (triIdx * 3) + 1);
+                    uint16_t idx2 = data.surfaceIndices.at(in_partition.indexStartIndex + (triIdx * 3) + 2);
+
+                    bool isUnique = false;
+                    for (size_t i = 0; i < uniqueIndexSize; i++)
+                    {
+                        if (uniqueIndices[i] == idx0)
+                        {
+                            isUnique = true;
+                            break;
+                        }
+                    }
+                    if (isUnique)
+                        uniqueIndices[uniqueIndexSize++] = idx0;
+
+                    isUnique = false;
+                    for (size_t i = 0; i < uniqueIndexSize; i++)
+                    {
+                        if (uniqueIndices[i] == idx1)
+                        {
+                            isUnique = true;
+                            break;
+                        }
+                    }
+                    if (isUnique)
+                        uniqueIndices[uniqueIndexSize++] = idx1;
+
+                    isUnique = false;
+                    for (size_t i = 0; i < uniqueIndexSize; i++)
+                    {
+                        if (uniqueIndices[i] == idx2)
+                        {
+                            isUnique = true;
+                            break;
+                        }
+                    }
+                    if (isUnique)
+                        uniqueIndices[uniqueIndexSize++] = idx2;
+
+                    output.uniqueVertIndexVec.emplace_back(idx0);
+                    output.uniqueVertIndexVec.emplace_back(idx1);
+                    output.uniqueVertIndexVec.emplace_back(idx2);
+                }
+                partition.nuinds = static_cast<int>(uniqueIndexSize);
+                partition.fuind = static_cast<int>(output.uniqueVertIndexVec.size());
+                for (size_t i = 0; i < uniqueIndexSize; i++)
+                    output.uniqueVertIndexVec.emplace_back(uniqueIndices[i]);
+
+                output.partitionVec.emplace_back(partition);
+            }
         }
 
         bool loadWorldCollision(clipMap_t* clipMap, BSPData* bsp)
         {
             CollisionData data{};
-            loadCollisionData(data, bsp);
+            if (!loadCollisionData(data, bsp))
+                return false;
+            calcColDataBounds(data);
 
             std::unique_ptr<BSPTree> tree = createBSPTree(data);
             if (tree == nullptr)
@@ -803,9 +1013,52 @@ namespace
             cLeafBrushNode_s tempNode{};
             output.brushNodeVec.emplace_back(tempNode); // first brush node is always empty
 
+            cLeaf_s leaf{};
+            output.leafVec.emplace_back(leaf); // first leaf is always empty
+
+            con::info("AABBTreeVec 1 count: {}", output.AABBTreeVec.size());
+
+            loadPartitions(bsp, data, output);
+
+            con::info("AABBTreeVec 2  count: {}", output.AABBTreeVec.size());
+
             loadBSPNode(bsp, tree.get(), true, output, data);
+            // loadBSPNode adds 291980 AABB trees for 39290 partitions. largest leaf object count has 20618 objects in a single leaf
+            // ????????????????????????????????
+            // crash related too brushes being more than 127 and crashing. maybe nodes can have max 127 brushes?
+            // a lot of brushnodes have exactly 19671 or 1793 brushes
+            con::info("AABBTreeVec 3 count: {}", output.AABBTreeVec.size());
 
             loadModelCollision(bsp, data, output);
+
+            con::info("AABBTreeVec 4 count: {}", output.AABBTreeVec.size());
+
+            con::info("data.staticSurfaceCount count: {}", data.staticSurfaceCount);
+            con::info("data.surfaceVec count: {}", data.surfaceVec.size());
+            con::info("data.partitionVec count: {}", data.partitionVec.size());
+            con::info("data.surfaceIndices count: {}", data.surfaceIndices.size());
+            con::info("data.surfaceVerts count: {}", data.surfaceVerts.size());
+
+            con::info("data.staticBrushCount count: {}", data.staticBrushCount);
+            con::info("data.brushVec count: {}", data.brushVec.size());
+            con::info("data.brushVerts count: {}", data.brushVerts.size());
+            con::info("data.models count: {}", data.models.size());
+
+            con::info("output.modelVec count: {}", output.modelVec.size());
+            con::info("output.nodeVec count: {}", output.nodeVec.size());
+            con::info("output.leafVec count: {}", output.leafVec.size());
+            con::info("output.AABBTreeVec count: {}", output.AABBTreeVec.size());
+            con::info("output.brushNodeVec count: {}", output.brushNodeVec.size());
+            con::info("output.partitionVec count: {}", output.partitionVec.size());
+            con::info("output.uniqueVertIndexVec count: {}", output.uniqueVertIndexVec.size());
+
+            con::info("output leaf count: {}", leafCt);
+            con::info("output node count: {}", nodeCt);
+            con::info("empty unadded leafs count: {}", emptyCt);
+            con::info("largestObjectCountLeaf: {}", largestObjectCountLeaf);
+            con::info("largestBrushCountLeaf: {}", largestBrushCountLeaf);
+            con::info("largestTriCountLeaf: {}", largestTriCountLeaf);
+            con::info("TOTALBRUSHES: {}", TOTALBRUSHES);
 
             if (output.modelVec.size() > 0x3FFF)
             {
@@ -827,7 +1080,7 @@ namespace
                 con::error("exceeded 0xFFFF AABBTrees in clipmap");
                 return false;
             }
-            if (output.brushVec.size() > 0xFFFF)
+            if (data.brushVec.size() > 0xFFFF)
             {
                 con::error("exceeded 0xFFFF brushes in clipmap");
                 return false;
@@ -838,8 +1091,6 @@ namespace
             clipMap->info.planes = nullptr;
             clipMap->info.numBrushSides = 0;
             clipMap->info.brushsides = nullptr;
-            clipMap->info.numBrushVerts = 0;
-            clipMap->info.brushVerts = nullptr;
             clipMap->info.numLeafBrushes = 0;
             clipMap->info.leafbrushes = nullptr;
             clipMap->info.brushBounds = nullptr;
@@ -861,35 +1112,59 @@ namespace
             clipMap->info.leafbrushNodes = m_memory.Alloc<cLeafBrushNode_s>(output.brushNodeVec.size());
             memcpy(clipMap->info.leafbrushNodes, output.brushNodeVec.data(), sizeof(cLeafBrushNode_s) * output.brushNodeVec.size());
 
-            clipMap->info.numBrushes = static_cast<uint16_t>(output.brushVec.size());
-            clipMap->info.brushes = m_memory.Alloc<cbrush_array_t>(output.brushVec.size());
-            memcpy(clipMap->info.brushes, output.brushVec.data(), sizeof(cbrush_array_t) * output.brushVec.size());
+            clipMap->info.numBrushVerts = static_cast<unsigned int>(data.brushVerts.size());
+            clipMap->info.brushVerts = m_memory.Alloc<vec3_t>(data.brushVerts.size());
+            memcpy(clipMap->info.brushVerts, data.brushVerts.data(), sizeof(vec3_t) * data.brushVerts.size());
+
+            clipMap->info.numBrushes = static_cast<uint16_t>(data.brushVec.size());
+            clipMap->info.brushes = m_memory.Alloc<cbrush_array_t>(data.brushVec.size());
+            for (size_t brushIdx = 0; brushIdx < data.brushVec.size(); brushIdx++)
+            {
+                ColBrush& inBrush = data.brushVec.at(brushIdx);
+                auto* outBrush = &clipMap->info.brushes[brushIdx];
+
+                int brushSurfaceFlags = bsp->colWorld.materials.at(inBrush.materialIndex).surfaceFlags;
+                int brushContentFlags = bsp->colWorld.materials.at(inBrush.materialIndex).contentFlags;
+
+                outBrush->numverts = static_cast<unsigned int>(inBrush.brushVertCount);
+                outBrush->verts = &clipMap->info.brushVerts[inBrush.brushVertStartIndex];
+                outBrush->contents = brushContentFlags;
+                outBrush->mins = inBrush.mins;
+                outBrush->maxs = inBrush.maxs;
+                outBrush->axial_cflags[0][0] = brushContentFlags;
+                outBrush->axial_cflags[0][1] = brushContentFlags;
+                outBrush->axial_cflags[0][2] = brushContentFlags;
+                outBrush->axial_cflags[1][0] = brushContentFlags;
+                outBrush->axial_cflags[1][1] = brushContentFlags;
+                outBrush->axial_cflags[1][2] = brushContentFlags;
+                outBrush->axial_sflags[0][0] = brushSurfaceFlags;
+                outBrush->axial_sflags[0][1] = brushSurfaceFlags;
+                outBrush->axial_sflags[0][2] = brushSurfaceFlags;
+                outBrush->axial_sflags[1][0] = brushSurfaceFlags;
+                outBrush->axial_sflags[1][1] = brushSurfaceFlags;
+                outBrush->axial_sflags[1][2] = brushSurfaceFlags;
+            }
 
             clipMap->numSubModels = static_cast<unsigned int>(output.modelVec.size());
             clipMap->cmodels = m_memory.Alloc<cmodel_t>(output.modelVec.size());
             memcpy(clipMap->cmodels, output.modelVec.data(), sizeof(cmodel_t) * output.modelVec.size());
 
-            clipMap->partitionCount = static_cast<int>(data.terrainTriVec.size());
-            clipMap->partitions = m_memory.Alloc<CollisionPartition>(data.terrainTriVec.size());
-            clipMap->info.nuinds = static_cast<int>(data.terrainTriVec.size() * 3);
-            clipMap->info.uinds = m_memory.Alloc<uint16_t>(data.terrainTriVec.size() * 3);
-            for (size_t partIdx = 0; partIdx < data.terrainTriVec.size(); partIdx++)
-            {
-                clipMap->partitions[partIdx].triCount = 1;
-                assert(data.terrainTriVec.at(partIdx).indexStartIndex % 3 == 0);
-                clipMap->partitions[partIdx].firstTri = static_cast<int>(data.terrainTriVec.at(partIdx).indexStartIndex / 3);
-                clipMap->partitions[partIdx].nuinds = 3;
-                clipMap->partitions[partIdx].fuind = static_cast<int>(partIdx * 3);
-            }
+            clipMap->partitionCount = static_cast<int>(output.partitionVec.size());
+            clipMap->partitions = m_memory.Alloc<CollisionPartition>(output.partitionVec.size());
+            memcpy(clipMap->partitions, output.partitionVec.data(), sizeof(CollisionPartition) * output.partitionVec.size());
 
-            clipMap->vertCount = static_cast<unsigned int>(data.terrainVerts.size());
-            clipMap->verts = m_memory.Alloc<vec3_t>(data.terrainVerts.size());
-            memcpy(clipMap->verts, data.terrainVerts.data(), sizeof(vec3_t) * data.terrainVerts.size());
+            clipMap->info.nuinds = static_cast<int>(output.uniqueVertIndexVec.size());
+            clipMap->info.uinds = m_memory.Alloc<uint16_t>(output.uniqueVertIndexVec.size());
+            memcpy(clipMap->info.uinds, output.uniqueVertIndexVec.data(), sizeof(uint16_t) * output.uniqueVertIndexVec.size());
 
-            assert(data.terrainIndices.size() % 3 == 0);
-            clipMap->triCount = static_cast<unsigned int>(data.terrainIndices.size() / 3);
-            uint16_t* indices = m_memory.Alloc<uint16_t>(data.terrainIndices.size());
-            memcpy(indices, data.terrainIndices.data(), sizeof(uint16_t) * data.terrainIndices.size());
+            clipMap->vertCount = static_cast<unsigned int>(data.surfaceVerts.size());
+            clipMap->verts = m_memory.Alloc<vec3_t>(data.surfaceVerts.size());
+            memcpy(clipMap->verts, data.surfaceVerts.data(), sizeof(vec3_t) * data.surfaceVerts.size());
+
+            assert(data.surfaceIndices.size() % 3 == 0);
+            clipMap->triCount = static_cast<unsigned int>(data.surfaceIndices.size() / 3);
+            uint16_t* indices = m_memory.Alloc<uint16_t>(data.surfaceIndices.size());
+            memcpy(indices, data.surfaceIndices.data(), sizeof(uint16_t) * data.surfaceIndices.size());
             clipMap->triIndices = reinterpret_cast<uint16_t (*)[3]>(indices);
 
             return true;
@@ -969,9 +1244,11 @@ namespace
             return clipMap;
         }
     };
+
 } // namespace
 
 std::unique_ptr<ClipMapLinker> ClipMapLinker::Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
+
 {
     return std::make_unique<ClipMapLinkerImpl>(memory, searchPath, context);
 }
