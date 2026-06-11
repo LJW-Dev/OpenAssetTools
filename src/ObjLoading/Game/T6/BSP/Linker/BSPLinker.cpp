@@ -42,6 +42,7 @@ private:
         auto asset = m_context.LoadDependency<AssetRawFile>(assetName);
         if (asset != nullptr)
             return asset->Asset();
+        con::info("Adding empty rawfile {}", assetName);
 
         RawFile* rawFile = m_memory.Alloc<RawFile>();
         rawFile->name = m_memory.Dup(assetName.c_str());
