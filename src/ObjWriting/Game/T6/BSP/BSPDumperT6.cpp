@@ -448,6 +448,48 @@ namespace
         }
     }
 
+    float lengthOfVector(float x, float y, float z)
+    {
+        return sqrtf(x * x + y * y + z * z);
+    }
+
+    void dumpClipmapXModels(BSPData& dumpData, const clipMap_t* clipmap)
+    {
+        for (size_t modelIdx = 0; modelIdx < clipmap->numStaticModels; modelIdx++)
+        {
+            cStaticModel_s* colModel = &clipmap->staticModelList[modelIdx];
+
+            // axis vectors should be normalised (length 1), and when scaling is applied it's length will increase with scale
+            float length1 = lengthOfVector(colModel->invScaledAxis[0].x, colModel->invScaledAxis[0].y, colModel->invScaledAxis[0].z);
+            float length2 = lengthOfVector(colModel->invScaledAxis[1].x, colModel->invScaledAxis[1].y, colModel->invScaledAxis[1].z);
+            float length3 = lengthOfVector(colModel->invScaledAxis[2].x, colModel->invScaledAxis[2].y, colModel->invScaledAxis[2].z);
+            float forcedScale1 = 1.0f / length1;
+            float forcedScale2 = 1.0f / length2;
+            float forcedScale3 = 1.0f / length3;
+
+            vec3_t origAxis[3]{};
+            origAxis[0].x = colModel->invScaledAxis[0].x * forcedScale1;
+            origAxis[0].y = colModel->invScaledAxis[0].y * forcedScale1;
+            origAxis[0].z = colModel->invScaledAxis[0].z * forcedScale1;
+            origAxis[1].x = colModel->invScaledAxis[1].x * forcedScale2;
+            origAxis[1].y = colModel->invScaledAxis[1].y * forcedScale2;
+            origAxis[1].z = colModel->invScaledAxis[1].z * forcedScale2;
+            origAxis[2].x = colModel->invScaledAxis[2].x * forcedScale3;
+            origAxis[2].y = colModel->invScaledAxis[2].y * forcedScale3;
+            origAxis[2].z = colModel->invScaledAxis[2].z * forcedScale3;
+
+            BSPXModel model{};
+            assert(colModel->xmodel != nullptr);
+            model.name = colModel->xmodel->name[0] == ',' ? &colModel->xmodel->name[1] : colModel->xmodel->name;
+            model.origin = colModel->origin;
+            LhcToRhcCoordinates(model.origin.v);
+            model.rotationQuaternion = BSPUtil::convertAxisToQuat(origAxis);
+            LhcToRhcQuaternion(model.rotationQuaternion.v);
+            model.scale = {forcedScale1, forcedScale2, forcedScale3};
+            dumpData.colWorld.xmodels.emplace_back(model);
+        }
+    }
+
     void dumpClipmap(BSPData& dumpData, const clipMap_t* clipmap)
     {
         for (unsigned int i = 0; i < clipmap->info.numMaterials; i++)
@@ -462,11 +504,13 @@ namespace
             dumpData.colWorld.materials.emplace_back(bspMaterial);
         }
 
+        dumpClipmapXModels(dumpData, clipmap);
+
         std::vector<PartitionData> partitionList;
         std::vector<size_t> brushList;
         getStaticCollisionList(clipmap, partitionList, brushList);
 
-        OutSurface result;
+        OutSurface result{};
         createSurfacesFromPartitions(clipmap, dumpData, partitionList, result);
         dumpData.staticTerrainSurfaceCount = result.surfaceCount;
         dumpData.staticTerrainSurfaceStart = result.surfaceStart;
@@ -703,7 +747,7 @@ namespace
         return indexMap;
     }
 
-    void dumpGfxWorld(BSPData& dumpData, const GfxWorld* gfxWorld)
+    void dumpGfxWorldSurfaces(BSPData& dumpData, const GfxWorld* gfxWorld)
     {
         std::map<size_t, size_t> vd0Offsets; // maps unique vd0 offsets to their maximum index
         for (int surfIdx = 0; surfIdx < gfxWorld->surfaceCount; surfIdx++)
@@ -840,6 +884,33 @@ namespace
                 dumpData.gfxWorld.indices.emplace_back(static_cast<uint16_t>(indexMap[idx]));
             }
         }
+    }
+
+    void dumpGfxWorldXModels(BSPData& dumpData, const GfxWorld* gfxWorld)
+    {
+        for (size_t modelIdx = 0; modelIdx < gfxWorld->dpvs.smodelCount; modelIdx++)
+        {
+            auto gfxModel = &gfxWorld->dpvs.smodelDrawInsts[modelIdx];
+            BSPXModel model{};
+
+            assert(gfxModel->model != nullptr);
+            model.name = gfxModel->model->name[0] == ',' ? &gfxModel->model->name[1] : gfxModel->model->name;
+            model.origin = gfxModel->placement.origin;
+            LhcToRhcCoordinates(model.origin.v);
+            model.rotationQuaternion = BSPUtil::convertAxisToQuat(gfxModel->placement.axis);
+            LhcToRhcQuaternion(model.rotationQuaternion.v);
+            model.scale.x = gfxModel->placement.scale;
+            model.scale.y = gfxModel->placement.scale;
+            model.scale.z = gfxModel->placement.scale;
+            model.doesCastShadow = gfxWorld->dpvs.smodelCastsShadow[modelIdx];
+            dumpData.gfxWorld.xmodels.emplace_back(model);
+        }
+    }
+
+    void dumpGfxWorld(BSPData& dumpData, const GfxWorld* gfxWorld)
+    {
+        dumpGfxWorldSurfaces(dumpData, gfxWorld);
+        dumpGfxWorldXModels(dumpData, gfxWorld);
     }
 
     struct BSPAssetPtrs
@@ -1186,6 +1257,33 @@ namespace
         }
     }
 
+    void addXmodelToJson(JsonRoot& root, BSPData& dumpData, const BSPXModel& xmodel, size_t parentNodeIdx, bool isGfxWorld)
+    {
+        JsonNode node;
+        node.name = xmodel.name;
+        node.translation.emplace();
+        (*node.translation)[0] = xmodel.origin.x;
+        (*node.translation)[1] = xmodel.origin.y;
+        (*node.translation)[2] = xmodel.origin.z;
+        node.rotation.emplace();
+        (*node.rotation)[0] = xmodel.rotationQuaternion.x;
+        (*node.rotation)[1] = xmodel.rotationQuaternion.y;
+        (*node.rotation)[2] = xmodel.rotationQuaternion.z;
+        (*node.rotation)[3] = xmodel.rotationQuaternion.w;
+        node.scale.emplace();
+        (*node.scale)[0] = xmodel.scale.x;
+        (*node.scale)[1] = xmodel.scale.y;
+        (*node.scale)[2] = xmodel.scale.z;
+
+        nlohmann::json extrasJs;
+        extrasJs["xmodel"] = xmodel.name;
+        if (xmodel.doesCastShadow && isGfxWorld)
+            extrasJs["flags"] = "nocastshadow";
+        node.extras = extrasJs;
+
+        addNodeToGltf(root, node, parentNodeIdx);
+    }
+
     void createGfxWorld(JsonRoot& root, BSPData& dumpData, bool isGfxWorld)
     {
         if (!isGfxWorld)
@@ -1195,6 +1293,14 @@ namespace
         node.name = "Surfaces";
         node.mesh = (unsigned)addMeshFromSurface(root, dumpData, dumpData.staticSurfaceStart, dumpData.staticSurfaceCount, true);
         addNodeToGltf(root, node, ROOT_NODE_IDX);
+
+        JsonNode xnode;
+        xnode.name = "XModels";
+        xnode.children.emplace();
+        size_t xmodelNodeIdx = addNodeToGltf(root, xnode, ROOT_NODE_IDX);
+
+        for (const auto& xmodel : dumpData.gfxWorld.xmodels)
+            addXmodelToJson(root, dumpData, xmodel, xmodelNodeIdx, true);
     }
 
     void createColWorld(JsonRoot& root, BSPData& dumpData, bool isGfxWorld)
@@ -1206,6 +1312,13 @@ namespace
         tNode.name = "Terrain";
         tNode.mesh = (unsigned)addMeshFromSurface(root, dumpData, dumpData.staticTerrainSurfaceStart, dumpData.staticTerrainSurfaceCount, false);
         size_t terrainNodeIdx = addNodeToGltf(root, tNode, ROOT_NODE_IDX);
+
+        JsonNode xnode;
+        xnode.name = "XModels";
+        xnode.children.emplace();
+        size_t xmodelNodeIdx = addNodeToGltf(root, xnode, ROOT_NODE_IDX);
+        for (const auto& xmodel : dumpData.colWorld.xmodels)
+            addXmodelToJson(root, dumpData, xmodel, xmodelNodeIdx, false);
 
         JsonNode bNode;
         bNode.name = "Brushes";

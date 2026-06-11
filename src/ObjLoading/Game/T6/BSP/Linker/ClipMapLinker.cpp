@@ -245,12 +245,12 @@ namespace
                 if (!xModelAsset->IsReference())
                 {
                     BSPUtil::calculateXmodelBounds(currModel->xmodel, xmodelAxis, currModel->absmin, currModel->absmax);
-                    currModel->absmin.x = (currModel->absmin.x * bspModel.scale) + bspModel.origin.x;
-                    currModel->absmin.y = (currModel->absmin.y * bspModel.scale) + bspModel.origin.y;
-                    currModel->absmin.z = (currModel->absmin.z * bspModel.scale) + bspModel.origin.z;
-                    currModel->absmax.x = (currModel->absmax.x * bspModel.scale) + bspModel.origin.x;
-                    currModel->absmax.y = (currModel->absmax.y * bspModel.scale) + bspModel.origin.y;
-                    currModel->absmax.z = (currModel->absmax.z * bspModel.scale) + bspModel.origin.z;
+                    currModel->absmin.x = (currModel->absmin.x * bspModel.scale.x) + bspModel.origin.x;
+                    currModel->absmin.y = (currModel->absmin.y * bspModel.scale.y) + bspModel.origin.y;
+                    currModel->absmin.z = (currModel->absmin.z * bspModel.scale.z) + bspModel.origin.z;
+                    currModel->absmax.x = (currModel->absmax.x * bspModel.scale.x) + bspModel.origin.x;
+                    currModel->absmax.y = (currModel->absmax.y * bspModel.scale.y) + bspModel.origin.y;
+                    currModel->absmax.z = (currModel->absmax.z * bspModel.scale.z) + bspModel.origin.z;
 
                     if (currModel->xmodel->numCollmaps == 0)
                         con::warn("Xmodel \"{}\" has no colision data", bspModel.name);
@@ -275,15 +275,15 @@ namespace
                 }
 
                 BSPUtil::matrixTranspose3x3(xmodelAxis, currModel->invScaledAxis);
-                currModel->invScaledAxis[0].x = (1.0f / bspModel.scale) * currModel->invScaledAxis[0].x;
-                currModel->invScaledAxis[0].y = (1.0f / bspModel.scale) * currModel->invScaledAxis[0].y;
-                currModel->invScaledAxis[0].z = (1.0f / bspModel.scale) * currModel->invScaledAxis[0].z;
-                currModel->invScaledAxis[1].x = (1.0f / bspModel.scale) * currModel->invScaledAxis[1].x;
-                currModel->invScaledAxis[1].y = (1.0f / bspModel.scale) * currModel->invScaledAxis[1].y;
-                currModel->invScaledAxis[1].z = (1.0f / bspModel.scale) * currModel->invScaledAxis[1].z;
-                currModel->invScaledAxis[2].x = (1.0f / bspModel.scale) * currModel->invScaledAxis[2].x;
-                currModel->invScaledAxis[2].y = (1.0f / bspModel.scale) * currModel->invScaledAxis[2].y;
-                currModel->invScaledAxis[2].z = (1.0f / bspModel.scale) * currModel->invScaledAxis[2].z;
+                currModel->invScaledAxis[0].x = (1.0f / bspModel.scale.x) * currModel->invScaledAxis[0].x;
+                currModel->invScaledAxis[0].y = (1.0f / bspModel.scale.y) * currModel->invScaledAxis[0].y;
+                currModel->invScaledAxis[0].z = (1.0f / bspModel.scale.z) * currModel->invScaledAxis[0].z;
+                currModel->invScaledAxis[1].x = (1.0f / bspModel.scale.x) * currModel->invScaledAxis[1].x;
+                currModel->invScaledAxis[1].y = (1.0f / bspModel.scale.y) * currModel->invScaledAxis[1].y;
+                currModel->invScaledAxis[1].z = (1.0f / bspModel.scale.z) * currModel->invScaledAxis[1].z;
+                currModel->invScaledAxis[2].x = (1.0f / bspModel.scale.x) * currModel->invScaledAxis[2].x;
+                currModel->invScaledAxis[2].y = (1.0f / bspModel.scale.y) * currModel->invScaledAxis[2].y;
+                currModel->invScaledAxis[2].z = (1.0f / bspModel.scale.z) * currModel->invScaledAxis[2].z;
 
                 memset(&currModel->writable, 0, sizeof(cStaticModelWritable));
             }

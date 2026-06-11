@@ -236,7 +236,9 @@ namespace
 
                 currModel->placement.origin = bspModel.origin;
                 BSPUtil::convertQuaternionToAxis(&bspModel.rotationQuaternion, currModel->placement.axis);
-                currModel->placement.scale = bspModel.scale;
+                if (bspModel.scale.x != bspModel.scale.y || bspModel.scale.x != bspModel.scale.z)
+                    con::warn("GFX model has non-uniform scaling, only X scale value will be used.");
+                currModel->placement.scale = bspModel.scale.x;
 
                 currModel->flags = 0;
                 if (!bspModel.doesCastShadow)
@@ -252,12 +254,12 @@ namespace
                 if (!xModelAsset->IsReference())
                 {
                     BSPUtil::calculateXmodelBounds(currModel->model, currModel->placement.axis, currModelInst->mins, currModelInst->maxs);
-                    currModelInst->mins.x = (currModelInst->mins.x * bspModel.scale) + bspModel.origin.x;
-                    currModelInst->mins.y = (currModelInst->mins.y * bspModel.scale) + bspModel.origin.y;
-                    currModelInst->mins.z = (currModelInst->mins.z * bspModel.scale) + bspModel.origin.z;
-                    currModelInst->maxs.x = (currModelInst->maxs.x * bspModel.scale) + bspModel.origin.x;
-                    currModelInst->maxs.y = (currModelInst->maxs.y * bspModel.scale) + bspModel.origin.y;
-                    currModelInst->maxs.z = (currModelInst->maxs.z * bspModel.scale) + bspModel.origin.z;
+                    currModelInst->mins.x = (currModelInst->mins.x * bspModel.scale.x) + bspModel.origin.x;
+                    currModelInst->mins.y = (currModelInst->mins.y * bspModel.scale.y) + bspModel.origin.y;
+                    currModelInst->mins.z = (currModelInst->mins.z * bspModel.scale.z) + bspModel.origin.z;
+                    currModelInst->maxs.x = (currModelInst->maxs.x * bspModel.scale.x) + bspModel.origin.x;
+                    currModelInst->maxs.y = (currModelInst->maxs.y * bspModel.scale.y) + bspModel.origin.y;
+                    currModelInst->maxs.z = (currModelInst->maxs.z * bspModel.scale.z) + bspModel.origin.z;
 
                     for (uint16_t lodIdx = 0; lodIdx < currModel->model->numLods; lodIdx++)
                     {

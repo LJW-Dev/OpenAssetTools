@@ -621,6 +621,20 @@ namespace
             }
         }
 
+        float lengthOfVector(float x, float y, float z)
+        {
+            return sqrtf(x * x + y * y + z * z);
+        }
+
+        vec3_t getScaleFromMatrix(const Eigen::Matrix4f& matrix)
+        {
+            const auto& col0 = matrix.col(0);
+            const auto& col1 = matrix.col(1);
+            const auto& col2 = matrix.col(2);
+
+            return {lengthOfVector(col0.x(), col0.y(), col0.z()), lengthOfVector(col1.x(), col1.y(), col1.z()), lengthOfVector(col2.x(), col2.y(), col2.z())};
+        }
+
         bool addXModelNode(const JsonRoot& jRoot, const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix)
         {
             assert(node.extras);
@@ -629,19 +643,12 @@ namespace
             BSPXModel xmodel;
             xmodel.name = node.extras->at("xmodel");
 
-            int surfaceFlags = 0;
-            int contentFlags = 0;
+            xmodel.doesCastShadow = true;
             if (node.extras && node.extras->contains("flags"))
-                convertStringToFlags(node.extras->at("flags"), surfaceFlags, contentFlags);
-
-            bool isNoDraw = (surfaceFlags & surfaceTypeToFlagMap[BSP_SURF_TYPE_NODRAW].surfaceFlags) != 0;
-            bool isNoCastShadow = (surfaceFlags & surfaceTypeToFlagMap[BSP_SURF_TYPE_NOCASTSHADOW].surfaceFlags) != 0;
-            bool isNonSolid = (surfaceFlags & surfaceTypeToFlagMap[BSP_SURF_TYPE_NONSOLID].surfaceFlags) != 0;
-            if (m_is_world_gfx && isNoDraw)
-                return true;
-            if (!m_is_world_gfx && isNonSolid)
-                return true;
-            xmodel.doesCastShadow = !isNoCastShadow;
+            {
+                std::string flagStr = node.extras->at("flags");
+                xmodel.doesCastShadow = !flagStr.contains("nocastshadow");
+            }
 
             Eigen::Vector4f position(0, 0, 0, 1.0f);
             Eigen::Vector4f transformedPosition = nodeMatrix * position;
@@ -659,7 +666,10 @@ namespace
             xmodel.rotationQuaternion.w = rotationQuat.w();
             RhcToLhcQuaternion(xmodel.rotationQuaternion.v);
 
-            xmodel.scale = 1.0f;
+            vec3_t mScale = getScaleFromMatrix(nodeMatrix);
+            xmodel.scale.x = std::round(mScale.x * 1000.0f) / 1000.0f;
+            xmodel.scale.y = std::round(mScale.y * 1000.0f) / 1000.0f;
+            xmodel.scale.z = std::round(mScale.z * 1000.0f) / 1000.0f;
 
             calculateXmodelBounds(xmodel, node.mesh, nodeMatrix, jRoot);
 

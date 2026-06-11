@@ -54,7 +54,7 @@ namespace T6
 
             vec3_t origin;
             vec4_t rotationQuaternion;
-            float scale;
+            vec3_t scale;
 
             bool areBoundsValid;
             vec3_t mins;
