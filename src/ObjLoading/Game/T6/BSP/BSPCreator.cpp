@@ -968,6 +968,14 @@ namespace
                     con::warn("WARNING: multiple worldspawn classes found, only one will be used.");
                 m_bsp->worldspawn = entity;
                 m_bsp->containsWorldspawn = true;
+
+                if (node.extras->contains("skyboxmodel"))
+                {
+                    std::string sbModel = node.extras->at("skyboxmodel");
+                    m_bsp->skyboxName = sbModel;
+            }
+                else
+                    m_bsp->skyboxName = std::format("skybox_{}", m_bsp->name);
             }
             else if (!classname.compare("mp_global_intermission"))
                 m_bsp->containsIntermssion = true;

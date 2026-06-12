@@ -758,12 +758,10 @@ namespace
 
         void loadSkyBox(BSPData* projInfo, GfxWorld* gfxWorld)
         {
-            std::string skyBoxName = "skybox_" + projInfo->name;
-            gfxWorld->skyBoxModel = m_memory.Dup(skyBoxName.c_str());
-
-            if (m_context.LoadDependency<AssetXModel>(skyBoxName) == nullptr)
+            gfxWorld->skyBoxModel = m_memory.Dup(projInfo->skyboxName.c_str());
+            if (m_context.LoadDependency<AssetXModel>(projInfo->skyboxName) == nullptr)
             {
-                con::warn("WARN: Unable to load the skybox xmodel {}!", skyBoxName);
+                con::warn("WARN: Unable to load the skybox xmodel {}!", projInfo->skyboxName);
             }
 
             // always 0 and 1

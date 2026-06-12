@@ -205,6 +205,7 @@ namespace T6
             std::string name;
             std::string bspName;
             bool isZombiesMap;
+            std::string skyboxName;
 
             size_t staticSurfaceStart;
             size_t staticSurfaceCount;
