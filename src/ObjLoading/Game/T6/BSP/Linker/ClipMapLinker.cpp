@@ -265,7 +265,7 @@ namespace
                     currModel->absmax.z = (currModel->absmax.z * bspModel.scale.z) + bspModel.origin.z;
 
                     if (currModel->xmodel->numCollmaps == 0)
-                        con::warn("Xmodel \"{}\" has no colision data", bspModel.name);
+                        con::debug("Xmodel \"{}\" has no colision data", bspModel.name);
                 }
                 else
                 {
@@ -276,7 +276,7 @@ namespace
                     }
                     else
                     {
-                        con::warn("Unable to determine the bounds of xmodel: \"{}\"", bspModel.name);
+                        con::debug("Unable to determine the bounds of xmodel: \"{}\"", bspModel.name);
                         currModel->absmin.x = bspModel.origin.x - 1.0f;
                         currModel->absmin.y = bspModel.origin.y - 1.0f;
                         currModel->absmin.z = bspModel.origin.z - 1.0f;
@@ -320,7 +320,7 @@ namespace
                 size_t parentSurfIndex = data.partitionVec.at(partIdx).parentSurfaceIndex;
                 size_t materialIndex = data.surfaceVec.at(parentSurfIndex).materialIndex;
                 if (uniqueMaterials.contains(materialIndex))
-                uniqueMaterials.at(materialIndex).emplace_back(partIdx);
+                    uniqueMaterials.at(materialIndex).emplace_back(partIdx);
                 else
                     uniqueMaterials[materialIndex] = std::vector<size_t>({partIdx});
             }
@@ -575,8 +575,8 @@ namespace
             vec3_t worldMaxs{};
             if (data.surfaceVerts.size() != 0)
             {
-            vec3_t worldMins = data.surfaceVerts.at(0);
-            vec3_t worldMaxs = data.surfaceVerts.at(0);
+                vec3_t worldMins = data.surfaceVerts.at(0);
+                vec3_t worldMaxs = data.surfaceVerts.at(0);
             }
             else if (data.brushVerts.size() != 0)
             {
@@ -643,11 +643,6 @@ namespace
 
         void generateColBrushFromBsp(CollisionData& data, BSPData* bsp, BSPSurface& in_surface)
         {
-            ColBrush brush{};
-            brush.materialIndex = in_surface.materialIndex;
-            brush.brushVertStartIndex = data.brushVerts.size();
-            brush.brushVertCount = in_surface.vertexCount;
-
             vec3_t mins{};
             vec3_t maxs{};
             std::vector<vec3_t> uniqueVertVec;
@@ -669,7 +664,7 @@ namespace
                     {
                         found = true;
                         break;
-            }
+                    }
                 }
                 if (found)
                     continue;
@@ -768,9 +763,6 @@ namespace
                                          std::vector<size_t>& out_terrainIndexBuffer,
                                          std::vector<vec3_t>& out_terrainVertexBuffer)
         {
-            size_t count = in_surface.triCount;
-            size_t maxElems = MAX_PARTITION_TRIS;
-
             std::vector<std::vector<size_t>> generatedPartitions; // list of tri indexes of the surface (0 indexed in surf tris)
             std::unique_ptr<bool[]> visitedTris = std::make_unique<bool[]>(in_surface.triCount);
             for (size_t triIdx1 = 0; triIdx1 < in_surface.triCount; triIdx1++)
@@ -962,8 +954,8 @@ namespace
             vec3_t worldMaxs{};
             if (data.surfaceVerts.size() != 0)
             {
-            vec3_t worldMins = data.surfaceVerts.at(0);
-            vec3_t worldMaxs = data.surfaceVerts.at(0);
+                vec3_t worldMins = data.surfaceVerts.at(0);
+                vec3_t worldMaxs = data.surfaceVerts.at(0);
             }
             else if (data.brushVerts.size() != 0)
             {
@@ -1246,7 +1238,7 @@ namespace
 
                 outBrush->numverts = static_cast<unsigned int>(inBrush.brushVertCount);
                 if (outBrush->numverts != 0)
-                outBrush->verts = &clipMap->info.brushVerts[inBrush.brushVertStartIndex];
+                    outBrush->verts = &clipMap->info.brushVerts[inBrush.brushVertStartIndex];
                 else
                     outBrush->verts = nullptr;
 

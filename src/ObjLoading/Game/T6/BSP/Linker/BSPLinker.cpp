@@ -25,6 +25,7 @@ private:
         auto asset = m_context.LoadDependency<AssetFootstepTable>(assetName);
         if (asset != nullptr)
             return asset->Asset();
+        con::info("Adding empty footsteptable {}", assetName);
 
         FootstepTableDef* footstepTable = m_memory.Alloc<FootstepTableDef>();
         footstepTable->name = m_memory.Dup(assetName.c_str());
@@ -46,8 +47,19 @@ private:
 
         RawFile* rawFile = m_memory.Alloc<RawFile>();
         rawFile->name = m_memory.Dup(assetName.c_str());
-        rawFile->len = 1;
-        rawFile->buffer = m_memory.Alloc<char>();
+        if (assetName.ends_with(".atr"))
+        {
+            const char* emptyAtrFile = "\x00\x00\x00\x00\x03\x00";
+            rawFile->len = 6;
+            char* destBuffer = m_memory.Alloc<char>(6);
+            memcpy(destBuffer, emptyAtrFile, 6);
+            rawFile->buffer = destBuffer;
+        }
+        else
+        {
+            rawFile->len = 1;
+            rawFile->buffer = m_memory.Alloc<char>();
+        }
         m_context.AddAsset<AssetRawFile>(assetName, rawFile);
 
         return rawFile;

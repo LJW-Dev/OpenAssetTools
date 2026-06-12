@@ -353,12 +353,7 @@ namespace
                     assert(false);
                 if (!normalAccessor->GetFloatVec3(vertexIndex, vertex.normal.v))
                     assert(false);
-                if (colorAccessor->GetType().value() == JsonAccessorType::VEC4)
-                {
-                    if (!colorAccessor->GetFloatVec4(vertexIndex, vertex.color.v))
-                        assert(false);
-                }
-                else if (colorAccessor->GetType().value() == JsonAccessorType::VEC3)
+                if (!colorAccessor->GetFloatVec4(vertexIndex, vertex.color.v))
                 {
                     vec3_t colorout{};
                     if (!colorAccessor->GetFloatVec3(vertexIndex, colorout.v))
@@ -368,8 +363,6 @@ namespace
                     vertex.color.z = colorout.z;
                     vertex.color.w = 1.0f;
                 }
-                else
-                    assert(false);
                 if (!uvAccessor->GetFloatVec2(vertexIndex, vertex.texCoord.v))
                     assert(false);
 
@@ -898,7 +891,7 @@ namespace
 
             std::string classname = node.extras->at("classname");
             if (m_is_world_gfx && classname.compare("script_brushmodel"))
-                return true; // skip any gfx node with classname not script_brushmodel
+                return false; // skip any gfx node with classname not script_brushmodel
 
             BSPEntity entity{};
 
@@ -973,7 +966,7 @@ namespace
                 {
                     std::string sbModel = node.extras->at("skyboxmodel");
                     m_bsp->skyboxName = sbModel;
-            }
+                }
                 else
                     m_bsp->skyboxName = std::format("skybox_{}", m_bsp->name);
             }
@@ -1100,12 +1093,7 @@ namespace
                     {
                         std::string modelStr = node.extras->at("model");
                         if (!modelStr.compare("brush"))
-                        {
-                            if (m_is_world_gfx)
-                                throw GltfLoadException(std::format("Brushmodel in gfx is not allowed, node name: {}", node.name.value_or("unnamed node")));
-                            else
-                                staticBrushNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
-                        }
+                            staticBrushNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
                         else if (!modelStr.compare("terrain"))
                             staticNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
                         else
@@ -1121,6 +1109,11 @@ namespace
                 m_bsp->staticSurfaceStart = m_curr_bsp_world->surfaces.size();
                 assert(m_bsp->staticSurfaceStart == 0);
                 for (const auto& node : staticNodes)
+                {
+                    if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
+                        con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
+                }
+                for (const auto& node : staticBrushNodes)
                 {
                     if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
                         con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
@@ -1266,8 +1259,26 @@ namespace
                     material.contentFlags = 0;
                     if (jsMaterial.extras && jsMaterial.extras->contains("sf") && jsMaterial.extras->contains("cf"))
                     {
-                        material.surfaceFlags = jsMaterial.extras->at("sf");
-                        material.contentFlags = jsMaterial.extras->at("cf");
+                        nlohmann::json sf = jsMaterial.extras->at("sf");
+                        nlohmann::json cf = jsMaterial.extras->at("cf");
+                        if (sf.is_number())
+                            material.surfaceFlags = sf;
+                        else if (sf.is_string())
+                        {
+                            std::string str = sf;
+                            material.surfaceFlags = atoi(str.c_str());
+                        }
+                        else
+                            throw GltfLoadException("Bad surface flags type ");
+                        if (cf.is_number())
+                            material.contentFlags = cf;
+                        else if (cf.is_string())
+                        {
+                            std::string str = cf;
+                            material.contentFlags = atoi(str.c_str());
+                        }
+                        else
+                            throw GltfLoadException("Bad content flags type ");
                     }
                     else
                         con::info("mat with no extras or flags: {}", material.materialName);

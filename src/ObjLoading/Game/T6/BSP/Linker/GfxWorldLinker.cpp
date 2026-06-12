@@ -284,7 +284,7 @@ namespace
                     }
                     else
                     {
-                        con::warn("Unable to determine the bounds of xmodel: \"{}\"", bspModel.name);
+                        con::debug("Unable to determine the bounds of xmodel: \"{}\"", bspModel.name);
                         currModelInst->mins.x = bspModel.origin.x - 1.0f;
                         currModelInst->mins.y = bspModel.origin.y - 1.0f;
                         currModelInst->mins.z = bspModel.origin.z - 1.0f;
