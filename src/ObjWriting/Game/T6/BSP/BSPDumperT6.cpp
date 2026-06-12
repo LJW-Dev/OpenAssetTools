@@ -11,8 +11,8 @@
 #include "XModel/Gltf/GltfBinOutput.h"
 #include "XModel/Gltf/GltfTextOutput.h"
 #include "XModel/Gltf/GltfWriter.h"
-#include "quickhull/quickhull.hpp"
 
+#include <QuickHull.hpp>
 #include <deque>
 #include <unordered_set>
 
@@ -286,7 +286,6 @@ namespace
         {
             if (uniqueBrushes.contains(brushIdx))
                 continue;
-            uniqueBrushes.emplace(brushIdx);
 
             cbrush_t* brush = &clipmap->info.brushes[brushIdx];
 
@@ -328,6 +327,13 @@ namespace
                 hullVerts.emplace_back(maxsLeft);
                 hullVerts.emplace_back(maxsRight);
             }
+
+            if (hullVerts.size() == 0)
+            {
+                con::info("Brush with 0 verts, skipping");
+                continue;
+            }
+
             for (size_t vertIdx = 0; vertIdx < hullVerts.size(); vertIdx++)
                 LhcToRhcCoordinates(hullVerts[vertIdx].v);
 
@@ -384,6 +390,8 @@ namespace
 
             totalVertexCount += surface.vertexCount;
             totalIndexCount += surface.triCount * 3;
+
+            uniqueBrushes.emplace(brushIdx);
         }
 
         result.surfaceCount = uniqueBrushes.size();

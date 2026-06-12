@@ -5,9 +5,11 @@
 
 #include <limits>
 #include <map>
+#include <quickhull.hpp>
 
 using namespace T6;
 using namespace BSP;
+using namespace quickhull;
 
 namespace
 {
@@ -27,11 +29,20 @@ namespace
         size_t partitionCount;
     };
 
+    struct ColSide
+    {
+        size_t parentBrushIndex;
+        vec3_t normal;
+        float dist;
+    };
+
     struct ColBrush
     {
         size_t materialIndex;
         size_t brushVertCount;
         size_t brushVertStartIndex;
+        size_t brushSideCount;
+        size_t brushSideStartIndex;
         vec3_t mins;
         vec3_t maxs;
     };
@@ -56,6 +67,7 @@ namespace
         size_t staticBrushCount; // static brushes always starts at 0
         std::vector<ColBrush> brushVec;
         std::vector<vec3_t> brushVerts;
+        std::vector<ColSide> brushSides;
 
         std::vector<ColModel> models;
     };
@@ -303,13 +315,14 @@ namespace
         {
             assert(terrainPartitions.size() > 0);
             std::map<size_t, std::vector<size_t>> uniqueMaterials;
-            for (size_t partIdx = 0; partIdx < terrainPartitions.size(); partIdx++)
+            for (size_t partIdx : terrainPartitions)
             {
-                size_t parentSurfIndex = data.partitionVec.at(terrainPartitions.at(partIdx)).parentSurfaceIndex;
+                size_t parentSurfIndex = data.partitionVec.at(partIdx).parentSurfaceIndex;
                 size_t materialIndex = data.surfaceVec.at(parentSurfIndex).materialIndex;
-                if (!uniqueMaterials.contains(materialIndex))
-                    uniqueMaterials[materialIndex] = std::vector<size_t>();
+                if (uniqueMaterials.contains(materialIndex))
                 uniqueMaterials.at(materialIndex).emplace_back(partIdx);
+                else
+                    uniqueMaterials[materialIndex] = std::vector<size_t>({partIdx});
             }
 
             size_t totalParentCount = 0;
@@ -558,8 +571,20 @@ namespace
         void loadModelCollision(BSPData* bsp, CollisionData& data, CollisionOutput& output)
         {
             cmodel_t worldModel{};
+            vec3_t worldMins{};
+            vec3_t worldMaxs{};
+            if (data.surfaceVerts.size() != 0)
+            {
             vec3_t worldMins = data.surfaceVerts.at(0);
             vec3_t worldMaxs = data.surfaceVerts.at(0);
+            }
+            else if (data.brushVerts.size() != 0)
+            {
+                vec3_t worldMins = data.brushVerts.at(0);
+                vec3_t worldMaxs = data.brushVerts.at(0);
+            }
+            else
+                assert(false);
             for (vec3_t& vertex : data.surfaceVerts)
                 BSPUtil::updateAABBWithPoint(vertex, worldMins, worldMaxs);
             for (vec3_t& vertex : data.brushVerts)
@@ -625,6 +650,7 @@ namespace
 
             vec3_t mins{};
             vec3_t maxs{};
+            std::vector<vec3_t> uniqueVertVec;
             for (size_t vertIdx = 0; vertIdx < in_surface.vertexCount; vertIdx++)
             {
                 vec3_t& vertex = bsp->colWorld.vertices.at(in_surface.indexOfFirstVertex + vertIdx).pos;
@@ -635,10 +661,69 @@ namespace
                 }
                 else
                     BSPUtil::updateAABBWithPoint(vertex, mins, maxs);
-                data.brushVerts.emplace_back(vertex);
+
+                bool found = false;
+                for (const auto& uniqueVert : uniqueVertVec)
+                {
+                    if (uniqueVert.x == vertex.x && uniqueVert.y == vertex.y && uniqueVert.z == vertex.z)
+                    {
+                        found = true;
+                        break;
             }
+                }
+                if (found)
+                    continue;
+
+                uniqueVertVec.emplace_back(vertex);
+            }
+
+            QuickHull<float> qh;
+            auto hull = qh.getConvexHull(&uniqueVertVec[0].x, uniqueVertVec.size(), false, true);
+            auto& hullMesh = qh.getMesh();
+
+            std::vector<ColSide> sideVec;
+            quickhull::Vector3<float> origin = {0.0f, 0.0f, 0.0f};
+            size_t brushIdx = data.brushVec.size();
+            for (const auto& face : hullMesh.m_faces)
+            {
+                float planeDist = mathutils::getSignedDistanceToPlane(origin, face.m_P); // intially isn't normalised
+                planeDist /= face.m_P.m_N.getLength();                                   // normalise
+                planeDist = fabs(planeDist);                                             // normals are signed as well, so dist needs to be positive
+                auto planeNorm = face.m_P.m_N.getNormalized();
+
+                bool found = false;
+                for (const auto& testSide : sideVec)
+                {
+                    if (testSide.dist == planeDist && testSide.normal.x == planeNorm.x && testSide.normal.y == planeNorm.y && testSide.normal.z == planeNorm.z)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                if (found)
+                    continue;
+
+                ColSide side{};
+                side.parentBrushIndex = brushIdx;
+                side.dist = planeDist;
+                side.normal.x = planeNorm.x;
+                side.normal.y = planeNorm.y;
+                side.normal.z = planeNorm.z;
+                sideVec.emplace_back(side);
+            }
+
+            ColBrush brush{};
+            brush.materialIndex = in_surface.materialIndex;
+            brush.brushVertStartIndex = data.brushVerts.size();
+            brush.brushVertCount = uniqueVertVec.size();
+            brush.brushSideStartIndex = data.brushSides.size();
+            brush.brushSideCount = sideVec.size();
             brush.mins = mins;
             brush.maxs = maxs;
+
+            data.brushVerts.insert(data.brushVerts.end(), uniqueVertVec.begin(), uniqueVertVec.end());
+            data.brushSides.insert(data.brushSides.end(), sideVec.begin(), sideVec.end());
+
             data.brushVec.emplace_back(brush);
         }
 
@@ -873,8 +958,20 @@ namespace
 
         std::unique_ptr<BSPTree> createBSPTree(CollisionData& data)
         {
+            vec3_t worldMins{};
+            vec3_t worldMaxs{};
+            if (data.surfaceVerts.size() != 0)
+            {
             vec3_t worldMins = data.surfaceVerts.at(0);
             vec3_t worldMaxs = data.surfaceVerts.at(0);
+            }
+            else if (data.brushVerts.size() != 0)
+            {
+                vec3_t worldMins = data.brushVerts.at(0);
+                vec3_t worldMaxs = data.brushVerts.at(0);
+            }
+            else
+                assert(false);
             for (vec3_t& vertex : data.surfaceVerts)
                 BSPUtil::updateAABBWithPoint(vertex, worldMins, worldMaxs);
             for (vec3_t& vertex : data.brushVerts)
@@ -941,7 +1038,7 @@ namespace
                 CollisionPartition partition{};
                 partition.triCount = static_cast<char>(in_partition.triCount);
                 partition.firstTri = static_cast<int>(in_partition.indexStartIndex / 3);
-                uint16_t uniqueIndices[MAX_PARTITION_TRIS * 3];
+                uint16_t uniqueIndices[MAX_PARTITION_TRIS * 3]{};
                 size_t uniqueIndexSize = 0;
                 for (size_t triIdx = 0; triIdx < in_partition.triCount; triIdx++)
                 {
@@ -949,45 +1046,41 @@ namespace
                     uint16_t idx1 = data.surfaceIndices.at(in_partition.indexStartIndex + (triIdx * 3) + 1);
                     uint16_t idx2 = data.surfaceIndices.at(in_partition.indexStartIndex + (triIdx * 3) + 2);
 
-                    bool isUnique = false;
+                    bool isUnique = true;
                     for (size_t i = 0; i < uniqueIndexSize; i++)
                     {
                         if (uniqueIndices[i] == idx0)
                         {
-                            isUnique = true;
+                            isUnique = false;
                             break;
                         }
                     }
                     if (isUnique)
                         uniqueIndices[uniqueIndexSize++] = idx0;
 
-                    isUnique = false;
+                    isUnique = true;
                     for (size_t i = 0; i < uniqueIndexSize; i++)
                     {
                         if (uniqueIndices[i] == idx1)
                         {
-                            isUnique = true;
+                            isUnique = false;
                             break;
                         }
                     }
                     if (isUnique)
                         uniqueIndices[uniqueIndexSize++] = idx1;
 
-                    isUnique = false;
+                    isUnique = true;
                     for (size_t i = 0; i < uniqueIndexSize; i++)
                     {
                         if (uniqueIndices[i] == idx2)
                         {
-                            isUnique = true;
+                            isUnique = false;
                             break;
                         }
                     }
                     if (isUnique)
                         uniqueIndices[uniqueIndexSize++] = idx2;
-
-                    output.uniqueVertIndexVec.emplace_back(idx0);
-                    output.uniqueVertIndexVec.emplace_back(idx1);
-                    output.uniqueVertIndexVec.emplace_back(idx2);
                 }
                 partition.nuinds = static_cast<int>(uniqueIndexSize);
                 partition.fuind = static_cast<int>(output.uniqueVertIndexVec.size());
@@ -1016,22 +1109,9 @@ namespace
             cLeaf_s leaf{};
             output.leafVec.emplace_back(leaf); // first leaf is always empty
 
-            con::info("AABBTreeVec 1 count: {}", output.AABBTreeVec.size());
-
             loadPartitions(bsp, data, output);
-
-            con::info("AABBTreeVec 2  count: {}", output.AABBTreeVec.size());
-
             loadBSPNode(bsp, tree.get(), true, output, data);
-            // loadBSPNode adds 291980 AABB trees for 39290 partitions. largest leaf object count has 20618 objects in a single leaf
-            // ????????????????????????????????
-            // crash related too brushes being more than 127 and crashing. maybe nodes can have max 127 brushes?
-            // a lot of brushnodes have exactly 19671 or 1793 brushes
-            con::info("AABBTreeVec 3 count: {}", output.AABBTreeVec.size());
-
             loadModelCollision(bsp, data, output);
-
-            con::info("AABBTreeVec 4 count: {}", output.AABBTreeVec.size());
 
             con::info("data.staticSurfaceCount count: {}", data.staticSurfaceCount);
             con::info("data.surfaceVec count: {}", data.surfaceVec.size());
@@ -1043,6 +1123,7 @@ namespace
             con::info("data.brushVec count: {}", data.brushVec.size());
             con::info("data.brushVerts count: {}", data.brushVerts.size());
             con::info("data.models count: {}", data.models.size());
+            con::info("data.brushSides count: {}", data.brushSides.size());
 
             con::info("output.modelVec count: {}", output.modelVec.size());
             con::info("output.nodeVec count: {}", output.nodeVec.size());
@@ -1089,8 +1170,6 @@ namespace
             // unused brush data
             clipMap->info.planeCount = 0;
             clipMap->info.planes = nullptr;
-            clipMap->info.numBrushSides = 0;
-            clipMap->info.brushsides = nullptr;
             clipMap->info.numLeafBrushes = 0;
             clipMap->info.leafbrushes = nullptr;
             clipMap->info.brushBounds = nullptr;
@@ -1116,6 +1195,39 @@ namespace
             clipMap->info.brushVerts = m_memory.Alloc<vec3_t>(data.brushVerts.size());
             memcpy(clipMap->info.brushVerts, data.brushVerts.data(), sizeof(vec3_t) * data.brushVerts.size());
 
+            clipMap->info.numBrushSides = static_cast<unsigned int>(data.brushSides.size());
+            clipMap->info.brushsides = m_memory.Alloc<cbrushside_t>(data.brushSides.size());
+            for (size_t brushSideIdx = 0; brushSideIdx < data.brushSides.size(); brushSideIdx++)
+            {
+                ColSide& inSide = data.brushSides.at(brushSideIdx);
+                cbrushside_t* outSide = &clipMap->info.brushsides[brushSideIdx];
+
+                ColBrush& parentBrush = data.brushVec.at(inSide.parentBrushIndex);
+                outSide->sflags = bsp->colWorld.materials.at(parentBrush.materialIndex).surfaceFlags;
+                outSide->cflags = bsp->colWorld.materials.at(parentBrush.materialIndex).contentFlags;
+
+                outSide->plane = m_memory.Alloc<cplane_s>();
+                outSide->plane->dist = inSide.dist;
+                outSide->plane->normal = inSide.normal;
+
+                if (outSide->plane->normal.x == 1.0f && outSide->plane->normal.y == 0.0f && outSide->plane->normal.z == 0.0f)
+                    outSide->plane->type = 0;
+                else if (outSide->plane->normal.x == 0.0f && outSide->plane->normal.y == 1.0f && outSide->plane->normal.z == 0.0f)
+                    outSide->plane->type = 1;
+                else if (outSide->plane->normal.x == 0.0f && outSide->plane->normal.y == 0.0f && outSide->plane->normal.z == 1.0f)
+                    outSide->plane->type = 2;
+                else
+                    outSide->plane->type = 3;
+
+                outSide->plane->signbits = 0;
+                if (outSide->plane->normal.x < 0.0f)
+                    outSide->plane->signbits |= 1;
+                if (outSide->plane->normal.y < 0.0f)
+                    outSide->plane->signbits |= 2;
+                if (outSide->plane->normal.z < 0.0f)
+                    outSide->plane->signbits |= 4;
+            }
+
             clipMap->info.numBrushes = static_cast<uint16_t>(data.brushVec.size());
             clipMap->info.brushes = m_memory.Alloc<cbrush_array_t>(data.brushVec.size());
             for (size_t brushIdx = 0; brushIdx < data.brushVec.size(); brushIdx++)
@@ -1126,8 +1238,18 @@ namespace
                 int brushSurfaceFlags = bsp->colWorld.materials.at(inBrush.materialIndex).surfaceFlags;
                 int brushContentFlags = bsp->colWorld.materials.at(inBrush.materialIndex).contentFlags;
 
+                outBrush->numsides = static_cast<unsigned int>(inBrush.brushSideCount);
+                if (outBrush->numsides != 0)
+                    outBrush->sides = &clipMap->info.brushsides[inBrush.brushSideStartIndex];
+                else
+                    outBrush->sides = nullptr;
+
                 outBrush->numverts = static_cast<unsigned int>(inBrush.brushVertCount);
+                if (outBrush->numverts != 0)
                 outBrush->verts = &clipMap->info.brushVerts[inBrush.brushVertStartIndex];
+                else
+                    outBrush->verts = nullptr;
+
                 outBrush->contents = brushContentFlags;
                 outBrush->mins = inBrush.mins;
                 outBrush->maxs = inBrush.maxs;
