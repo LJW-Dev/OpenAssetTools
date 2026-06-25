@@ -12,6 +12,10 @@
 #include "XModel/Gltf/GltfTextOutput.h"
 #include "XModel/Gltf/GltfWriter.h"
 
+#pragma warning(push, 0)
+#include <Eigen>
+#pragma warning(pop)
+
 #include <QuickHull.hpp>
 #include <deque>
 #include <unordered_set>
@@ -96,8 +100,7 @@ namespace
 
         for (size_t surfType = BSP_SURF_TYPE_CLIPMISSILE; surfType < BSP_SURF_TYPE_COUNT; surfType++)
         {
-            if (surfType == BSP_SURF_TYPE_ORIGIN || surfType == BSP_SURF_TYPE_PHYSICSGEOM || surfType == BSP_SURF_TYPE_LIGHTPORTAL
-                || surfType == BSP_SURF_TYPE_NONSOLID)
+            if (surfType == BSP_SURF_TYPE_ORIGIN || surfType == BSP_SURF_TYPE_PHYSICSGEOM || surfType == BSP_SURF_TYPE_LIGHTPORTAL)
                 continue;
 
             s_SurfaceTypeFlags sFlags = surfaceTypeToFlagMap[surfType];
@@ -105,12 +108,43 @@ namespace
                 && (sFlags.contentFlags == 0 || flagsMatchExact(sFlags.contentFlags, contentflags)))
                 result += std::format("{}, ", surfaceTypeToNameMap[surfType]);
         }
-        if ((contentflags & 1) == 0)
-            result += "nonsolid, ";
 
         if (result.size() != 0)
             result.resize(result.size() - 2);
         return result;
+    }
+
+    // center vertices around (0, 0, 0), return position that original vertices centred around
+    vec3_t moveVerticesToOrigin(std::vector<BSPVertex>& inout_vertBuffer)
+    {
+        if (inout_vertBuffer.empty())
+            return {0.0f, 0.0f, 0.0f};
+
+        vec3_t mins{};
+        vec3_t maxs{};
+        bool first = true;
+        for (auto& vert : inout_vertBuffer)
+        {
+            if (first == true)
+            {
+                first = false;
+                mins = vert.pos;
+                maxs = vert.pos;
+            }
+            else
+                BSPUtil::updateAABBWithPoint(vert.pos, mins, maxs);
+        }
+
+        vec3_t middle = BSPUtil::calcMiddleOfAABB(mins, maxs);
+
+        for (auto& vert : inout_vertBuffer)
+        {
+            vert.pos.x = vert.pos.x - middle.x;
+            vert.pos.y = vert.pos.y - middle.y;
+            vert.pos.z = vert.pos.z - middle.z;
+        }
+
+        return middle;
     }
 
     struct OutSurface
@@ -157,7 +191,8 @@ namespace
         }
     }
 
-    void createSurfacesFromPartitions(const clipMap_t* clipmap, BSPData& dumpData, std::vector<PartitionData>& partitionList, OutSurface& result)
+    void createSurfacesFromPartitions(
+        const clipMap_t* clipmap, BSPData& dumpData, std::vector<PartitionData>& partitionList, bool useWorldCoordinates, OutSurface& result)
     {
         std::vector<std::pair<size_t, std::vector<size_t>>> materialPartitions;
         for (PartitionData partitionData : partitionList)
@@ -259,6 +294,10 @@ namespace
             assert(outputVertexBuffer.size() != 0);
 
             BSPSurface outSurface{};
+            outSurface.isLocalCoords = !useWorldCoordinates;
+            outSurface.origin = {};
+            if (!useWorldCoordinates)
+                outSurface.origin = moveVerticesToOrigin(outputVertexBuffer);
             outSurface.materialIndex = matPartition.first;
             outSurface.triCount = tempTriCount;
             outSurface.vertexCount = outputVertexBuffer.size();
@@ -275,7 +314,7 @@ namespace
         }
     }
 
-    void createSurfacesFromBrushes(const clipMap_t* clipmap, BSPData& dumpData, std::vector<size_t>& brushList, OutSurface& result)
+    void createSurfacesFromBrushes(const clipMap_t* clipmap, BSPData& dumpData, std::vector<size_t>& brushList, bool useWorldCoordinates, OutSurface& result)
     {
         result.surfaceCount = 0;
         result.surfaceStart = dumpData.colWorld.surfaces.size();
@@ -343,11 +382,25 @@ namespace
             VertexDataSource<float> vertexBuffer = hull.getVertexBuffer();
             assert(indexBuffer.size() % 3 == 0);
 
+            std::vector<BSPVertex> outVertexBuffer;
+            for (const auto& vertex : vertexBuffer)
+            {
+                BSPVertex vert{};
+                vert.pos.x = vertex.x;
+                vert.pos.y = vertex.y;
+                vert.pos.z = vertex.z;
+                outVertexBuffer.emplace_back(vert);
+            }
+
             BSPSurface surface;
+            surface.isLocalCoords = !useWorldCoordinates;
+            surface.origin = {};
+            if (!useWorldCoordinates)
+                surface.origin = moveVerticesToOrigin(outVertexBuffer);
             surface.indexOfFirstVertex = totalVertexCount;
             surface.indexOfFirstIndex = totalIndexCount;
             surface.triCount = indexBuffer.size() / 3;
-            surface.vertexCount = vertexBuffer.size();
+            surface.vertexCount = outVertexBuffer.size();
 
             size_t matIndex = -1;
             for (unsigned i = 0; i < clipmap->info.numMaterials; i++)
@@ -376,17 +429,13 @@ namespace
             surface.materialIndex = matIndex;
             dumpData.colWorld.surfaces.emplace_back(surface);
 
-            for (const auto& vertex : vertexBuffer)
-            {
-                BSPVertex vert{};
-                vert.pos.x = vertex.x;
-                vert.pos.y = vertex.y;
-                vert.pos.z = vertex.z;
-                dumpData.colWorld.vertices.emplace_back(vert);
-            }
+            dumpData.colWorld.vertices.insert(dumpData.colWorld.vertices.end(), outVertexBuffer.begin(), outVertexBuffer.end());
 
             for (const auto& index : indexBuffer)
+            {
+                assert(index <= UINT16_MAX);
                 dumpData.colWorld.indices.emplace_back(static_cast<uint16_t>(index));
+            }
 
             totalVertexCount += surface.vertexCount;
             totalIndexCount += surface.triCount * 3;
@@ -519,11 +568,11 @@ namespace
         getStaticCollisionList(clipmap, partitionList, brushList);
 
         OutSurface result{};
-        createSurfacesFromPartitions(clipmap, dumpData, partitionList, result);
+        createSurfacesFromPartitions(clipmap, dumpData, partitionList, true, result); // use world coords as entire mesh is dumped as one node
         dumpData.staticTerrainSurfaceCount = result.surfaceCount;
         dumpData.staticTerrainSurfaceStart = result.surfaceStart;
 
-        createSurfacesFromBrushes(clipmap, dumpData, brushList, result);
+        createSurfacesFromBrushes(clipmap, dumpData, brushList, false, result); // use local coords as each brush has it's own node
         dumpData.staticBrushSurfaceCount = result.surfaceCount;
         dumpData.staticBrushSurfaceStart = result.surfaceStart;
     }
@@ -534,6 +583,7 @@ namespace
 
         BSPModel model{};
 
+        // all model verts are in local coordinates (already cnetred around origin)
         if (gfxworld->models[modelIndex].surfaceCount != 0)
         {
             model.surfaceSide = MSS_GFX;
@@ -556,7 +606,7 @@ namespace
             std::vector<PartitionData> partitionList;
             getPartitionsFromAABBTree(clipmap, leaf->firstCollAabbIndex, leaf->collAabbCount, partitionList);
             OutSurface result;
-            createSurfacesFromPartitions(clipmap, dumpData, partitionList, result);
+            createSurfacesFromPartitions(clipmap, dumpData, partitionList, true, result);
             model.colTerrainSurfaceCount = result.surfaceCount;
             model.colTerrainSurfaceIndex = result.surfaceStart;
         }
@@ -573,7 +623,7 @@ namespace
             std::vector<size_t> brushList;
             getBrushesFromLeafBrushNode(clipmap, static_cast<size_t>(leaf->leafBrushNode), brushList);
             OutSurface result;
-            createSurfacesFromBrushes(clipmap, dumpData, brushList, result);
+            createSurfacesFromBrushes(clipmap, dumpData, brushList, true, result);
             model.colBrushSurfaceCount = result.surfaceCount;
             model.colBrushSurfaceIndex = result.surfaceStart;
         }
@@ -1127,11 +1177,102 @@ namespace
 
     size_t totalBrushes = 0;
 
+    JsonNode createNodeFromParent(
+        JsonRoot& root, size_t parentNodeIdx, std::optional<vec3_t> translation, std::optional<vec4_t> rotation, std::optional<vec3_t> scale)
+    {
+        JsonNode& rootNode = root.nodes->at(parentNodeIdx);
+        JsonNode outNode{};
+
+        if (rootNode.translation && translation)
+        {
+            float x = std::get<0>(*rootNode.translation);
+            float y = std::get<1>(*rootNode.translation);
+            float z = std::get<2>(*rootNode.translation);
+            outNode.translation = {
+                {(*translation).x - x, (*translation).y - y, (*translation).z - z}
+            };
+        }
+        else if (!rootNode.translation && translation)
+        {
+            outNode.translation = {
+                {(*translation).x, (*translation).y, (*translation).z}
+            };
+        }
+        else if (rootNode.translation && !translation)
+        {
+            outNode.translation = {
+                {0.0f, 0.0f, 0.0f}
+            };
+        }
+
+        if (rootNode.rotation && rotation)
+        {
+            float x = std::get<0>(*rootNode.rotation);
+            float y = std::get<1>(*rootNode.rotation);
+            float z = std::get<2>(*rootNode.rotation);
+            float w = std::get<3>(*rootNode.rotation);
+
+            // GLTF is XYZW, Eigen is WXYZ
+            Eigen::Quaternionf rootRotation(w, x, y, z);
+            Eigen::Quaternionf nodeRotation((*rotation).w, (*rotation).x, (*rotation).y, (*rotation).z);
+            Eigen::Quaternionf difference = rootRotation.inverse() * nodeRotation;
+            outNode.rotation = {
+                {difference.x(), difference.y(), difference.z(), difference.w()}
+            };
+        }
+
+        else if (!rootNode.rotation && rotation)
+        {
+            outNode.rotation = {
+                {(*rotation).x, (*rotation).y, (*rotation).z, (*rotation).w}
+            };
+        }
+        else if (rootNode.rotation && !rotation)
+        {
+            outNode.rotation = {
+                {0.0f, 0.0f, 0.0f, 1.0f}
+            };
+        }
+
+        if (rootNode.scale && scale)
+        {
+            float x = std::get<0>(*rootNode.scale);
+            float y = std::get<1>(*rootNode.scale);
+            float z = std::get<2>(*rootNode.scale);
+            outNode.scale = {
+                {(*scale).x - x, (*scale).y - y, (*scale).z - z}
+            };
+        }
+        else if (!rootNode.scale && scale)
+        {
+            outNode.scale = {
+                {(*scale).x, (*scale).y, (*scale).z}
+            };
+        }
+        else if (rootNode.scale && !scale)
+        {
+            outNode.scale = {
+                {1.0f, 1.0f, 1.0f}
+            };
+        }
+
+        return outNode;
+    }
+
     void addNodesFromBrushSurfaces(JsonRoot& root, BSPData& dumpData, size_t startSurf, size_t count, size_t rootNodeIdx, bool isGfxWorld)
     {
         for (size_t i = 0; i < count; i++)
         {
-            JsonNode node;
+            vec3_t origin{};
+            if (isGfxWorld)
+                origin = dumpData.gfxWorld.surfaces.at(startSurf + i).origin;
+            else
+                origin = dumpData.colWorld.surfaces.at(startSurf + i).origin;
+
+            JsonNode node{};
+            node.translation = {
+                {(origin).x, (origin).y, (origin).z}
+            };
             node.name = std::format("brush_{}", totalBrushes++);
             node.mesh = (unsigned)addMeshFromSurface(root, dumpData, startSurf + i, 1, isGfxWorld);
             nlohmann::json js;
@@ -1145,13 +1286,25 @@ namespace
 
     void addNodesFromTerrainSurfaces(JsonRoot& root, BSPData& dumpData, size_t startSurf, size_t count, size_t parentNodeIdx, bool isGfxWorld)
     {
-        JsonNode node;
-        node.name = std::format("terrain_{}", totalTerrain++);
-        node.mesh = (unsigned)addMeshFromSurface(root, dumpData, startSurf, count, isGfxWorld);
-        nlohmann::json js;
-        js["model"] = "terrain";
-        node.extras = js;
-        addNodeToGltf(root, node, parentNodeIdx);
+        for (size_t i = 0; i < count; i++)
+        {
+            vec3_t origin{};
+            if (isGfxWorld)
+                origin = dumpData.gfxWorld.surfaces.at(startSurf + i).origin;
+            else
+                origin = dumpData.colWorld.surfaces.at(startSurf + i).origin;
+
+            JsonNode node{};
+            node.translation = {
+                {(origin).x, (origin).y, (origin).z}
+            };
+            node.name = std::format("terrain_{}", totalTerrain++);
+            node.mesh = (unsigned)addMeshFromSurface(root, dumpData, startSurf + i, 1, isGfxWorld);
+            nlohmann::json js;
+            js["model"] = "terrain";
+            node.extras = js;
+            addNodeToGltf(root, node, parentNodeIdx);
+        }
     }
 
     void createMapEnts(JsonRoot& root, BSPData& dumpData, bool isGfxWorld)

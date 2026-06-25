@@ -238,7 +238,7 @@ namespace
             }
 
             Eigen::Vector3f translation(localTranslation[0], localTranslation[1], localTranslation[2]);
-            Eigen::Quaternionf rotation(localRotation[3], localRotation[0], localRotation[1], localRotation[2]); // GLTF is XYZW, Eigen is WXYZ
+            Eigen::Quaternionf rotation(localRotation[3], localRotation[0], localRotation[1], localRotation[2]); // GLTF is XYZW, Eigen constructor is WXYZ
             Eigen::Vector3f scale(localScale[0], localScale[1], localScale[2]);
 
             Eigen::Transform<float, 3, Eigen::Affine> T;
@@ -310,15 +310,6 @@ namespace
             if (vertexCount > UINT16_MAX)
                 throw GltfLoadException(std::format("Vertex count ({}) on node {} exceeded the UINT16_MAX", vertexCount, nodeName));
 
-            BSPSurface out_surface;
-            out_surface.vertexCount = static_cast<uint16_t>(vertexCount);
-            out_surface.triCount = static_cast<uint16_t>(faceCount);
-            out_surface.indexOfFirstIndex = static_cast<int>(m_curr_bsp_world->indices.size());
-            out_surface.indexOfFirstVertex = static_cast<int>(m_curr_bsp_world->vertices.size());
-            out_surface.materialIndex = materialIndex;
-            vec4_t materialColor = m_curr_bsp_world->materials.at(materialIndex).materialColour;
-            m_curr_bsp_world->surfaces.emplace_back(out_surface);
-
             Eigen::Vector4f tempPosition(0, 0, 0, 1.0f);
             Eigen::Vector4f transformedPosition = nodeMatrix * tempPosition;
             vec3_t surfaceOrigin;
@@ -326,6 +317,17 @@ namespace
             surfaceOrigin.y = transformedPosition.y();
             surfaceOrigin.z = transformedPosition.z();
             RhcToLhcCoordinates(surfaceOrigin.v);
+
+            BSPSurface out_surface;
+            out_surface.isLocalCoords = convertWorldToLocalPos;
+            out_surface.origin = surfaceOrigin;
+            out_surface.vertexCount = static_cast<uint16_t>(vertexCount);
+            out_surface.triCount = static_cast<uint16_t>(faceCount);
+            out_surface.indexOfFirstIndex = static_cast<int>(m_curr_bsp_world->indices.size());
+            out_surface.indexOfFirstVertex = static_cast<int>(m_curr_bsp_world->vertices.size());
+            out_surface.materialIndex = materialIndex;
+            vec4_t materialColor = m_curr_bsp_world->materials.at(materialIndex).materialColour;
+            m_curr_bsp_world->surfaces.emplace_back(out_surface);
 
             for (auto faceIndex = 0u; faceIndex < faceCount; faceIndex++)
             {
@@ -717,14 +719,14 @@ namespace
 
         size_t addScriptModel(const JsonRoot& jRoot,
                               const std::optional<std::vector<unsigned>>& modelNodes,
-                              const Eigen::Matrix4f& nodeMatrix,
+                              const Eigen::Matrix4f& parentEntityMatrix,
                               std::optional<size_t> gfxAndColLinkNum)
         {
             if (!modelNodes)
                 throw GltfLoadException("Script Model was made with no children");
 
-            std::vector<const JsonNode*> terrainNodes;
-            std::vector<const JsonNode*> brushNodes;
+            std::vector<std::pair<const JsonNode*, Eigen::Matrix4f>> terrainNodes;
+            std::vector<std::pair<const JsonNode*, Eigen::Matrix4f>> brushNodes;
             for (unsigned nodeIdx : *modelNodes)
             {
                 const JsonNode& node = jRoot.nodes->at(nodeIdx);
@@ -732,15 +734,18 @@ namespace
                 if (!node.extras || !node.extras->contains("model"))
                     throw GltfLoadException(std::format("Script Model child {} has no model field", *node.name));
 
+                Eigen::Matrix4f nodeMatrix = createNodeMatrix(node);
+                Eigen::Matrix4f transformedNodeMatrix = parentEntityMatrix * nodeMatrix;
+
                 std::string modelType = node.extras->at("model");
                 if (!modelType.compare("brush"))
                 {
                     if (m_is_world_gfx)
                         throw GltfLoadException(std::format("Script Model child {} is a brush. Brushes can be used in collision files only.", *node.name));
-                    brushNodes.emplace_back(&node);
+                    brushNodes.emplace_back(std::pair(&node, transformedNodeMatrix));
                 }
                 else if (!modelType.compare("terrain"))
-                    terrainNodes.emplace_back(&node);
+                    terrainNodes.emplace_back(std::pair(&node, transformedNodeMatrix));
                 else
                     throw GltfLoadException(std::format("Script Model child {} model field value isn't brush or terrain", *node.name));
             }
@@ -751,7 +756,7 @@ namespace
                 model.gfxSurfaceCount = terrainNodes.size();
                 model.gfxSurfaceIndex = m_curr_bsp_world->surfaces.size();
                 for (const auto& node : terrainNodes)
-                    addMeshNode(jRoot, *node, nodeMatrix, true);
+                    addMeshNode(jRoot, *node.first, node.second, true);
 
                 model.surfaceSide = MSS_GFX;
                 model.surfaceType = MST_NONE;
@@ -778,12 +783,12 @@ namespace
                 modelPtr->colTerrainSurfaceCount = terrainNodes.size();
                 modelPtr->colTerrainSurfaceIndex = m_curr_bsp_world->surfaces.size();
                 for (const auto& node : terrainNodes)
-                    addMeshNode(jRoot, *node, nodeMatrix, true);
+                    addMeshNode(jRoot, *node.first, node.second, true);
 
                 modelPtr->colBrushSurfaceCount = brushNodes.size();
                 modelPtr->colBrushSurfaceIndex = m_curr_bsp_world->surfaces.size();
                 for (const auto& node : brushNodes)
-                    addMeshNode(jRoot, *node, nodeMatrix, true);
+                    addMeshNode(jRoot, *node.first, node.second, true);
 
                 if (modelPtr->colTerrainSurfaceCount != 0 && modelPtr->colBrushSurfaceCount != 0)
                     modelPtr->surfaceType = MST_BOTH;

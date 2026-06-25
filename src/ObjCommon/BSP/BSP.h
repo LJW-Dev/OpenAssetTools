@@ -41,6 +41,8 @@ namespace T6
 
         struct BSPSurface
         {
+            bool isLocalCoords;
+            vec3_t origin;
             size_t materialIndex;
             size_t vertexCount;
             size_t triCount;
