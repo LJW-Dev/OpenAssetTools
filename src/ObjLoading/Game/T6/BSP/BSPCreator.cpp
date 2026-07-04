@@ -808,9 +808,9 @@ namespace
                 else
                     modelPtr->surfaceSide = MSS_NONE;
             }
-            if (gfxAndColLinkNum)
+            if (gfxAndColLinkNum && !m_is_world_gfx)
             {
-                return gfxToColModelLinkMap.at(*gfxAndColLinkNum) + 1;
+                return gfxToColModelLinkMap.at(*gfxAndColLinkNum) + 1; // script model index starts at 1
             }
             else
             {
