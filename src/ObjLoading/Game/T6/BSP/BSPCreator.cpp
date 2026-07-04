@@ -913,10 +913,10 @@ namespace
                 }
                 else
                     assert(false);
-                if (!key.compare("origin") || !key.compare("angles") || !key.compare("flags"))
+                if (!key.compare("origin") || !key.compare("angles") || !key.compare("GfxAndColLinkNumber"))
                     continue;
 
-                if (!key.compare("model") && entity.modelIndex != 0)
+                if (!key.compare("model") && !value.compare("*")) // ignore line if the entity has a terrain/brush model
                     continue;
 
                 BSPEntityEntry entry;
@@ -974,11 +974,14 @@ namespace
                 }
                 else
                     m_bsp->skyboxName = std::format("skybox_{}", m_bsp->name);
+
+                return true; // worldspawn entity is in m_bsp->worldspawn so it shouldn't be added to the overall entity list
             }
             else if (!classname.compare("mp_global_intermission"))
                 m_bsp->containsIntermssion = true;
-            else
+
                 m_bsp->entities.emplace_back(entity);
+
             return true;
         }
 
