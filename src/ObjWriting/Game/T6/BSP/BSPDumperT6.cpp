@@ -643,7 +643,7 @@ namespace
         std::unique_ptr<char[]> origEntStrPtr = std::make_unique<char[]>(strlen(mapEnts->entityString) + 1);
         strcpy(origEntStrPtr.get(), mapEnts->entityString);
         char* entStrPtr = origEntStrPtr.get();
-        size_t entIdx = 0;
+        size_t entIdx = 1;
         while (true)
         {
             while (*entStrPtr != '{' && *entStrPtr != '\0')

@@ -731,12 +731,12 @@ namespace
 
         bool isTriConnectedToTri(BSPData* bsp, BSPSurface& in_surface, size_t triIdx1, size_t triIdx2)
         {
-            size_t t1_index0 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx1 * 3));
-            size_t t1_index1 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx1 * 3) + 1);
-            size_t t1_index2 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx1 * 3) + 2);
-            size_t t2_index0 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx2 * 3));
-            size_t t2_index1 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx2 * 3) + 1);
-            size_t t2_index2 = bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx2 * 3) + 2);
+            size_t t1_index0 = in_surface.indexOfFirstVertex + bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx1 * 3));
+            size_t t1_index1 = in_surface.indexOfFirstVertex + bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx1 * 3) + 1);
+            size_t t1_index2 = in_surface.indexOfFirstVertex + bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx1 * 3) + 2);
+            size_t t2_index0 = in_surface.indexOfFirstVertex + bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx2 * 3));
+            size_t t2_index1 = in_surface.indexOfFirstVertex + bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx2 * 3) + 1);
+            size_t t2_index2 = in_surface.indexOfFirstVertex + bsp->colWorld.indices.at(in_surface.indexOfFirstIndex + (triIdx2 * 3) + 2);
 
             size_t matchCount = 0;
             if (areVerticesEqual(bsp, t1_index0, t2_index0) || areVerticesEqual(bsp, t1_index0, t2_index1) || areVerticesEqual(bsp, t1_index0, t2_index2))

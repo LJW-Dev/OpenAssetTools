@@ -900,25 +900,6 @@ namespace
 
             BSPEntity entity{};
 
-            if (!node.extras->contains("model"))
-                entity.modelIndex = 0;
-            else
-            {
-                std::string modelStr = node.extras->at("model");
-                if (!modelStr.compare("*"))
-                {
-                    if (node.extras->contains("GfxAndColLinkNumber"))
-                    {
-                        size_t linkNumber = node.extras->at("GfxAndColLinkNumber");
-                        entity.modelIndex = addScriptModel(jRoot, node.children, nodeMatrix, linkNumber);
-                        if (m_is_world_gfx) // we don't want both linked entities to be added, so only the col entity added to mapents
-                            return true;
-                    }
-                    else
-                        entity.modelIndex = addScriptModel(jRoot, node.children, nodeMatrix, std::nullopt);
-                }
-            }
-
             for (auto& element : node.extras->items())
             {
                 std::string key = element.key();
@@ -942,6 +923,25 @@ namespace
                 entry.key = key;
                 entry.value = value;
                 entity.entries.emplace_back(entry);
+            }
+
+            if (!node.extras->contains("model"))
+                entity.modelIndex = 0;
+            else
+            {
+                std::string modelStr = node.extras->at("model");
+                if (!modelStr.compare("*"))
+                {
+                    if (node.extras->contains("GfxAndColLinkNumber"))
+                    {
+                        size_t linkNumber = node.extras->at("GfxAndColLinkNumber");
+                        entity.modelIndex = addScriptModel(jRoot, node.children, nodeMatrix, linkNumber);
+                        if (m_is_world_gfx) // we don't want both linked entities to be added, so only the col entity added to mapents
+                            return true;
+                    }
+                    else
+                        entity.modelIndex = addScriptModel(jRoot, node.children, nodeMatrix, std::nullopt);
+                }
             }
 
             Eigen::Vector4f position(0, 0, 0, 1.0f);
