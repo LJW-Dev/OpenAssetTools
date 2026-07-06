@@ -494,22 +494,6 @@ namespace
             return true;
         }
 
-        size_t createMaterialWithFlags(size_t originalMaterialIdx, const std::string& flags)
-        {
-            int surfaceFlags = 0;
-            int contentFlags = 0;
-            bool matchedAnyFlag = convertStringToFlags(flags, surfaceFlags, contentFlags);
-            if (!matchedAnyFlag)
-                return originalMaterialIdx;
-
-            BSPMaterial duplicateMaterial = m_curr_bsp_world->materials.at(originalMaterialIdx);
-            duplicateMaterial.surfaceFlags = surfaceFlags;
-            duplicateMaterial.contentFlags = contentFlags;
-            size_t newMaterialIndex = m_curr_bsp_world->materials.size();
-            m_curr_bsp_world->materials.emplace_back(duplicateMaterial);
-            return newMaterialIndex;
-        }
-
         bool addMeshNode(const JsonRoot& jRoot, const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix, bool convertWorldToLocalPos)
         {
             assert(node.mesh);
@@ -722,11 +706,15 @@ namespace
                               const Eigen::Matrix4f& parentEntityMatrix,
                               std::optional<size_t> gfxAndColLinkNum)
         {
-            if (!modelNodes)
-                throw GltfLoadException("Script Model was made with no children");
+            if (!modelNodes && m_is_world_gfx)
+                throw GltfLoadException("GFX Script Model was made with no children");
+            if (!modelNodes && !gfxAndColLinkNum && !m_is_world_gfx)
+                throw GltfLoadException("COL Script Model was made with no children and has no gfxAndColLinkNumber");
 
             std::vector<std::pair<const JsonNode*, Eigen::Matrix4f>> terrainNodes;
             std::vector<std::pair<const JsonNode*, Eigen::Matrix4f>> brushNodes;
+            if (modelNodes)
+            {
             for (unsigned nodeIdx : *modelNodes)
             {
                 const JsonNode& node = jRoot.nodes->at(nodeIdx);
@@ -749,14 +737,15 @@ namespace
                 else
                     throw GltfLoadException(std::format("Script Model child {} model field value isn't brush or terrain", *node.name));
             }
+            }
 
             BSPModel model{};
             if (m_is_world_gfx)
             {
-                model.gfxSurfaceCount = terrainNodes.size();
                 model.gfxSurfaceIndex = m_curr_bsp_world->surfaces.size();
                 for (const auto& node : terrainNodes)
                     addMeshNode(jRoot, *node.first, node.second, true);
+                model.gfxSurfaceCount = m_curr_bsp_world->surfaces.size() - model.gfxSurfaceIndex;
 
                 model.surfaceSide = MSS_GFX;
                 model.surfaceType = MST_NONE;
@@ -780,15 +769,15 @@ namespace
                     modelPtr = &m_bsp->models.at(gfxToColModelLinkMap.at(*gfxAndColLinkNum));
                 }
 
-                modelPtr->colTerrainSurfaceCount = terrainNodes.size();
                 modelPtr->colTerrainSurfaceIndex = m_curr_bsp_world->surfaces.size();
                 for (const auto& node : terrainNodes)
                     addMeshNode(jRoot, *node.first, node.second, true);
+                modelPtr->colTerrainSurfaceCount = m_curr_bsp_world->surfaces.size() - modelPtr->colTerrainSurfaceIndex;
 
-                modelPtr->colBrushSurfaceCount = brushNodes.size();
                 modelPtr->colBrushSurfaceIndex = m_curr_bsp_world->surfaces.size();
                 for (const auto& node : brushNodes)
                     addMeshNode(jRoot, *node.first, node.second, true);
+                modelPtr->colBrushSurfaceCount = m_curr_bsp_world->surfaces.size() - modelPtr->colBrushSurfaceIndex;
 
                 if (modelPtr->colTerrainSurfaceCount != 0 && modelPtr->colBrushSurfaceCount != 0)
                     modelPtr->surfaceType = MST_BOTH;
@@ -1087,17 +1076,23 @@ namespace
                 Eigen::Matrix4f nodeMatrix = createNodeMatrix(node);
                 Eigen::Matrix4f transformedNodeMatrix = parentNodeMatrix * nodeMatrix;
 
-                if (node.extras && node.extras->contains("classname"))
-                    scriptNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
-                else
+                bool shouldAddChildren = true;
+                if (node.extras && node.extras->contains("model"))
                 {
-                    if (node.children)
+                    std::string modelStr = node.extras->at("model");
+                    if (!modelStr.compare("*"))    // entities with "model: *" use their children as collision data
+                        shouldAddChildren = false; // we don't want to add entity collision to static collision
+                }
+
+                if (shouldAddChildren && node.children)
                     {
                         for (const auto childIndex : *node.children)
                             nodeQueue.emplace_back(s_nodes{childIndex, transformedNodeMatrix});
                     }
 
-                    if (node.extras && node.extras->contains("model"))
+                if (node.extras && (node.extras->contains("classname") || node.extras->contains("zone")))
+                    scriptNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                else if (node.extras && node.extras->contains("model"))
                     {
                         std::string modelStr = node.extras->at("model");
                         if (!modelStr.compare("brush"))
@@ -1110,7 +1105,6 @@ namespace
                     else
                         staticNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
                 }
-            }
 
             if (m_is_world_gfx)
             {
