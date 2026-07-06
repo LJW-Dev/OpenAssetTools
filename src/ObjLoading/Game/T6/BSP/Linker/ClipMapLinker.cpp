@@ -602,8 +602,8 @@ namespace
                     output.modelVec.emplace_back(outputModel);
                     continue;
                 }
-                vec3_t modelMins;
-                vec3_t modelMaxs;
+                vec3_t modelMins{};
+                vec3_t modelMaxs{};
                 if (model.type == MST_TERRAIN || model.type == MST_BOTH)
                 {
                     size_t parentCount = 0;
@@ -636,6 +636,8 @@ namespace
                 }
                 else if (model.type == MST_BOTH)
                     BSPUtil::updateAABB(outputModel.leaf.mins, outputModel.leaf.maxs, modelMins, modelMaxs);
+                outputModel.mins = modelMins;
+                outputModel.maxs = modelMaxs;
                 outputModel.radius = BSPUtil::distBetweenPoints(modelMins, modelMaxs) / 2;
                 output.modelVec.emplace_back(outputModel);
             }
