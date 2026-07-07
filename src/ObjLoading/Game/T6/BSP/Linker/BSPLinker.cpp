@@ -121,32 +121,86 @@ public:
         ComWorld* comWorld = comWorldLinker->linkComWorld(bsp);
         if (comWorld == nullptr)
             return false;
-        m_context.AddAsset<AssetComWorld>(comWorld->name, comWorld);
 
         MapEnts* mapEnts = mapEntsLinker->linkMapEnts(bsp);
         if (mapEnts == nullptr)
             return false;
-        m_context.AddAsset<AssetMapEnts>(mapEnts->name, mapEnts);
 
         GameWorldMp* gameWorldMp = gameWorldMpLinker->linkGameWorldMp(bsp);
         if (gameWorldMp == nullptr)
             return false;
-        m_context.AddAsset<AssetGameWorldMp>(gameWorldMp->name, gameWorldMp);
 
         SkinnedVertsDef* skinnedVerts = skinnedVertsLinker->linkSkinnedVerts(bsp);
         if (skinnedVerts == nullptr)
             return false;
-        m_context.AddAsset<AssetSkinnedVerts>(skinnedVerts->name, skinnedVerts);
 
         GfxWorld* gfxWorld = gfxWorldLinker->linkGfxWorld(bsp);
         if (gfxWorld == nullptr)
             return false;
-        m_context.AddAsset<AssetGfxWorld>(gfxWorld->name, gfxWorld);
 
         clipMap_t* clipMap = clipMapLinker->linkClipMap(bsp); // requires mapents asset
         if (clipMap == nullptr)
             return false;
-        m_context.AddAsset<AssetClipMapPvs>(clipMap->name, clipMap);
+
+        auto* oldGfx = (m_context.LoadDependency<AssetGfxWorld>("maps/mp/zm_transit.d3dbsp"));
+        if (oldGfx)
+        {
+            assert(!oldGfx->IsReference());
+            GfxWorld* oldGfxPtr = oldGfx->Asset();
+            memcpy(oldGfxPtr, gfxWorld, sizeof(GfxWorld));
+        }
+        else
+            m_context.AddAsset<AssetGfxWorld>(gfxWorld->name, gfxWorld);
+
+        auto* oldCol = (m_context.LoadDependency<AssetClipMapPvs>("maps/mp/zm_transit.d3dbsp"));
+        if (oldCol)
+        {
+            assert(!oldCol->IsReference());
+            clipMap_t* oldColPtr = oldCol->Asset();
+            memcpy(oldColPtr, clipMap, sizeof(clipMap_t));
+        }
+        else
+            m_context.AddAsset<AssetClipMapPvs>(clipMap->name, clipMap);
+
+        auto* oldCom = (m_context.LoadDependency<AssetComWorld>("maps/mp/zm_transit.d3dbsp"));
+        if (oldCom)
+        {
+            assert(!oldCom->IsReference());
+            ComWorld* oldComPtr = oldCom->Asset();
+            memcpy(oldComPtr, comWorld, sizeof(ComWorld));
+        }
+        else
+            m_context.AddAsset<AssetComWorld>(comWorld->name, comWorld);
+
+        auto* oldEnts = (m_context.LoadDependency<AssetMapEnts>("maps/mp/zm_transit.d3dbsp"));
+        if (oldEnts)
+        {
+            assert(!oldEnts->IsReference());
+            MapEnts* oldEntsPtr = oldEnts->Asset();
+            memcpy(oldEntsPtr, mapEnts, sizeof(MapEnts));
+        }
+        else
+            m_context.AddAsset<AssetMapEnts>(mapEnts->name, mapEnts);
+
+        auto* oldGW = (m_context.LoadDependency<AssetGameWorldMp>("maps/mp/zm_transit.d3dbsp"));
+        if (oldGW)
+        {
+            assert(!oldGW->IsReference());
+            GameWorldMp* oldGWPtr = oldGW->Asset();
+            memcpy(oldGWPtr, gameWorldMp, sizeof(GameWorldMp));
+        }
+        else
+            m_context.AddAsset<AssetGameWorldMp>(gameWorldMp->name, gameWorldMp);
+
+        auto* oldSV = (m_context.LoadDependency<AssetSkinnedVerts>("skinnedverts"));
+        if (oldSV)
+        {
+            assert(!oldSV->IsReference());
+            SkinnedVertsDef* oldSVPtr = oldSV->Asset();
+            memcpy(oldSVPtr, skinnedVerts, sizeof(SkinnedVertsDef));
+        }
+        else
+            m_context.AddAsset<AssetSkinnedVerts>(skinnedVerts->name, skinnedVerts);
 
         return true;
     };
