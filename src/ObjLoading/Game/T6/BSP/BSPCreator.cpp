@@ -1072,8 +1072,12 @@ namespace
             for (const auto rootNode : GetRootNodes(jRoot))
                 nodeQueue.emplace_back(s_nodes{rootNode, Eigen::Matrix4f::Identity()});
 
-            std::vector<s_nodes> staticNodes;
-            std::vector<s_nodes> staticBrushNodes;
+            std::vector<s_nodes> colStaticNodes;
+            std::vector<s_nodes> colStaticBrushNodes;
+            std::vector<s_nodes> gfxLitOpaqueNodes;
+            std::vector<s_nodes> gfxLitTransparentNodes;
+            std::vector<s_nodes> gfxEmissiveOpaqueNodes;
+            std::vector<s_nodes> gfxEmissiveTransparentnodes;
             std::vector<s_nodes> scriptNodes;
             while (!nodeQueue.empty())
             {
@@ -1099,42 +1103,92 @@ namespace
                         nodeQueue.emplace_back(s_nodes{childIndex, transformedNodeMatrix});
                 }
 
-                if (node.extras && (node.extras->contains("classname") || node.extras->contains("zone")))
-                    scriptNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
-                else if (node.extras && node.extras->contains("model"))
+                if (m_is_world_gfx)
                 {
-                    std::string modelStr = node.extras->at("model");
-                    if (!modelStr.compare("brush"))
-                        staticBrushNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
-                    else if (!modelStr.compare("terrain"))
-                        staticNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                    if (node.extras && (node.extras->contains("classname")))
+                        scriptNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                    else if (node.extras && (node.extras->contains("type")))
+                    {
+                        std::string typeStr = node.extras->at("type");
+                        if (!typeStr.compare("lit_opaque"))
+                            gfxLitOpaqueNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                        else if (!typeStr.compare("lit_transparent"))
+                            gfxLitTransparentNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                        else if (!typeStr.compare("emissive_opaque"))
+                            gfxEmissiveOpaqueNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                        else if (!typeStr.compare("emissive_transparent"))
+                            gfxEmissiveTransparentnodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                        else
+                            throw GltfLoadException(
+                                std::format("Node {} has type property but isn't lit_opaque, lit_transparent, emissive_opaque, emissive_transparent",
+                                            node.name.value_or("unnamed node")));
+                    }
                     else
-                        throw GltfLoadException(std::format("Node {} has model property but isn't brush or terrain ", node.name.value_or("unnamed node")));
+                        gfxLitOpaqueNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
                 }
                 else
-                    staticNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                {
+                    if (node.extras && (node.extras->contains("classname") || node.extras->contains("zone")))
+                        scriptNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                    else if (node.extras && node.extras->contains("model"))
+                    {
+                        std::string modelStr = node.extras->at("model");
+                        if (!modelStr.compare("brush"))
+                            colStaticBrushNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                        else if (!modelStr.compare("terrain"))
+                            colStaticNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                        else
+                            throw GltfLoadException(std::format("Node {} has model property but isn't brush or terrain ", node.name.value_or("unnamed node")));
+                    }
+                    else
+                        colStaticNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                }
             }
 
             if (m_is_world_gfx)
             {
                 m_bsp->staticSurfaceStart = m_curr_bsp_world->surfaces.size();
                 assert(m_bsp->staticSurfaceStart == 0);
-                for (const auto& node : staticNodes)
+
+                m_bsp->litOpaqueSurfaceStart = m_curr_bsp_world->surfaces.size();
+                for (const auto& node : gfxLitOpaqueNodes)
                 {
                     if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
                         con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
                 }
-                for (const auto& node : staticBrushNodes)
+                m_bsp->litOpaqueSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->litOpaqueSurfaceStart;
+
+                m_bsp->litTransparentSurfaceStart = m_curr_bsp_world->surfaces.size();
+                for (const auto& node : gfxLitTransparentNodes)
                 {
                     if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
                         con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
                 }
+                m_bsp->litTransparentSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->litTransparentSurfaceStart;
+
+                m_bsp->emissiveOpaqueSurfaceStart = m_curr_bsp_world->surfaces.size();
+                for (const auto& node : gfxEmissiveOpaqueNodes)
+                {
+                    if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
+                        con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
+                }
+                m_bsp->emissiveOpaqueSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->emissiveOpaqueSurfaceStart;
+
+                m_bsp->emissiveTransparentSurfaceStart = m_curr_bsp_world->surfaces.size();
+                for (const auto& node : gfxEmissiveTransparentnodes)
+                {
+                    if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
+                        con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
+                }
+                m_bsp->emissiveTransparentSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->emissiveTransparentSurfaceStart;
+
                 m_bsp->staticSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->staticSurfaceStart;
             }
             else
             {
+                assert(m_curr_bsp_world->surfaces.size() == 0);
                 m_bsp->staticTerrainSurfaceStart = m_curr_bsp_world->surfaces.size();
-                for (const auto& node : staticNodes)
+                for (const auto& node : colStaticNodes)
                 {
                     if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
                         con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
@@ -1142,7 +1196,7 @@ namespace
                 m_bsp->staticTerrainSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->staticTerrainSurfaceStart;
 
                 m_bsp->staticBrushSurfaceStart = m_curr_bsp_world->surfaces.size();
-                for (const auto& node : staticBrushNodes)
+                for (const auto& node : colStaticBrushNodes)
                 {
                     if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
                         con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));

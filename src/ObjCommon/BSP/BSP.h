@@ -211,6 +211,16 @@ namespace T6
 
             size_t staticSurfaceStart;
             size_t staticSurfaceCount;
+            // below are static surfaces only
+            size_t litOpaqueSurfaceStart;
+            size_t litOpaqueSurfaceCount;
+            size_t litTransparentSurfaceStart;
+            size_t litTransparentSurfaceCount;
+            size_t emissiveOpaqueSurfaceStart;
+            size_t emissiveOpaqueSurfaceCount;
+            size_t emissiveTransparentSurfaceStart;
+            size_t emissiveTransparentSurfaceCount;
+
             BSPWorld gfxWorld;
 
             size_t staticTerrainSurfaceStart;

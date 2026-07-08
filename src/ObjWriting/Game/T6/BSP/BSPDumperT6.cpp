@@ -805,6 +805,90 @@ namespace
         return indexMap;
     }
 
+    void addSurfacesFromMaterialMap(BSPData& dumpData,
+                                    const GfxWorld* gfxWorld,
+                                    std::vector<BSPVertex>& totalVertexBuffer,
+                                    std::map<size_t, std::tuple<size_t, size_t>>& vd0OffsetToGltf,
+                                    std::vector<std::pair<size_t, std::vector<size_t>>>& materialMap)
+    {
+        for (const auto& matSurf : materialMap)
+        {
+            std::vector<BSPVertex> tempVertices;
+            std::vector<size_t> tempIndices;
+            size_t tempTriCount = 0;
+            size_t tempVertCount = 0;
+            for (const auto& surfIdx : matSurf.second)
+            {
+                GfxSurface* inSurface = &gfxWorld->dpvs.surfaces[surfIdx];
+
+                assert(vd0OffsetToGltf.contains(inSurface->tris.vertexDataOffset0));
+                auto data = vd0OffsetToGltf.at(inSurface->tris.vertexDataOffset0);
+
+                size_t firstVertex = std::get<0>(data);
+                size_t vertexCount = std::get<1>(data);
+
+                tempTriCount += inSurface->tris.triCount;
+                tempVertCount += vertexCount;
+
+                uint16_t* surfTriIndicies = &gfxWorld->draw.indices[inSurface->tris.baseIndex];
+                for (uint16_t triIdx = 0; triIdx < inSurface->tris.triCount; triIdx++)
+                {
+                    // equivalent to LhcToRhcIndices
+                    tempIndices.emplace_back(tempVertices.size() + (size_t)surfTriIndicies[triIdx * 3 + 2]);
+                    tempIndices.emplace_back(tempVertices.size() + (size_t)surfTriIndicies[triIdx * 3 + 1]);
+                    tempIndices.emplace_back(tempVertices.size() + (size_t)surfTriIndicies[triIdx * 3]);
+                }
+
+                tempVertices.insert(tempVertices.end(), totalVertexBuffer.begin() + firstVertex, totalVertexBuffer.begin() + firstVertex + vertexCount);
+            }
+
+            std::unique_ptr<bool[]> isVertUsedMap = std::make_unique<bool[]>(tempVertCount);
+            for (size_t idx : tempIndices)
+                isVertUsedMap[idx] = true;
+
+            std::vector<BSPVertex> outputVertexBuffer;
+            auto indexMap = simplifyVertexBuffer(tempVertices, isVertUsedMap, outputVertexBuffer);
+            assert(outputVertexBuffer.size() != 0);
+
+            BSPSurface outSurface{};
+            outSurface.materialIndex = matSurf.first;
+            outSurface.triCount = tempTriCount;
+            outSurface.vertexCount = outputVertexBuffer.size();
+            outSurface.indexOfFirstVertex = dumpData.gfxWorld.vertices.size();
+            outSurface.indexOfFirstIndex = dumpData.gfxWorld.indices.size();
+            dumpData.gfxWorld.surfaces.emplace_back(outSurface);
+
+            dumpData.gfxWorld.vertices.insert(dumpData.gfxWorld.vertices.end(), outputVertexBuffer.begin(), outputVertexBuffer.end());
+            for (size_t idx : tempIndices)
+            {
+                assert(indexMap[idx] <= UINT16_MAX);
+                dumpData.gfxWorld.indices.emplace_back(static_cast<uint16_t>(indexMap[idx]));
+            }
+        }
+    }
+
+    void collectSurfacesWithSameMaterials(
+        BSPData& dumpData, const GfxWorld* gfxWorld, size_t surfStart, size_t surfEnd, std::vector<std::pair<size_t, std::vector<size_t>>>& out_materialMap)
+    {
+        for (size_t surfIdx = surfStart; surfIdx < surfEnd; surfIdx++)
+        {
+            GfxSurface* inSurface = &gfxWorld->dpvs.surfaces[surfIdx];
+            size_t materialIndex = createBspMaterial(dumpData, inSurface->material, (GfxSurfaceFlags)inSurface->flags);
+            bool found = false;
+            for (auto& matSurf : out_materialMap)
+            {
+                if (matSurf.first == materialIndex)
+                {
+                    matSurf.second.emplace_back(surfIdx);
+                    found = true;
+                    break;
+                }
+            }
+            if (!found)
+                out_materialMap.emplace_back(std::pair(materialIndex, std::vector<size_t>({static_cast<size_t>(surfIdx)})));
+        }
+    }
+
     void dumpGfxWorldSurfaces(BSPData& dumpData, const GfxWorld* gfxWorld)
     {
         std::map<size_t, size_t> vd0Offsets; // maps unique vd0 offsets to their maximum index
@@ -856,92 +940,48 @@ namespace
             totalVertexCount += vertexCount;
         }
 
-        std::vector<std::pair<size_t, std::vector<size_t>>> materialSurfs;
-        for (unsigned int surfIdx = 0; surfIdx < gfxWorld->dpvs.staticSurfaceCount; surfIdx++)
-        {
-            GfxSurface* inSurface = &gfxWorld->dpvs.surfaces[surfIdx];
-            size_t materialIndex = createBspMaterial(dumpData, inSurface->material, (GfxSurfaceFlags)inSurface->flags);
-            bool found = false;
-            for (auto& matSurf : materialSurfs)
-            {
-                if (matSurf.first == materialIndex)
-                {
-                    matSurf.second.emplace_back(surfIdx);
-                    found = true;
-                    break;
-                }
-            }
-            if (!found)
-                materialSurfs.emplace_back(std::pair(materialIndex, std::vector<size_t>({static_cast<size_t>(surfIdx)})));
-        }
+        std::vector<std::pair<size_t, std::vector<size_t>>> LitOpaqueSurfs;
+        std::vector<std::pair<size_t, std::vector<size_t>>> LitTransparentSurfs;
+        std::vector<std::pair<size_t, std::vector<size_t>>> EmissiveOpaqueSurfs;
+        std::vector<std::pair<size_t, std::vector<size_t>>> EmissiveTransparentSurfs;
+        std::vector<std::pair<size_t, std::vector<size_t>>> scriptSurfs;
 
-        assert(dumpData.gfxWorld.surfaces.size() == 0);
-        dumpData.staticSurfaceStart = dumpData.gfxWorld.surfaces.size();
-        dumpData.staticSurfaceCount = 0;
-        dumpData.staticSurfaceCount += materialSurfs.size();
-
-        // script surfaces need to stay unmerged or it will mess with entities that use them
+        collectSurfacesWithSameMaterials(dumpData, gfxWorld, gfxWorld->dpvs.litSurfsBegin, gfxWorld->dpvs.litSurfsEnd, LitOpaqueSurfs);
+        collectSurfacesWithSameMaterials(dumpData, gfxWorld, gfxWorld->dpvs.litTransSurfsBegin, gfxWorld->dpvs.litTransSurfsEnd, LitTransparentSurfs);
+        collectSurfacesWithSameMaterials(
+            dumpData, gfxWorld, gfxWorld->dpvs.emissiveOpaqueSurfsBegin, gfxWorld->dpvs.emissiveOpaqueSurfsEnd, EmissiveOpaqueSurfs);
+        collectSurfacesWithSameMaterials(
+            dumpData, gfxWorld, gfxWorld->dpvs.emissiveTransSurfsBegin, gfxWorld->dpvs.emissiveTransSurfsEnd, EmissiveTransparentSurfs);
+        // script surfaces need to be in order and unmerged since they are indexed by an entity
         for (int surfIdx = gfxWorld->dpvs.staticSurfaceCount; surfIdx < gfxWorld->surfaceCount; surfIdx++)
         {
             GfxSurface* inSurface = &gfxWorld->dpvs.surfaces[surfIdx];
             size_t materialIndex = createBspMaterial(dumpData, inSurface->material, (GfxSurfaceFlags)inSurface->flags);
-            materialSurfs.emplace_back(std::pair(materialIndex, std::vector<size_t>({static_cast<size_t>(surfIdx)})));
+            scriptSurfs.emplace_back(std::pair(materialIndex, std::vector<size_t>({static_cast<size_t>(surfIdx)})));
         }
 
-        for (const auto& matSurf : materialSurfs)
-        {
-            std::vector<BSPVertex> tempVertices;
-            std::vector<size_t> tempIndices;
-            size_t tempTriCount = 0;
-            size_t tempVertCount = 0;
-            for (const auto& surfIdx : matSurf.second)
-            {
-                GfxSurface* inSurface = &gfxWorld->dpvs.surfaces[surfIdx];
+        assert(dumpData.gfxWorld.surfaces.size() == 0);
+        dumpData.staticSurfaceStart = 0;
 
-                assert(vd0OffsetToGltf.contains(inSurface->tris.vertexDataOffset0));
-                auto data = vd0OffsetToGltf.at(inSurface->tris.vertexDataOffset0);
+        dumpData.litOpaqueSurfaceStart = dumpData.gfxWorld.surfaces.size();
+        addSurfacesFromMaterialMap(dumpData, gfxWorld, allVertices, vd0OffsetToGltf, LitOpaqueSurfs);
+        dumpData.litOpaqueSurfaceCount = dumpData.gfxWorld.surfaces.size() - dumpData.litOpaqueSurfaceStart;
 
-                size_t firstVertex = std::get<0>(data);
-                size_t vertexCount = std::get<1>(data);
+        dumpData.litTransparentSurfaceStart = dumpData.gfxWorld.surfaces.size();
+        addSurfacesFromMaterialMap(dumpData, gfxWorld, allVertices, vd0OffsetToGltf, LitTransparentSurfs);
+        dumpData.litTransparentSurfaceCount = dumpData.gfxWorld.surfaces.size() - dumpData.litTransparentSurfaceStart;
 
-                tempTriCount += inSurface->tris.triCount;
-                tempVertCount += vertexCount;
+        dumpData.emissiveOpaqueSurfaceStart = dumpData.gfxWorld.surfaces.size();
+        addSurfacesFromMaterialMap(dumpData, gfxWorld, allVertices, vd0OffsetToGltf, EmissiveOpaqueSurfs);
+        dumpData.emissiveOpaqueSurfaceCount = dumpData.gfxWorld.surfaces.size() - dumpData.emissiveOpaqueSurfaceStart;
 
-                uint16_t* surfTriIndicies = &gfxWorld->draw.indices[inSurface->tris.baseIndex];
-                for (uint16_t triIdx = 0; triIdx < inSurface->tris.triCount; triIdx++)
-                {
-                    // equivalent to LhcToRhcIndices
-                    tempIndices.emplace_back(tempVertices.size() + (size_t)surfTriIndicies[triIdx * 3 + 2]);
-                    tempIndices.emplace_back(tempVertices.size() + (size_t)surfTriIndicies[triIdx * 3 + 1]);
-                    tempIndices.emplace_back(tempVertices.size() + (size_t)surfTriIndicies[triIdx * 3]);
-                }
+        dumpData.emissiveTransparentSurfaceStart = dumpData.gfxWorld.surfaces.size();
+        addSurfacesFromMaterialMap(dumpData, gfxWorld, allVertices, vd0OffsetToGltf, EmissiveTransparentSurfs);
+        dumpData.emissiveTransparentSurfaceCount = dumpData.gfxWorld.surfaces.size() - dumpData.emissiveTransparentSurfaceStart;
 
-                tempVertices.insert(tempVertices.end(), allVertices.begin() + firstVertex, allVertices.begin() + firstVertex + vertexCount);
-            }
+        dumpData.staticSurfaceCount = dumpData.gfxWorld.surfaces.size();
 
-            std::unique_ptr<bool[]> isVertUsedMap = std::make_unique<bool[]>(tempVertCount);
-            for (size_t idx : tempIndices)
-                isVertUsedMap[idx] = true;
-
-            std::vector<BSPVertex> outputVertexBuffer;
-            auto indexMap = simplifyVertexBuffer(tempVertices, isVertUsedMap, outputVertexBuffer);
-            assert(outputVertexBuffer.size() != 0);
-
-            BSPSurface outSurface{};
-            outSurface.materialIndex = matSurf.first;
-            outSurface.triCount = tempTriCount;
-            outSurface.vertexCount = outputVertexBuffer.size();
-            outSurface.indexOfFirstVertex = dumpData.gfxWorld.vertices.size();
-            outSurface.indexOfFirstIndex = dumpData.gfxWorld.indices.size();
-            dumpData.gfxWorld.surfaces.emplace_back(outSurface);
-
-            dumpData.gfxWorld.vertices.insert(dumpData.gfxWorld.vertices.end(), outputVertexBuffer.begin(), outputVertexBuffer.end());
-            for (size_t idx : tempIndices)
-            {
-                assert(indexMap[idx] <= UINT16_MAX);
-                dumpData.gfxWorld.indices.emplace_back(static_cast<uint16_t>(indexMap[idx]));
-            }
-        }
+        addSurfacesFromMaterialMap(dumpData, gfxWorld, allVertices, vd0OffsetToGltf, scriptSurfs);
     }
 
     void dumpGfxWorldXModels(BSPData& dumpData, const GfxWorld* gfxWorld)
@@ -1452,8 +1492,32 @@ namespace
 
         JsonNode node;
         node.name = "Surfaces";
-        node.mesh = (unsigned)addMeshFromSurface(root, dumpData, dumpData.staticSurfaceStart, dumpData.staticSurfaceCount, true);
-        addNodeToGltf(root, node, ROOT_NODE_IDX);
+        node.children.emplace();
+        size_t surfNodeIdx = addNodeToGltf(root, node, ROOT_NODE_IDX);
+
+        nlohmann::json surfJs;
+
+        JsonNode surfNode{};
+        surfNode.name = "Lit Opaque";
+        surfNode.mesh = (unsigned)addMeshFromSurface(root, dumpData, dumpData.litOpaqueSurfaceStart, dumpData.litOpaqueSurfaceCount, true);
+        surfJs["type"] = "lit_opaque";
+        surfNode.extras = surfJs;
+        addNodeToGltf(root, surfNode, surfNodeIdx);
+        surfNode.name = "Lit Transparent";
+        surfNode.mesh = (unsigned)addMeshFromSurface(root, dumpData, dumpData.litTransparentSurfaceStart, dumpData.litTransparentSurfaceCount, true);
+        surfJs["type"] = "lit_transparent";
+        surfNode.extras = surfJs;
+        addNodeToGltf(root, surfNode, surfNodeIdx);
+        surfNode.name = "Emissive Opaque";
+        surfNode.mesh = (unsigned)addMeshFromSurface(root, dumpData, dumpData.emissiveOpaqueSurfaceStart, dumpData.emissiveOpaqueSurfaceCount, true);
+        surfJs["type"] = "emissive_opaque";
+        surfNode.extras = surfJs;
+        addNodeToGltf(root, surfNode, surfNodeIdx);
+        surfNode.name = "Emissive Transparent";
+        surfNode.mesh = (unsigned)addMeshFromSurface(root, dumpData, dumpData.emissiveTransparentSurfaceStart, dumpData.emissiveTransparentSurfaceCount, true);
+        surfJs["type"] = "emissive_transparent";
+        surfNode.extras = surfJs;
+        addNodeToGltf(root, surfNode, surfNodeIdx);
 
         JsonNode xnode;
         xnode.name = "XModels";
