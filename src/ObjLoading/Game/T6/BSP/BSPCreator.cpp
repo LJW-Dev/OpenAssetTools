@@ -355,7 +355,14 @@ namespace
                     assert(false);
                 if (!normalAccessor->GetFloatVec3(vertexIndex, vertex.normal.v))
                     assert(false);
-                if (!colorAccessor->GetFloatVec4(vertexIndex, vertex.color.v))
+                std::optional<JsonAccessorType> colourType = colorAccessor->GetType();
+                assert(colourType.has_value());
+                if (*colourType == JsonAccessorType::VEC4)
+                {
+                    if (!colorAccessor->GetFloatVec4(vertexIndex, vertex.color.v))
+                        assert(false);
+                }
+                else if (*colourType == JsonAccessorType::VEC3)
                 {
                     vec3_t colorout{};
                     if (!colorAccessor->GetFloatVec3(vertexIndex, colorout.v))
@@ -365,6 +372,8 @@ namespace
                     vertex.color.z = colorout.z;
                     vertex.color.w = 1.0f;
                 }
+                else
+                    assert(false);
                 if (!uvAccessor->GetFloatVec2(vertexIndex, vertex.texCoord.v))
                     assert(false);
 
@@ -715,28 +724,28 @@ namespace
             std::vector<std::pair<const JsonNode*, Eigen::Matrix4f>> brushNodes;
             if (modelNodes)
             {
-            for (unsigned nodeIdx : *modelNodes)
-            {
-                const JsonNode& node = jRoot.nodes->at(nodeIdx);
-
-                if (!node.extras || !node.extras->contains("model"))
-                    throw GltfLoadException(std::format("Script Model child {} has no model field", *node.name));
-
-                Eigen::Matrix4f nodeMatrix = createNodeMatrix(node);
-                Eigen::Matrix4f transformedNodeMatrix = parentEntityMatrix * nodeMatrix;
-
-                std::string modelType = node.extras->at("model");
-                if (!modelType.compare("brush"))
+                for (unsigned nodeIdx : *modelNodes)
                 {
-                    if (m_is_world_gfx)
-                        throw GltfLoadException(std::format("Script Model child {} is a brush. Brushes can be used in collision files only.", *node.name));
-                    brushNodes.emplace_back(std::pair(&node, transformedNodeMatrix));
+                    const JsonNode& node = jRoot.nodes->at(nodeIdx);
+
+                    if (!node.extras || !node.extras->contains("model"))
+                        throw GltfLoadException(std::format("Script Model child {} has no model field", *node.name));
+
+                    Eigen::Matrix4f nodeMatrix = createNodeMatrix(node);
+                    Eigen::Matrix4f transformedNodeMatrix = parentEntityMatrix * nodeMatrix;
+
+                    std::string modelType = node.extras->at("model");
+                    if (!modelType.compare("brush"))
+                    {
+                        if (m_is_world_gfx)
+                            throw GltfLoadException(std::format("Script Model child {} is a brush. Brushes can be used in collision files only.", *node.name));
+                        brushNodes.emplace_back(std::pair(&node, transformedNodeMatrix));
+                    }
+                    else if (!modelType.compare("terrain"))
+                        terrainNodes.emplace_back(std::pair(&node, transformedNodeMatrix));
+                    else
+                        throw GltfLoadException(std::format("Script Model child {} model field value isn't brush or terrain", *node.name));
                 }
-                else if (!modelType.compare("terrain"))
-                    terrainNodes.emplace_back(std::pair(&node, transformedNodeMatrix));
-                else
-                    throw GltfLoadException(std::format("Script Model child {} model field value isn't brush or terrain", *node.name));
-            }
             }
 
             BSPModel model{};
@@ -969,7 +978,7 @@ namespace
             else if (!classname.compare("mp_global_intermission"))
                 m_bsp->containsIntermssion = true;
 
-                m_bsp->entities.emplace_back(entity);
+            m_bsp->entities.emplace_back(entity);
 
             return true;
         }
@@ -1085,26 +1094,26 @@ namespace
                 }
 
                 if (shouldAddChildren && node.children)
-                    {
-                        for (const auto childIndex : *node.children)
-                            nodeQueue.emplace_back(s_nodes{childIndex, transformedNodeMatrix});
-                    }
+                {
+                    for (const auto childIndex : *node.children)
+                        nodeQueue.emplace_back(s_nodes{childIndex, transformedNodeMatrix});
+                }
 
                 if (node.extras && (node.extras->contains("classname") || node.extras->contains("zone")))
                     scriptNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
                 else if (node.extras && node.extras->contains("model"))
-                    {
-                        std::string modelStr = node.extras->at("model");
-                        if (!modelStr.compare("brush"))
-                            staticBrushNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
-                        else if (!modelStr.compare("terrain"))
-                            staticNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
-                        else
-                            throw GltfLoadException(std::format("Node {} has model property but isn't brush or terrain ", node.name.value_or("unnamed node")));
-                    }
-                    else
+                {
+                    std::string modelStr = node.extras->at("model");
+                    if (!modelStr.compare("brush"))
+                        staticBrushNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                    else if (!modelStr.compare("terrain"))
                         staticNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                    else
+                        throw GltfLoadException(std::format("Node {} has model property but isn't brush or terrain ", node.name.value_or("unnamed node")));
                 }
+                else
+                    staticNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+            }
 
             if (m_is_world_gfx)
             {

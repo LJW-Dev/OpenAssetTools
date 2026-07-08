@@ -261,6 +261,7 @@ namespace
                     currModelInst->maxs.y = (currModelInst->maxs.y * bspModel.scale.y) + bspModel.origin.y;
                     currModelInst->maxs.z = (currModelInst->maxs.z * bspModel.scale.z) + bspModel.origin.z;
 
+                    assert(currModel->model->numLods <= 4);
                     for (uint16_t lodIdx = 0; lodIdx < currModel->model->numLods; lodIdx++)
                     {
                         uint16_t vertCount = 0;
@@ -284,13 +285,13 @@ namespace
                     }
                     else
                     {
-                        con::debug("Unable to determine the bounds of xmodel: \"{}\"", bspModel.name);
-                        currModelInst->mins.x = bspModel.origin.x - 1.0f;
-                        currModelInst->mins.y = bspModel.origin.y - 1.0f;
-                        currModelInst->mins.z = bspModel.origin.z - 1.0f;
-                        currModelInst->maxs.x = bspModel.origin.x + 1.0f;
-                        currModelInst->maxs.y = bspModel.origin.y + 1.0f;
-                        currModelInst->maxs.z = bspModel.origin.z + 1.0f;
+                        con::debug("GFX: Unable to determine the bounds of xmodel: \"{}\"", bspModel.name);
+                        currModelInst->mins.x = bspModel.origin.x - 100.0f;
+                        currModelInst->mins.y = bspModel.origin.y - 100.0f;
+                        currModelInst->mins.z = bspModel.origin.z - 100.0f;
+                        currModelInst->maxs.x = bspModel.origin.x + 100.0f;
+                        currModelInst->maxs.y = bspModel.origin.y + 100.0f;
+                        currModelInst->maxs.z = bspModel.origin.z + 100.0f;
                     }
                 }
             }
