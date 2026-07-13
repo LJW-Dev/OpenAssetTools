@@ -1654,17 +1654,13 @@ namespace
 void DumperT6::Dump(AssetDumpingContext& context)
 {
     const auto& gfxWorldPool = context.m_zone.m_pools.PoolAssets<T6::AssetGfxWorld>();
+    if (gfxWorldPool.size() != 1)
+        return;
     const auto& colWorldPool = context.m_zone.m_pools.PoolAssets<T6::AssetClipMapPvs>();
     const auto& mapEntsPool = context.m_zone.m_pools.PoolAssets<T6::AssetMapEnts>();
     const auto& comWorldPool = context.m_zone.m_pools.PoolAssets<T6::AssetComWorld>();
     const auto& gameWorldMpPool = context.m_zone.m_pools.PoolAssets<T6::AssetGameWorldMp>();
     const auto& skinnedvertsPool = context.m_zone.m_pools.PoolAssets<T6::AssetSkinnedVerts>();
-    if (gfxWorldPool.size() != 1 || colWorldPool.size() != 1 || mapEntsPool.size() != 1 || comWorldPool.size() != 1 || gameWorldMpPool.size() != 1
-        || skinnedvertsPool.size() != 1)
-    {
-        con::error("0 or multiple BSPs found, skipping BSP decompilation.");
-        return;
-    }
     const auto* mapEntsInfo = *mapEntsPool.begin();
     const auto* colWorldInfo = *colWorldPool.begin();
     const auto* comWorldInfo = *comWorldPool.begin();
