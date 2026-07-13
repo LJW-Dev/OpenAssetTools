@@ -5,7 +5,7 @@ using namespace BSP;
 
 namespace
 {
-    constexpr __int64 MAX_NODE_SIZE = 1024; // maximum size a BSP node can be before it becomes a leaf
+    constexpr __int64 MAX_NODE_SIZE = 4096; // maximum size a BSP node can be before it becomes a leaf
 
     float alignFloatByNodeSize(float input)
     {
