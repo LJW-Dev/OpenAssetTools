@@ -314,7 +314,7 @@ namespace
         }
     }
 
-    void createSurfacesFromBrushes(const clipMap_t* clipmap, BSPData& dumpData, std::vector<size_t>& brushList, bool useWorldCoordinates, OutSurface& result)
+    void createSurfacesFromBrushes(const ClipInfo* clipInfo, BSPData& dumpData, std::vector<size_t>& brushList, bool useWorldCoordinates, OutSurface& result)
     {
         result.surfaceCount = 0;
         result.surfaceStart = dumpData.colWorld.surfaces.size();
@@ -326,7 +326,7 @@ namespace
             if (uniqueBrushes.contains(brushIdx))
                 continue;
 
-            cbrush_t* brush = &clipmap->info.brushes[brushIdx];
+            cbrush_t* brush = &clipInfo->brushes[brushIdx];
 
             std::vector<vec3_t> hullVerts;
             if (brush->numverts != 0)
@@ -403,11 +403,10 @@ namespace
             surface.vertexCount = outVertexBuffer.size();
 
             size_t matIndex = -1;
-            for (unsigned i = 0; i < clipmap->info.numMaterials; i++)
+            for (unsigned i = 0; i < clipInfo->numMaterials; i++)
             {
                 // this is how brushes with no data selects the flags during a trace
-                if (clipmap->info.materials[i].contentFlags == brush->axial_cflags[1][2]
-                    && clipmap->info.materials[i].surfaceFlags == brush->axial_sflags[1][2])
+                if (clipInfo->materials[i].contentFlags == brush->axial_cflags[1][2] && clipInfo->materials[i].surfaceFlags == brush->axial_sflags[1][2])
                 {
                     matIndex = i;
                     break;
@@ -446,7 +445,7 @@ namespace
         result.surfaceCount = uniqueBrushes.size();
     }
 
-    void getBrushesFromLeafBrushNode(const clipMap_t* clipmap, size_t leafBrushNodeIdx, std::vector<size_t>& brushList)
+    void getBrushesFromLeafBrushNode(const ClipInfo* clipInfo, size_t leafBrushNodeIdx, std::vector<size_t>& brushList)
     {
         if (leafBrushNodeIdx == 0)
         {
@@ -461,7 +460,7 @@ namespace
         {
             size_t lbnIdx = leafBrushNodeQueue.front();
             leafBrushNodeQueue.pop_front();
-            auto leafBrushNode = &clipmap->info.leafbrushNodes[lbnIdx];
+            auto leafBrushNode = &clipInfo->leafbrushNodes[lbnIdx];
 
             if (leafBrushNode->leafBrushCount > 0)
             {
@@ -494,7 +493,7 @@ namespace
                 if (leaf->collAabbCount != 0)
                     getPartitionsFromAABBTree(clipmap, leaf->firstCollAabbIndex, leaf->collAabbCount, partitionList);
                 if (leaf->leafBrushNode != 0)
-                    getBrushesFromLeafBrushNode(clipmap, leaf->leafBrushNode, brushList);
+                    getBrushesFromLeafBrushNode(&clipmap->info, leaf->leafBrushNode, brushList);
             }
             else
             {
@@ -572,7 +571,7 @@ namespace
         dumpData.staticTerrainSurfaceCount = result.surfaceCount;
         dumpData.staticTerrainSurfaceStart = result.surfaceStart;
 
-        createSurfacesFromBrushes(clipmap, dumpData, brushList, false, result); // use local coords as each brush has it's own node
+        createSurfacesFromBrushes(&clipmap->info, dumpData, brushList, false, result); // use local coords as each brush has it's own node
         dumpData.staticBrushSurfaceCount = result.surfaceCount;
         dumpData.staticBrushSurfaceStart = result.surfaceStart;
     }
@@ -621,9 +620,9 @@ namespace
             else
                 model.surfaceType = MST_BRUSH;
             std::vector<size_t> brushList;
-            getBrushesFromLeafBrushNode(clipmap, static_cast<size_t>(leaf->leafBrushNode), brushList);
+            getBrushesFromLeafBrushNode(&clipmap->info, static_cast<size_t>(leaf->leafBrushNode), brushList);
             OutSurface result;
-            createSurfacesFromBrushes(clipmap, dumpData, brushList, true, result);
+            createSurfacesFromBrushes(&clipmap->info, dumpData, brushList, true, result);
             model.colBrushSurfaceCount = result.surfaceCount;
             model.colBrushSurfaceIndex = result.surfaceStart;
         }
@@ -1709,5 +1708,244 @@ void DumperT6::Dump(AssetDumpingContext& context)
         }
         writeGltf(root, bufferData, assetFile.get());
     }
+    context.IncrementProgress();
+}
+
+[[nodiscard]] std::optional<asset_type_t> AddonMapEntsDumper::DumperT6::GetHandlingAssetType() const
+{
+    return ASSET_TYPE_ADDON_MAP_ENTS;
+}
+
+[[nodiscard]] size_t AddonMapEntsDumper::DumperT6::GetProgressTotalCount(AssetDumpingContext& context) const
+{
+    return 0;
+}
+
+void createAddonJson(JsonRoot& root, BSPData& dumpData, std::vector<uint8_t>& bufferData)
+{
+    root.asset.version = "2.0";
+    root.asset.generator = "T6-BSP-Decompiler-v0.1";
+
+    JsonScene scene;
+    scene.name = dumpData.name;
+    scene.nodes.emplace_back(0);
+    root.scenes.emplace();
+    root.scenes->emplace_back(scene);
+    root.scene = 0;
+
+    root.nodes.emplace();
+    root.meshes.emplace();
+
+    JsonNode rootNode;
+    rootNode.name = dumpData.name;
+    rootNode.children.emplace();
+    addNodeToGltf(root, rootNode, std::nullopt);
+
+    CreateBufferViews(root, dumpData, bufferData, false);
+    CreateMaterials(root, dumpData, false);
+    createMapEnts(root, dumpData, false);
+}
+
+size_t createAddonModelFromIndex(size_t modelIndex, BSPData& dumpData, const AddonMapEnts* addonMapEnts)
+{
+    assert(modelIndex != 0);
+
+    BSPModel model{};
+
+    // all model verts are in local coordinates (already cnetred around origin)
+    if (addonMapEnts->models[modelIndex].surfaceCount != 0)
+    {
+        con::warn("Igonring addon model GFX data: index {} as it has an invalid GFX surface count (must be 0, is : {})",
+                  modelIndex,
+                  addonMapEnts->models[modelIndex].surfaceCount);
+    }
+
+    cLeaf_s* leaf = &addonMapEnts->cmodels[modelIndex].leaf;
+    if (leaf->collAabbCount != 0)
+    {
+        con::warn(
+            "Igonring addon model COL terrain data: index {} as it has an invalid COL terrain count (must be 0, is : {})", modelIndex, leaf->collAabbCount);
+    }
+    if (leaf->leafBrushNode != 0)
+    {
+        model.surfaceSide = MSS_COL;
+        model.surfaceType = MST_BRUSH;
+        std::vector<size_t> brushList;
+        getBrushesFromLeafBrushNode(addonMapEnts->info, static_cast<size_t>(leaf->leafBrushNode), brushList);
+        OutSurface result;
+        createSurfacesFromBrushes(addonMapEnts->info, dumpData, brushList, true, result);
+        model.colBrushSurfaceCount = result.surfaceCount;
+        model.colBrushSurfaceIndex = result.surfaceStart;
+    }
+
+    size_t modelIdx = dumpData.models.size();
+    dumpData.models.emplace_back(model);
+    return modelIdx;
+}
+
+void dumpAddonMapEnts(BSPData& dumpData, const AddonMapEnts* addonMapEnts)
+{
+    std::unique_ptr<char[]> origEntStrPtr = std::make_unique<char[]>(strlen(addonMapEnts->entityString) + 1);
+    strcpy(origEntStrPtr.get(), addonMapEnts->entityString);
+    char* entStrPtr = origEntStrPtr.get();
+    size_t entIdx = 1;
+    while (true)
+    {
+        while (*entStrPtr != '{' && *entStrPtr != '\0')
+            entStrPtr++;
+        if (*(entStrPtr++) == '\0')
+            break;
+
+        BSPEntity entity{};
+        entity.rotationQuaternion = {0.0f, 0.0f, 0.0f, 1.0f};
+        entity.type = ET_OTHER;
+        entity.hasModel = false;
+        entity.classname = "unknown";
+        entity.uniqueEntityNumber = entIdx++;
+        bool isWorldspawnEnt = false;
+        while (true)
+        {
+            while (*entStrPtr != '"' && *entStrPtr != '}')
+                entStrPtr++;
+            if (*(entStrPtr++) == '}')
+                break;
+            char* keyStrPtr = entStrPtr;
+
+            while (*entStrPtr != '"')
+                entStrPtr++;
+            *entStrPtr = '\0';
+            entStrPtr++;
+
+            while (*entStrPtr != '"')
+                entStrPtr++;
+            entStrPtr++;
+            char* valueStrPtr = entStrPtr;
+            while (*entStrPtr != '"')
+                entStrPtr++;
+            *entStrPtr = '\0';
+            entStrPtr++;
+
+            if (!strcmp(keyStrPtr, "classname"))
+            {
+                entity.classname = valueStrPtr;
+                if (!strcmp(valueStrPtr, "worldspawn"))
+                    isWorldspawnEnt = true;
+                else if (starts_with(valueStrPtr, "weapon_"))
+                    entity.type = ET_WEAPON;
+                else if (!strcmp(valueStrPtr, "info_notnull"))
+                    entity.type = ET_POINT;
+                else if (!strcmp(valueStrPtr, "info_notnull_big"))
+                    entity.type = ET_POINT;
+                else if (!strcmp(valueStrPtr, "script_origin"))
+                    entity.type = ET_POINT;
+                else if (!strcmp(valueStrPtr, "info_volume"))
+                    entity.type = ET_VOLUME;
+                else if (starts_with(valueStrPtr, "trigger_"))
+                    entity.type = ET_TRIGGER;
+                else if (!strcmp(valueStrPtr, "light"))
+                    entity.type = ET_LIGHT;
+                else if (!strcmp(valueStrPtr, "script_brushmodel"))
+                    entity.type = ET_BRUSHMODEL;
+                else if (!strcmp(valueStrPtr, "script_model"))
+                    entity.type = ET_MODEL;
+                else if (!strcmp(valueStrPtr, "script_struct"))
+                    entity.type = ET_STRUCT;
+                else if (!strcmp(valueStrPtr, "script_vehicle"))
+                    entity.type = ET_VEHICLE;
+                else if (!strcmp(valueStrPtr, "info_vehicle_node"))
+                    entity.type = ET_VEHICLE;
+                else if (!strcmp(valueStrPtr, "info_vehicle_node_rotate"))
+                    entity.type = ET_VEHICLE;
+                else if (starts_with(valueStrPtr, "zbarrier_"))
+                    entity.type = ET_ZBARRIER;
+                else if (starts_with(valueStrPtr, "node_"))
+                    entity.type = ET_PATHNODE;
+                else if (starts_with(valueStrPtr, "actor_"))
+                    entity.type = ET_ACTOR;
+                else if (!strcmp(valueStrPtr, "glass"))
+                    entity.type = ET_GLASS;
+                else if (!strcmp(valueStrPtr, "rope"))
+                    entity.type = ET_ROPE;
+                else
+                    entity.type = ET_OTHER;
+            }
+
+            if (!strcmp(keyStrPtr, "origin"))
+            {
+                entity.origin = BSPUtil::convertStringToVec3(valueStrPtr);
+                LhcToRhcCoordinates(entity.origin.v);
+            }
+            else if (!strcmp(keyStrPtr, "angles"))
+            {
+                vec3_t angles = BSPUtil::convertStringToVec3(valueStrPtr);
+                entity.rotationQuaternion = BSPUtil::convertAnglesToQuat(angles);
+                LhcToRhcQuaternion(entity.rotationQuaternion.v);
+            }
+            else if (!strcmp(keyStrPtr, "model") && *valueStrPtr == '*')
+            {
+                entity.hasModel = true;
+                entity.modelIndex = createAddonModelFromIndex(atol(valueStrPtr + 1), dumpData, addonMapEnts);
+            }
+            else
+            {
+                BSPEntityEntry entry = {keyStrPtr, valueStrPtr};
+                entity.entries.emplace_back(entry);
+            }
+        }
+        if (isWorldspawnEnt)
+            continue;
+        dumpData.entities.emplace_back(entity);
+    }
+}
+
+void dumpAddonMaterials(BSPData& dumpData, const AddonMapEnts* addonMapEnts)
+{
+    for (unsigned int i = 0; i < addonMapEnts->info->numMaterials; i++)
+    {
+        auto colMaterial = &addonMapEnts->info->materials[i];
+        BSPMaterial bspMaterial;
+        bspMaterial.materialName = colMaterial->name;
+        bspMaterial.materialType = MATERIAL_TYPE_TEXTURE;
+        bspMaterial.materialColour = whiteColour;
+        bspMaterial.surfaceFlags = colMaterial->surfaceFlags;
+        bspMaterial.contentFlags = colMaterial->contentFlags;
+        dumpData.colWorld.materials.emplace_back(bspMaterial);
+    }
+}
+
+void AddonMapEntsDumper::DumperT6::DumpAsset(AssetDumpingContext& context, const XAssetInfo<AssetAddonMapEnts::Type>& asset)
+{
+    const auto addonMapEnts = asset.Asset();
+
+    std::vector<cmodel_t2> colModels;
+    std::vector<GfxBrushModel> gfxModels;
+    std::vector<cLeafBrushNode_s> leafBrushNodes;
+
+    BSPData addonDumpData{};
+
+    char* namePtr = _strdup(context.m_zone.m_name.c_str());
+    namePtr += 3; // skip so_ part of fastfile
+    char* gameModeName = namePtr;
+    while (*namePtr != '_')
+        namePtr++;
+    *namePtr = '\0';
+    namePtr++;
+
+    addonDumpData.name = std::format("{}_{}_addons", namePtr, gameModeName);
+    dumpAddonMaterials(addonDumpData, addonMapEnts);
+    dumpAddonMapEnts(addonDumpData, addonMapEnts);
+
+    JsonRoot root;
+    std::vector<uint8_t> bufferData;
+    createAddonJson(root, addonDumpData, bufferData);
+
+    const auto assetFile = context.OpenAssetFile("bsp/map_col_addons.glb");
+    if (!assetFile)
+    {
+        con::error("Unable to open addon map ents bsp output file.");
+        return;
+    }
+    writeGltf(root, bufferData, assetFile.get());
+
     context.IncrementProgress();
 }

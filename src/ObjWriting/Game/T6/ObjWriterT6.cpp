@@ -85,4 +85,5 @@ void ObjWriter::RegisterAssetDumpers(AssetDumpingContext& context)
     // REGISTER_DUMPER(AssetDumperFootstepTableDef, m_footstep_table)
     // REGISTER_DUMPER(AssetDumperFootstepFXTableDef, m_footstep_fx_table)
     RegisterAssetDumper(std::make_unique<BSP::DumperT6>());
+    RegisterAssetDumper(std::make_unique<AddonMapEntsDumper::DumperT6>());
 }
