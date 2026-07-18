@@ -227,6 +227,22 @@ vec4_t BSPUtil::convertAnglesToQuat(vec3_t& angles)
     return convertAxisToQuat(axis);
 }
 
+vec3_t BSPUtil::convertAnglesToForward(vec3_t& angles)
+{
+    float xRad = angles.x * (std::numbers::pi_v<float> / 180.0f);
+    float yRad = angles.y * (std::numbers::pi_v<float> / 180.0f);
+
+    float sinX = sinf(xRad);
+    float sinY = sinf(yRad);
+    float cosX = cosf(xRad);
+    float cosY = cosf(yRad);
+    vec3_t result{};
+    result.x = cosX * cosY;
+    result.y = cosX * sinY;
+    result.z = -sinX;
+    return result;
+}
+
 void BSPUtil::convertQuaternionToAxis(vec4_t* quat, vec3_t axis[3])
 {
     float quatX = quat->v[0];
@@ -257,6 +273,20 @@ void BSPUtil::convertQuaternionToAxis(vec4_t* quat, vec3_t axis[3])
     axis[2].x = yw + xz;
     axis[2].y = yz - xw;
     axis[2].z = 1.0f - (yy + xx);
+}
+
+vec3_t BSPUtil::convertQuaternionToForwardVector(vec4_t* quat)
+{
+    float quatX = quat->v[0];
+    float quatY = quat->v[1];
+    float quatZ = quat->v[2];
+    float quatW = quat->v[3];
+
+    vec3_t result{};
+    result.x = 1.0f - (((quatY * quatY) + (quatZ * quatZ)) * 2.0f);
+    result.y = ((quatX * quatY) + (quatW * quatZ)) * 2.0f;
+    result.z = ((quatX * quatZ) - (quatW * quatY)) * 2.0f;
+    return result;
 }
 
 vec3_t BSPUtil::convertForwardVectorToViewAngles(vec3_t& forwardVec)
@@ -331,6 +361,13 @@ vec3_t BSPUtil::convertAxisToAngles(vec3_t axis[3])
     else
         tempAngles.z = pitch + 180.0f;
     return tempAngles;
+}
+
+vec3_t BSPUtil::convertQuatToAngles(vec4_t* quat)
+{
+    vec3_t axis[3]{};
+    convertQuaternionToAxis(quat, axis);
+    return convertAxisToAngles(axis);
 }
 
 void BSPUtil::matrixTranspose3x3(const vec3_t* in, vec3_t* out)
