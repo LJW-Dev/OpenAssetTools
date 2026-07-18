@@ -1064,12 +1064,9 @@ namespace
                 assert(false);
             }
 
-            // for dumping, use forwardVector as euler angles and ignore rollAngle
-            outLight.forwardVector = BSPUtil::convertForwardVectorToViewAngles(inLight->dir);
-            outLight.forwardVector.x = outLight.forwardVector.x * (std::numbers::pi_v<float> / 180.0f);
-            outLight.forwardVector.y = outLight.forwardVector.y * (std::numbers::pi_v<float> / 180.0f);
-            outLight.forwardVector.z = inLight->angle.z;
+            outLight.forwardVector = inLight->dir;
             LhcToRhcCoordinates(outLight.forwardVector.v);
+            outLight.rollAngle = inLight->angle.z;
 
             outLight.colour.x = inLight->diffuseColor.x;
             outLight.colour.y = inLight->diffuseColor.y;
@@ -1809,13 +1806,12 @@ namespace
             std::array<float, 3> posArr({inLight->pos.x, inLight->pos.y, inLight->pos.z});
             node.translation = posArr;
 
-            // for dumping, use forwardVector as euler angles
-            Eigen::AngleAxisf rollAxis(inLight->forwardVector.x, Eigen::Vector3f::UnitX());
-            Eigen::AngleAxisf pitchAxis(inLight->forwardVector.y, Eigen::Vector3f::UnitY());
-            Eigen::AngleAxisf yawAxis(inLight->forwardVector.z, Eigen::Vector3f::UnitZ());
-            Eigen::Quaternionf quat = yawAxis * pitchAxis * rollAxis;
+            Eigen::Vector3f defaultDirection(0.0f, 0.0f, 1.0f);
+            Eigen::Vector3f lightDirection(inLight->forwardVector.x, inLight->forwardVector.y, inLight->forwardVector.z);
+            Eigen::Quaternionf forwardQuat = Eigen::Quaternionf::FromTwoVectors(defaultDirection, lightDirection);
+            Eigen::AngleAxisf rollAxis(inLight->rollAngle, Eigen::Vector3f::UnitZ());
+            Eigen::Quaternionf quat = forwardQuat * rollAxis;
             node.rotation = {quat.x(), quat.y(), quat.z(), quat.w()};
-
             addNodeToGltf(root, node, lightNodeIdx);
         }
     }
