@@ -356,8 +356,12 @@ namespace
                 if (!normalAccessor->GetFloatVec3(vertexIndex, vertex.normal.v))
                     assert(false);
                 std::optional<JsonAccessorType> colourType = colorAccessor->GetType();
-                assert(colourType.has_value());
-                if (*colourType == JsonAccessorType::VEC4)
+                if (!colourType.has_value())
+                {
+                    if (!colorAccessor->GetFloatVec4(vertexIndex, vertex.color.v))
+                        assert(false);
+                }
+                else if (*colourType == JsonAccessorType::VEC4)
                 {
                     if (!colorAccessor->GetFloatVec4(vertexIndex, vertex.color.v))
                         assert(false);
@@ -420,7 +424,7 @@ namespace
             return vertexOffset;
         }
 
-        bool addLightNode(const JsonRoot& jRoot, const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix)
+        bool addLightNode(const JsonRoot& jRoot, const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix, bool isEntityLight)
         {
             if (!m_is_world_gfx || !jRoot.extensions || !jRoot.extensions->KHR_lights_punctual || !jRoot.extensions->KHR_lights_punctual->lights)
                 return false;
@@ -429,28 +433,31 @@ namespace
             const JsonPunctualLight& jsLight = jRoot.extensions->KHR_lights_punctual->lights->at(lightIndex);
             BSPLight light{};
 
-            light.outerConeAngle = std::numbers::pi_v<float> / 4.0f; /// spec of 45 degrees
-            light.innerConeAngle = 0.0f;
             if (jsLight.type == JsonPunctualLightType::DIRECTIONAL)
             {
                 light.type = LIGHT_TYPE_DIRECTIONAL;
             }
             else if (jsLight.type == JsonPunctualLightType::POINT)
             {
-                con::warn("Ignoring point light as BO2 does not support point lights.");
-                return false;
+                light.type = LIGHT_TYPE_POINT;
             }
-            else // JsonPunctualLightType::SPOT
+            else if (jsLight.type == JsonPunctualLightType::SPOT)
             {
                 light.type = LIGHT_TYPE_SPOT;
 
                 assert(jsLight.spot);
                 if (jsLight.spot->innerConeAngle)
                     light.innerConeAngle = *jsLight.spot->innerConeAngle;
+                else
+                    light.innerConeAngle = 0.0f;
 
                 if (jsLight.spot->outerConeAngle)
                     light.outerConeAngle = *jsLight.spot->outerConeAngle;
+                else
+                    light.outerConeAngle = std::numbers::pi_v<float> / 4.0f; /// spec of 45 degrees
             }
+            else
+                assert(false);
 
             if (!jsLight.color)
             {
@@ -465,40 +472,139 @@ namespace
                 light.colour.z = (*jsLight.color)[2];
             }
 
-            if (!jsLight.intensity)
-                light.intensity = 1000.0f; // adjusted from spec to better match BO2
-            else
-                light.intensity = *jsLight.intensity;
-
-            if (!jsLight.range)
-                light.range = 1000.0f; // adjusted from spec to better match BO2
-            else
-                light.range = *jsLight.range;
-
-            Eigen::Vector4f position(0, 0, 0, 1.0f);
-            Eigen::Vector4f transformedPosition = nodeMatrix * position;
-            light.pos = vec3_t{transformedPosition.x(), transformedPosition.y(), transformedPosition.z()};
-            RhcToLhcCoordinates(light.pos.v);
-
-            Eigen::Vector3f defaultDirection(0.0f, 0.0f, 1.0f); // lights use this value for the forward angle instead in BO2
+            Eigen::Vector3f defaultDirection(0.0f, 0.0f, 1.0f); // gltf default light spec is straight down (0, 0, -1) but bo2's is straight up (0, 0, 1)
             Eigen::Affine3f affineTransform(nodeMatrix);
             Eigen::Matrix3f rotationMatrix = affineTransform.rotation();
             Eigen::Vector3f outputDirection = rotationMatrix * defaultDirection;
             outputDirection.normalize();
-            light.direction.x = outputDirection.x();
-            light.direction.y = outputDirection.y();
-            light.direction.z = outputDirection.z();
-            RhcToLhcCoordinates(light.direction.v);
+            light.forwardVector.x = outputDirection.x();
+            light.forwardVector.y = outputDirection.y();
+            light.forwardVector.z = outputDirection.z();
+            RhcToLhcCoordinates(light.forwardVector.v);
+            Eigen::Vector3f eigenEulerAngles = rotationMatrix.canonicalEulerAngles(2, 1, 0);
+            vec3_t eulerAngles = {eigenEulerAngles.x(), eigenEulerAngles.y(), eigenEulerAngles.z()};
+            RhcToLhcCoordinates(eulerAngles.v);
+            light.rollAngle = eulerAngles.z;
 
-            if (jsLight.type == JsonPunctualLightType::DIRECTIONAL)
+            bool isSunlight = false;
+            if (node.extras && node.extras->contains("sunlight"))
             {
+                nlohmann::json isSunlightJs = node.extras->at("sunlight");
+                if (!isSunlightJs.is_boolean())
+                    throw GltfLoadException("Sunlight property must be a boolean");
+                isSunlight = isSunlightJs;
+            }
+            if (isSunlight)
+            {
+                if (isEntityLight)
+                    throw GltfLoadException("Sunlight cannot be an entity as well");
+                if (light.type != LIGHT_TYPE_DIRECTIONAL)
+                    throw GltfLoadException("Sunlight must be a sun/directional light");
                 if (m_bsp->hasSunlightBeenSet)
-                    con::warn("WARNING: multiple sunlight nodes found, only one will be used as the sun.");
+                    throw GltfLoadException("Multiple sunlights found");
                 m_bsp->sunlight = light;
                 m_bsp->hasSunlightBeenSet = true;
             }
             else
+            {
+                Eigen::Vector4f position(0, 0, 0, 1.0f);
+                Eigen::Vector4f transformedPosition = nodeMatrix * position;
+                light.pos = vec3_t{transformedPosition.x(), transformedPosition.y(), transformedPosition.z()};
+                RhcToLhcCoordinates(light.pos.v);
+
+                if (!jsLight.intensity)
+                    light.intensity = 10000.0f; // adjusted from spec to better match BO2
+                else
+                    light.intensity = *jsLight.intensity;
+                if (light.intensity < 0.0f)
+                    throw GltfLoadException(std::format("light intensity must be positive"));
+
+                if (jsLight.extras && jsLight.extras->contains("range"))
+                {
+                    nlohmann::json rangeJs = jsLight.extras->at("range");
+                    if (rangeJs.is_string())
+                    {
+                        std::string rangeStr = rangeJs;
+                        light.range = static_cast<float>(atof(rangeStr.c_str()));
+                    }
+                    else if (rangeJs.is_number())
+                        light.range = rangeJs;
+                    else
+                        assert(false);
+                }
+                else
+                    light.range = sqrtf(light.intensity) / 2.0f; // how most light ranges in BO2 are calculated
+                if (light.range < 0.0f)
+                    throw GltfLoadException(std::format("light range must be positive"));
+
+                if (jsLight.extras && jsLight.extras->contains("superellipse"))
+                {
+                    nlohmann::json ellipseJs = jsLight.extras->at("superellipse");
+                    if (!ellipseJs.is_array() || ellipseJs.size() != 4)
+                        throw GltfLoadException(std::format("light superellipse must be a vec4"));
+
+                    std::array<float, 4> superEllipseArr = ellipseJs;
+                    light.superEllipse.x = superEllipseArr[0];
+                    light.superEllipse.y = superEllipseArr[1];
+                    light.superEllipse.z = superEllipseArr[2];
+                    light.superEllipse.w = superEllipseArr[3];
+                    if (light.superEllipse.x < 0.0f || light.superEllipse.x > 1.0f || light.superEllipse.y < 0.0f || light.superEllipse.y > 1.0f
+                        || light.superEllipse.z < 0.0f || light.superEllipse.z > 1.0f || light.superEllipse.w < 0.0f || light.superEllipse.w > 1.0f)
+                        throw GltfLoadException(std::format("light superellipse values must be between 0.0 and 1.0"));
+                }
+                else
+                    light.superEllipse = {0.75f, 1.0f, 0.75f, 1.0f}; // creates a circular light
+
+                if (jsLight.extras && jsLight.extras->contains("culldistance"))
+                {
+                    nlohmann::json cullDistanceJs = jsLight.extras->at("culldistance");
+                    if (cullDistanceJs.is_string())
+                    {
+                        std::string cullDistanceStr = cullDistanceJs;
+                        int cullDist = atoi(cullDistanceStr.c_str());
+                        if (cullDist < 0 || cullDist > INT16_MAX)
+                            throw GltfLoadException(std::format("light cullDist is less than 0 or greater than {}", INT16_MAX));
+
+                        light.cullDistance = static_cast<size_t>(cullDist);
+                    }
+                    else if (cullDistanceJs.is_number())
+                    {
+                        int cullDist = cullDistanceJs;
+                        if (cullDist < 0 || cullDist > INT16_MAX)
+                            throw GltfLoadException(std::format("light cullDist is less than 0 or greater than {}", INT16_MAX));
+                        light.cullDistance = static_cast<size_t>(cullDist);
+                    }
+                    else
+                        assert(false);
+                }
+                else
+                    light.cullDistance = 1000;
+
+                if (jsLight.extras && jsLight.extras->contains("roundness"))
+                {
+                    nlohmann::json roundnessJs = jsLight.extras->at("roundness");
+                    if (roundnessJs.is_string())
+                    {
+                        std::string roundnessStr = roundnessJs;
+                        light.roundness = static_cast<float>(atof(roundnessStr.c_str()));
+                    }
+                    else if (roundnessJs.is_number())
+                        light.roundness = roundnessJs;
+                    else
+                        assert(false);
+                }
+                else
+                    light.roundness = 1.0f;
+                if (light.roundness < 0.0f || light.roundness > 1.0f)
+                    throw GltfLoadException(std::format("light roundness must be between 0.0 and 1.0"));
+
+                if (jsLight.extras && jsLight.extras->contains("image"))
+                    light.image = jsLight.extras->at("image");
+                else
+                    light.image = "";
+
                 m_bsp->lights.emplace_back(light);
+            }
 
             return true;
         }
@@ -713,12 +819,14 @@ namespace
         size_t addScriptModel(const JsonRoot& jRoot,
                               const std::optional<std::vector<unsigned>>& modelNodes,
                               const Eigen::Matrix4f& parentEntityMatrix,
+                              const gltf::JsonNode& parentNode,
                               std::optional<size_t> gfxAndColLinkNum)
         {
             if (!modelNodes && m_is_world_gfx)
                 throw GltfLoadException("GFX Script Model was made with no children");
             if (!modelNodes && !gfxAndColLinkNum && !m_is_world_gfx)
-                throw GltfLoadException("COL Script Model was made with no children and has no gfxAndColLinkNumber");
+                throw GltfLoadException(std::format("COL Script Model (node: {}) was made with no children and has no gfxAndColLinkNumber",
+                                                    parentNode.name.value_or("unnamed node")));
 
             std::vector<std::pair<const JsonNode*, Eigen::Matrix4f>> terrainNodes;
             std::vector<std::pair<const JsonNode*, Eigen::Matrix4f>> brushNodes;
@@ -844,7 +952,7 @@ namespace
             zone.zoneName = node.extras->at("zone");
             zone.spawnerGroupName = node.extras->at("spawner_group");
             zone.spawnpointGroupName = node.extras->at("spawnpoint_group");
-            zone.modelIndex = addScriptModel(jRoot, node.children, nodeMatrix, std::nullopt);
+            zone.modelIndex = addScriptModel(jRoot, node.children, nodeMatrix, node, std::nullopt);
             m_bsp->zm_zones.emplace_back(zone);
 
             return true;
@@ -893,10 +1001,14 @@ namespace
             assert(node.extras->contains("classname"));
 
             std::string classname = node.extras->at("classname");
-            if (m_is_world_gfx && classname.compare("script_brushmodel"))
-                return false; // skip any gfx node with classname not script_brushmodel
+            if (m_is_world_gfx && classname.compare("script_brushmodel") && classname.compare("light"))
+                return false; // skip any gfx node with classname not script_brushmodel or light
 
             BSPEntity entity{};
+            if (!classname.compare("light"))
+                entity.type = ET_LIGHT;
+            else
+                entity.type = ET_OTHER;
 
             for (auto& element : node.extras->items())
             {
@@ -923,6 +1035,15 @@ namespace
                 entity.entries.emplace_back(entry);
             }
 
+            if (entity.type == ET_LIGHT)
+            {
+                BSPEntityEntry entry;
+                entry.key = "pl#";
+                entry.value = std::format("{}", m_bsp->lights.size() + 2); // +2 as empty and sunlight are already in the lights array when linking
+                entity.entries.emplace_back(entry);
+                addLightNode(jRoot, node, nodeMatrix, true);
+            }
+
             if (!node.extras->contains("model"))
                 entity.modelIndex = 0;
             else
@@ -933,12 +1054,12 @@ namespace
                     if (node.extras->contains("GfxAndColLinkNumber"))
                     {
                         size_t linkNumber = node.extras->at("GfxAndColLinkNumber");
-                        entity.modelIndex = addScriptModel(jRoot, node.children, nodeMatrix, linkNumber);
+                        entity.modelIndex = addScriptModel(jRoot, node.children, nodeMatrix, node, linkNumber);
                         if (m_is_world_gfx) // we don't want both linked entities to be added, so only the col entity added to mapents
                             return true;
                     }
                     else
-                        entity.modelIndex = addScriptModel(jRoot, node.children, nodeMatrix, std::nullopt);
+                        entity.modelIndex = addScriptModel(jRoot, node.children, nodeMatrix, node, std::nullopt);
                 }
             }
 
@@ -985,9 +1106,6 @@ namespace
 
         bool addNodeToBSP(const JsonRoot& jRoot, const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix)
         {
-            if (node.extensions && node.extensions->KHR_lights_punctual)
-                return addLightNode(jRoot, node, nodeMatrix);
-
             if (node.extras)
             {
                 bool hasSpawnpoint = node.extras->contains("spawnpoint");
@@ -1014,6 +1132,9 @@ namespace
                         return addZSpawnerNode(node, nodeMatrix);
                 }
             }
+
+            if (node.extensions && node.extensions->KHR_lights_punctual)
+                return addLightNode(jRoot, node, nodeMatrix, false);
 
             if (node.mesh)
                 return addMeshNode(jRoot, node, nodeMatrix, false);
@@ -1322,10 +1443,11 @@ namespace
 
                     material.surfaceFlags = 0;
                     material.contentFlags = 0;
-                    if (jsMaterial.extras && jsMaterial.extras->contains("sf") && jsMaterial.extras->contains("cf"))
+                    bool hasFlags = false;
+                    if (jsMaterial.extras && jsMaterial.extras->contains("sf"))
                     {
+                        hasFlags = true;
                         nlohmann::json sf = jsMaterial.extras->at("sf");
-                        nlohmann::json cf = jsMaterial.extras->at("cf");
                         if (sf.is_number())
                             material.surfaceFlags = sf;
                         else if (sf.is_string())
@@ -1335,6 +1457,11 @@ namespace
                         }
                         else
                             throw GltfLoadException("Bad surface flags type ");
+                    }
+                    if (jsMaterial.extras && jsMaterial.extras->contains("cf"))
+                    {
+                        hasFlags = true;
+                        nlohmann::json cf = jsMaterial.extras->at("cf");
                         if (cf.is_number())
                             material.contentFlags = cf;
                         else if (cf.is_string())
@@ -1345,8 +1472,11 @@ namespace
                         else
                             throw GltfLoadException("Bad content flags type ");
                     }
-                    else
-                        con::info("mat with no extras or flags: {}", material.materialName);
+                    if (!hasFlags)
+                    {
+                        material.surfaceFlags = 0;
+                        material.contentFlags = 1;
+                    }
 
                     m_curr_bsp_world->materials.emplace_back(material);
                 }
@@ -1356,7 +1486,7 @@ namespace
             BSPMaterial emptyMaterial;
             emptyMaterial.materialType = MATERIAL_TYPE_COLOUR;
             emptyMaterial.surfaceFlags = 0;
-            emptyMaterial.contentFlags = 0;
+            emptyMaterial.contentFlags = 1;
             emptyMaterial.materialName = "";
             emptyMaterial.materialColour.x = 1.0f;
             emptyMaterial.materialColour.y = 1.0f;
@@ -1509,7 +1639,8 @@ std::unique_ptr<BSPData> T6::BSP::createBSPData(std::string& mapName, ISearchPat
         bsp->sunlight.range = 1000.0f;
         bsp->sunlight.intensity = 1000.0f;
         bsp->sunlight.pos = {0.0f, 0.0f, 0.0f};
-        bsp->sunlight.direction = {0.0f, -1.0f, 0.0f};
+        bsp->sunlight.forwardVector = {0.0f, 0.0f, 1.0f};
+        bsp->sunlight.rollAngle = 0.0f;
         bsp->sunlight.innerConeAngle = 0.0f;
         bsp->sunlight.outerConeAngle = 0.0f;
     }

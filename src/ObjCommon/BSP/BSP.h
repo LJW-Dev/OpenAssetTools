@@ -77,7 +77,8 @@ namespace T6
         enum BSPLightType
         {
             LIGHT_TYPE_DIRECTIONAL,
-            LIGHT_TYPE_SPOT
+            LIGHT_TYPE_SPOT,
+            LIGHT_TYPE_POINT
         };
 
         struct BSPLight
@@ -88,11 +89,19 @@ namespace T6
             float intensity;
 
             vec3_t pos;
-            vec3_t direction;
+            vec3_t forwardVector;
+            float rollAngle; // radians
 
             // angle is in radians. only used on spot lights
             float innerConeAngle;
             float outerConeAngle;
+
+            // extras
+            vec4_t superEllipse;
+            size_t cullDistance;
+            float roundness;
+            std::string image;
+            bool isLinkedToEntity;
         };
 
         struct BSPSpawnPoint
@@ -118,22 +127,6 @@ namespace T6
             vec3_t forward;
         };
 
-        constexpr const char* bspEntityTypeNames[] = {"Weapons",
-                                                      "Volumes",
-                                                      "Triggers",
-                                                      "Pathnodes",
-                                                      "Lights",
-                                                      "Structs",
-                                                      "Vehicles",
-                                                      "Models",
-                                                      "Brushmodels",
-                                                      "ZBarriers",
-                                                      "Points",
-                                                      "Actors",
-                                                      "Glass",
-                                                      "Ropes",
-                                                      "Other"};
-
         enum bspEntityType
         {
             ET_WEAPON,
@@ -153,6 +146,22 @@ namespace T6
             ET_OTHER,
             ET_COUNT
         };
+
+        constexpr const char* bspEntityTypeNames[ET_COUNT] = {"Weapons",
+                                                              "Volumes",
+                                                              "Triggers",
+                                                              "Pathnodes",
+                                                              "Lights",
+                                                              "Structs",
+                                                              "Vehicles",
+                                                              "Models",
+                                                              "Brushmodels",
+                                                              "ZBarriers",
+                                                              "Points",
+                                                              "Actors",
+                                                              "Glass",
+                                                              "Ropes",
+                                                              "Other"};
 
         enum bspModelSurfType
         {

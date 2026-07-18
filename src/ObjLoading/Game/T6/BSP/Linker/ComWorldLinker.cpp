@@ -1,12 +1,16 @@
 #include "ComWorldLinker.h"
 
+#include "BSP/BSPUtil.h"
+
+#include <numbers>
+
 using namespace T6;
 using namespace BSP;
 
 namespace
 {
-    constexpr const char* DEFAULT_LIGHTDEF_NAME = "white_light";
-    constexpr short LIGHT_CULLDIST = 10000;
+    constexpr const char* DEFAULT_2D_LIGHTDEF_NAME = "white_light";
+    constexpr const char* DEFAULT_3D_LIGHTDEF_NAME = "white_light_cube";
 
     class ComWorldLinkerImpl : public ComWorldLinker
     {
@@ -23,19 +27,48 @@ namespace
         {
         }
 
-        bool createLightDefs()
+        bool createDefaultLightDefs()
         {
             T6::GfxLightDef* lightDef2d = m_memory.Alloc<T6::GfxLightDef>();
-            lightDef2d->name = m_memory.Dup(DEFAULT_LIGHTDEF_NAME);
+            lightDef2d->name = m_memory.Dup(DEFAULT_2D_LIGHTDEF_NAME);
             lightDef2d->lmapLookupStart = 0;            // always 0
             lightDef2d->attenuation.samplerState = 115; // always 115
-            auto image2dAsset = m_context.LoadDependency<T6::AssetImage>(",$white");
+            auto image2dAsset = m_context.LoadDependency<T6::AssetImage>("whitesquare");
             if (image2dAsset == nullptr)
                 return false;
             lightDef2d->attenuation.image = image2dAsset->Asset();
             m_context.AddAsset<T6::AssetLightDef>(lightDef2d->name, lightDef2d);
 
+            T6::GfxLightDef* lightDef3d = m_memory.Alloc<T6::GfxLightDef>();
+            lightDef3d->name = m_memory.Dup(DEFAULT_3D_LIGHTDEF_NAME);
+            lightDef3d->lmapLookupStart = 0;            // always 0
+            lightDef3d->attenuation.samplerState = 115; // always 115
+            auto image3dAsset = m_context.LoadDependency<T6::AssetImage>("whitesquare_ft");
+            if (image3dAsset == nullptr)
+                return false;
+            lightDef3d->attenuation.image = image3dAsset->Asset();
+            m_context.AddAsset<T6::AssetLightDef>(lightDef3d->name, lightDef3d);
+
             return true;
+        }
+
+        const char* createLightDefFromImage(std::string& imageName)
+        {
+            const char* lightDefName = m_memory.Dup(std::format("image_{}", imageName).c_str());
+            if (m_context.LoadDependency<T6::AssetLightDef>(lightDefName) != nullptr)
+                return lightDefName;
+
+            T6::GfxLightDef* lightDef = m_memory.Alloc<T6::GfxLightDef>();
+            lightDef->name = lightDefName;
+            lightDef->lmapLookupStart = 0;            // always 0
+            lightDef->attenuation.samplerState = 115; // always 115
+            auto imageAsset = m_context.LoadDependency<T6::AssetImage>(imageName);
+            if (imageAsset == nullptr)
+                return nullptr;
+            lightDef->attenuation.image = imageAsset->Asset();
+            m_context.AddAsset<T6::AssetLightDef>(lightDef->name, lightDef);
+
+            return lightDefName;
         }
 
         ComWorld* linkComWorld(BSPData* bsp) override
@@ -49,7 +82,7 @@ namespace
             comWorld->primaryLightCount = static_cast<unsigned int>(totalLightCount);
             comWorld->primaryLights = m_memory.Alloc<ComPrimaryLight>(totalLightCount);
 
-            if (!createLightDefs())
+            if (!createDefaultLightDefs())
             {
                 con::error("Unable to create lightdef assets.");
                 return nullptr;
@@ -58,67 +91,77 @@ namespace
             for (size_t lightIdx = 0; lightIdx < totalLightCount; lightIdx++)
             {
                 ComPrimaryLight* light = &comWorld->primaryLights[lightIdx];
+                BSPLight* bspLight;
                 if (lightIdx == EMPTY_LIGHT_INDEX)
                     continue; // first (empty) light has no data
                 else if (lightIdx == SUN_LIGHT_INDEX)
-                {
-                    BSPLight* bspLight = &bsp->sunlight;
-
-                    light->type = GFX_LIGHT_TYPE_DIR;
-                    light->dir.x = bspLight->direction.x;
-                    light->dir.y = bspLight->direction.y;
-                    light->dir.z = bspLight->direction.z;
-                    light->diffuseColor.x = bspLight->colour.x;
-                    light->diffuseColor.y = bspLight->colour.y;
-                    light->diffuseColor.z = bspLight->colour.z;
-                    light->color.x = bspLight->colour.x;
-                    light->color.y = bspLight->colour.y;
-                    light->color.z = bspLight->colour.z;
-                }
+                    bspLight = &bsp->sunlight;
                 else
+                    bspLight = &bsp->lights.at(lightIdx - BSP_DEFAULT_LIGHT_COUNT);
+
+                light->dir.x = bspLight->forwardVector.x;
+                light->dir.y = bspLight->forwardVector.y;
+                light->dir.z = bspLight->forwardVector.z;
+                light->diffuseColor.x = bspLight->colour.x;
+                light->diffuseColor.y = bspLight->colour.y;
+                light->diffuseColor.z = bspLight->colour.z;
+                light->color.x = bspLight->colour.x;
+                light->color.y = bspLight->colour.y;
+                light->color.z = bspLight->colour.z;
+                if (lightIdx == SUN_LIGHT_INDEX)
                 {
-                    BSPLight* bspLight = &bsp->lights.at(lightIdx - BSP_DEFAULT_LIGHT_COUNT);
+                    light->type = GFX_LIGHT_TYPE_DIR;
+                    continue;
+                }
 
+                switch (bspLight->type)
+                {
+                case LIGHT_TYPE_DIRECTIONAL:
+                    light->type = GFX_LIGHT_TYPE_DIR;
+                    break;
+                case LIGHT_TYPE_SPOT:
                     light->type = GFX_LIGHT_TYPE_SPOT;
-
-                    light->color.x = bspLight->colour.x;
-                    light->color.y = bspLight->colour.y;
-                    light->color.z = bspLight->colour.z;
-                    light->diffuseColor.x = bspLight->colour.x;
-                    light->diffuseColor.y = bspLight->colour.y;
-                    light->diffuseColor.z = bspLight->colour.z;
-
                     light->cosHalfFovInner = cosf(bspLight->innerConeAngle);
                     light->cosHalfFovOuter = cosf(bspLight->outerConeAngle);
                     light->cosHalfFovExpanded = cosf(bspLight->outerConeAngle);
-
-                    light->dir.x = bspLight->direction.x;
-                    light->dir.y = bspLight->direction.y;
-                    light->dir.z = bspLight->direction.z;
-
-                    light->falloff.y = bspLight->range;
-                    light->radius = bspLight->range;
-                    light->mipDistance = bspLight->range;
-
-                    light->origin.x = bspLight->pos.x;
-                    light->origin.y = bspLight->pos.y;
-                    light->origin.z = bspLight->pos.z;
-
-                    light->dAttenuation = bspLight->intensity;
-
-                    // I think AABB controls the lens shape of the light
-                    light->aAbB.x = 0.75f;
-                    light->aAbB.y = 1.0f;
-                    light->aAbB.z = 0.75f;
-                    light->aAbB.w = 1.0f;
-
-                    light->cullDist = LIGHT_CULLDIST;
-                    light->defName = DEFAULT_LIGHTDEF_NAME; // all lights that aren't the sunlight or default light need their own GfxLightDef asset
-                    light->rotationLimit = 1.0f;            // 1.0f - doesn't rotate, -1.0f - unclamped rotation
-                    light->translationLimit = 0.0f;         // 0.0f - doesn't translate, above 0.0f - distance per game update translated
-                    light->roundness = 1.0f;                // 0.0f - light is a square. 1.0f - light is a circle
-                    light->canUseShadowMap = 1;             // light does not show up with this set to 0
+                    break;
+                case LIGHT_TYPE_POINT:
+                    light->type = GFX_LIGHT_TYPE_OMNI;
+                    // point lights in BO2 aren't implemented correctly, and show up similar to spot lights.
+                    //  inner/outer cone values still need to be initialised or the light will not output any light
+                    //  the best workaround I found was to set the lights to have a 180 degree field of view, so at least half the light shows up
+                    light->cosHalfFovInner = 0;
+                    light->cosHalfFovOuter = 1.57079632f * 2;
+                    light->cosHalfFovExpanded = 1.57079632f * 2;
+                    break;
                 }
+                if (bspLight->image.empty())
+                    light->defName = (bspLight->type == LIGHT_TYPE_POINT ? DEFAULT_3D_LIGHTDEF_NAME : DEFAULT_2D_LIGHTDEF_NAME);
+                else
+                    light->defName = createLightDefFromImage(bspLight->image);
+                if (light->defName == nullptr)
+                {
+                    con::error("failed to create lightdef with image {}", bspLight->image);
+                    return nullptr;
+                }
+                light->angle.z = bspLight->rollAngle;
+                light->origin.x = bspLight->pos.x;
+                light->origin.y = bspLight->pos.y;
+                light->origin.z = bspLight->pos.z;
+                light->falloff.y = bspLight->range;
+                light->radius = bspLight->range;
+                light->mipDistance = bspLight->range;
+                light->dAttenuation = bspLight->intensity;
+                light->aAbB = bspLight->superEllipse;
+                assert(bspLight->cullDistance <= INT16_MAX);
+                light->cullDist = static_cast<int16_t>(bspLight->cullDistance);
+                light->roundness = bspLight->roundness;
+                light->rotationLimit = 1.0f;    // 1.0f - doesn't rotate, -1.0f - unclamped rotation
+                light->translationLimit = 0.0f; // 0.0f - doesn't translate, above 0.0f - distance per game update translated
+                light->canUseShadowMap = 1;     // light does not show up with this set to 0
+                light->shadowmapVolume = 0;
+                light->cookieControl0.z = 1.0f; // always set to 1.0f
+                light->cookieControl0.w = 1.0f; // always set to 1.0f
             }
 
             return comWorld;

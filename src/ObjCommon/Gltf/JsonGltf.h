@@ -47,12 +47,12 @@ namespace gltf
         std::optional<std::array<float, 3>> color;
         std::optional<float> intensity;
         std::optional<std::string> name;
-        std::optional<float> range;
         std::optional<JsonPunctualSpotLightProperties> spot;
         JsonPunctualLightType type;
+        std::optional<nlohmann::json> extras;
     };
 
-    NLOHMANN_DEFINE_TYPE_EXTENSION(JsonPunctualLight, color, intensity, name, range, spot, type);
+    NLOHMANN_DEFINE_TYPE_EXTENSION(JsonPunctualLight, color, intensity, name, spot, type, extras);
 
     class JsonPunctualLightsExt
     {
@@ -404,6 +404,8 @@ namespace gltf
     public:
         JsonAsset asset;
         std::optional<JsonExtension> extensions;
+        std::optional<std::vector<std::string>> extensionsUsed;
+        std::optional<std::vector<std::string>> extensionsRequired;
         std::optional<unsigned> scene;
         std::optional<std::vector<JsonScene>> scenes;
         std::optional<std::vector<JsonNode>> nodes;

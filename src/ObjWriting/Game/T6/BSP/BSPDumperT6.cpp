@@ -18,6 +18,7 @@
 
 #include <QuickHull.hpp>
 #include <deque>
+#include <numbers>
 #include <unordered_set>
 
 using namespace T6;
@@ -735,7 +736,9 @@ namespace
                 else if (!strcmp(keyStrPtr, "model") && *valueStrPtr == '*')
                 {
                     entity.hasModel = true;
-                    entity.modelIndex = createModelFromIndex(atol(valueStrPtr + 1), dumpData, gfxworld, clipmap);
+                    int modelIdx = atol(valueStrPtr + 1);
+                    assert(modelIdx > 0);
+                    entity.modelIndex = createModelFromIndex(static_cast<size_t>(modelIdx), dumpData, gfxworld, clipmap);
                 }
                 else
                 {
@@ -743,6 +746,28 @@ namespace
                     entity.entries.emplace_back(entry);
                 }
             }
+
+            if (entity.type == ET_LIGHT)
+            {
+                bool foundLight = false;
+                for (const auto& entry : entity.entries)
+                {
+                    if (!entry.key.compare("pl#"))
+                    {
+                        int lightIdx = atoi(entry.value.c_str());
+                        assert(lightIdx > 1); // can't index sunlight or empty light
+                        lightIdx -= 2;        // sun and empty light aren't added to output lights
+                        dumpData.lights[lightIdx].isLinkedToEntity = true;
+                        BSPEntityEntry entry = {"lightToEntLinkNumber", std::format("{}", lightIdx)};
+                        entity.entries.emplace_back(entry);
+                        foundLight = true;
+                        break;
+                    }
+                }
+                if (!foundLight)
+                    assert(false);
+            }
+
             dumpData.entities.emplace_back(entity);
         }
     }
@@ -1010,6 +1035,77 @@ namespace
         dumpGfxWorldXModels(dumpData, gfxWorld);
     }
 
+    void dumpComWorld(BSPData& dumpData, const ComWorld* comWorld, std::vector<GfxLightDef*>& lightDefs)
+    {
+        for (unsigned int lightIdx = 0; lightIdx < comWorld->primaryLightCount; lightIdx++)
+        {
+            ComPrimaryLight* inLight = &comWorld->primaryLights[lightIdx];
+            BSPLight outLight{};
+
+            switch (inLight->type)
+            {
+            case GFX_LIGHT_TYPE_NONE:
+                assert(lightIdx == 0);
+                continue;
+            case GFX_LIGHT_TYPE_DIR:
+                outLight.type = LIGHT_TYPE_DIRECTIONAL;
+                break;
+            case GFX_LIGHT_TYPE_OMNI:
+                outLight.type = LIGHT_TYPE_POINT;
+                break;
+            case GFX_LIGHT_TYPE_SPOT:
+            case GFX_LIGHT_TYPE_SPOT_SQUARE:
+            case GFX_LIGHT_TYPE_SPOT_ROUND:
+                outLight.type = LIGHT_TYPE_SPOT;
+                outLight.innerConeAngle = acosf(inLight->cosHalfFovInner);
+                outLight.outerConeAngle = acosf(inLight->cosHalfFovOuter);
+                break;
+            default:
+                assert(false);
+            }
+
+            // for dumping, use forwardVector as euler angles and ignore rollAngle
+            outLight.forwardVector = BSPUtil::convertForwardVectorToViewAngles(inLight->dir);
+            outLight.forwardVector.x = outLight.forwardVector.x * (std::numbers::pi_v<float> / 180.0f);
+            outLight.forwardVector.y = outLight.forwardVector.y * (std::numbers::pi_v<float> / 180.0f);
+            outLight.forwardVector.z = inLight->angle.z;
+            LhcToRhcCoordinates(outLight.forwardVector.v);
+
+            outLight.colour.x = inLight->diffuseColor.x;
+            outLight.colour.y = inLight->diffuseColor.y;
+            outLight.colour.z = inLight->diffuseColor.z;
+            if (lightIdx != SUN_LIGHT_INDEX)
+            {
+                outLight.pos = inLight->origin;
+                LhcToRhcCoordinates(outLight.pos.v);
+                outLight.range = inLight->radius;
+                outLight.intensity = inLight->dAttenuation;
+                outLight.superEllipse = inLight->aAbB;
+                assert(inLight->cullDist > 0);
+                outLight.cullDistance = inLight->cullDist;
+                outLight.roundness = inLight->roundness;
+
+                bool foundLightDef = false;
+                for (const auto& lightDef : lightDefs)
+                {
+                    if (!strcmp(inLight->defName, lightDef->name))
+                    {
+                        outLight.image = lightDef->attenuation.image->name;
+                        foundLightDef = true;
+                        break;
+                    }
+                }
+                if (!foundLightDef)
+                    assert(false);
+            }
+
+            if (lightIdx == SUN_LIGHT_INDEX)
+                dumpData.sunlight = outLight;
+            else
+                dumpData.lights.emplace_back(outLight);
+        }
+    }
+
     struct BSPAssetPtrs
     {
         const MapEnts* mapEnts;
@@ -1018,12 +1114,14 @@ namespace
         const GfxWorld* gfxworld;
         const clipMap_t* clipmap;
         const SkinnedVertsDef* skinnedverts;
+        std::vector<GfxLightDef*> lightDefs;
     };
 
     void dumpBSPData(BSPData& dumpData, std::string zoneName, BSPAssetPtrs& assetPtrs)
     {
         dumpData.name = zoneName;
 
+        dumpComWorld(dumpData, assetPtrs.comworld, assetPtrs.lightDefs);
         dumpGfxWorld(dumpData, assetPtrs.gfxworld);
         dumpClipmap(dumpData, assetPtrs.clipmap);
         dumpMapEnts(dumpData, assetPtrs.mapEnts, assetPtrs.gfxworld, assetPtrs.clipmap); // requires colworld materials
@@ -1358,6 +1456,10 @@ namespace
             node.name = "Brushmodels";
             node.children.emplace();
             addNodeToGltf(root, node, entNodeIdx);
+            JsonNode lnode;
+            lnode.name = "Lights";
+            lnode.children.emplace();
+            addNodeToGltf(root, lnode, entNodeIdx);
         }
         else
         {
@@ -1373,17 +1475,19 @@ namespace
         int entIdx = 0;
         for (BSPEntity& entity : dumpData.entities)
         {
-            BSPModel* model;
+            BSPModel* model = nullptr;
             if (entity.hasModel)
                 model = &dumpData.models.at(entity.modelIndex);
-            else
-            {
-                if (isGfxWorld)
-                    continue;
-                model = nullptr;
-            }
 
-            if (model != nullptr)
+            if (!isGfxWorld && entity.type == ET_LIGHT)
+                continue;
+
+            if (model == nullptr)
+            {
+                if (isGfxWorld && entity.type != ET_LIGHT)
+                    continue;
+            }
+            else
             {
                 if (isGfxWorld && model->surfaceSide == MSS_COL)
                     continue;
@@ -1405,7 +1509,38 @@ namespace
             (*node.rotation)[3] = entity.rotationQuaternion.w;
             nlohmann::json js;
             for (const auto& entityEntry : entity.entries)
+            {
+                if (entity.type == ET_LIGHT)
+                {
+                    if (!entityEntry.key.compare("lightToEntLinkNumber"))
+                    {
+                        JsonPunctualLightIndex jsLightIndex{};
+                        jsLightIndex.light = atoi(entityEntry.value.c_str());
+                        JsonNodeExtension extension{};
+                        extension.KHR_lights_punctual = jsLightIndex;
+                        node.extensions = extension;
+
+                        // overwrite entity rotation with light rotation
+                        //(*node.rotation)[0] = dumpData.lights.at(jsLightIndex.light).rotationQuaternion.x;
+                        //(*node.rotation)[1] = dumpData.lights.at(jsLightIndex.light).rotationQuaternion.y;
+                        //(*node.rotation)[2] = dumpData.lights.at(jsLightIndex.light).rotationQuaternion.z;
+                        //(*node.rotation)[3] = dumpData.lights.at(jsLightIndex.light).rotationQuaternion.w;
+                        continue;
+                    }
+                    // remove unsed data that the user might think effects the light's properties
+                    if (!entityEntry.key.compare("_bakecolor") || !entityEntry.key.compare("bakecolor") || !entityEntry.key.compare("_color")
+                        || !entityEntry.key.compare("angle") || !entityEntry.key.compare("attenuation") || !entityEntry.key.compare("bounceintensity")
+                        || !entityEntry.key.compare("culldist") || !entityEntry.key.compare("cut_on") || !entityEntry.key.compare("def")
+                        || !entityEntry.key.compare("def_rotation") || !entityEntry.key.compare("defcube") || !entityEntry.key.compare("falloffdistance")
+                        || !entityEntry.key.compare("far_edge") || !entityEntry.key.compare("fov_inner") || !entityEntry.key.compare("fov_outer")
+                        || !entityEntry.key.compare("intensity") || !entityEntry.key.compare("near_edge") || !entityEntry.key.compare("pl#")
+                        || !entityEntry.key.compare("priority") || !entityEntry.key.compare("radius") || !entityEntry.key.compare("roundness")
+                        || !entityEntry.key.compare("shadowmap_volume") || !entityEntry.key.compare("superellipse"))
+                        continue;
+                }
+
                 js[entityEntry.key] = entityEntry.value;
+            }
             if (model != nullptr)
             {
                 js["model"] = "*"; // special character to say that the ent uses it's children as a list of models
@@ -1416,9 +1551,16 @@ namespace
 
             size_t nodeIdx;
             if (isGfxWorld)
-                nodeIdx = addNodeToGltf(root, node, entNodeIdx + 1);
+            {
+                if (entity.type == ET_LIGHT)
+                    nodeIdx = addNodeToGltf(root, node, entNodeIdx + 2);
+                else
+                    nodeIdx = addNodeToGltf(root, node, entNodeIdx + 1);
+            }
             else
+            {
                 nodeIdx = addNodeToGltf(root, node, (entNodeIdx + 1) + entity.type);
+            }
 
             if (model != nullptr && model->surfaceSide != MSS_NONE)
             {
@@ -1580,6 +1722,104 @@ namespace
         }
     }
 
+    void createComWorld(JsonRoot& root, BSPData& dumpData, bool isGfxWorld)
+    {
+        if (!isGfxWorld)
+            return;
+
+        JsonExtension extension;
+        JsonPunctualLightsExt punctualLightsExtension;
+        punctualLightsExtension.lights = std::vector<JsonPunctualLight>();
+        for (size_t lightIdx = 0; lightIdx < dumpData.lights.size() + 1; lightIdx++)
+        {
+            BSPLight* inLight;
+            JsonPunctualLight outLight{};
+            if (lightIdx == dumpData.lights.size())
+                inLight = &dumpData.sunlight;
+            else
+                inLight = &dumpData.lights.at(lightIdx);
+
+            std::array<float, 3> colourArr({inLight->colour.x, inLight->colour.y, inLight->colour.z});
+            outLight.color = colourArr;
+
+            if (inLight->type == LIGHT_TYPE_DIRECTIONAL)
+                outLight.type = JsonPunctualLightType::DIRECTIONAL;
+            else if (inLight->type == LIGHT_TYPE_POINT)
+                outLight.type = JsonPunctualLightType::POINT;
+            else if (inLight->type == LIGHT_TYPE_SPOT)
+            {
+                outLight.type = JsonPunctualLightType::SPOT;
+                JsonPunctualSpotLightProperties properties;
+                properties.innerConeAngle = inLight->innerConeAngle;
+                properties.outerConeAngle = inLight->outerConeAngle;
+                outLight.spot = properties;
+            }
+            else
+                assert(false);
+
+            if (lightIdx != dumpData.lights.size())
+            {
+                outLight.intensity = inLight->intensity;
+
+                nlohmann::json extras;
+                std::array<float, 4> superEllipseArr({inLight->superEllipse.x, inLight->superEllipse.y, inLight->superEllipse.z, inLight->superEllipse.w});
+                extras["superellipse"] = superEllipseArr;
+                extras["culldistance"] = inLight->cullDistance;
+                extras["roundness"] = inLight->roundness;
+                extras["image"] = inLight->image;
+                extras["range"] = inLight->range;
+                outLight.extras = extras;
+            }
+
+            punctualLightsExtension.lights->emplace_back(outLight);
+        }
+        extension.KHR_lights_punctual = punctualLightsExtension;
+        root.extensions = extension;
+
+        JsonNode lightNode;
+        lightNode.name = "Lights";
+        lightNode.children.emplace();
+        size_t lightNodeIdx = addNodeToGltf(root, lightNode, ROOT_NODE_IDX);
+        for (size_t lightIdx = 0; lightIdx < dumpData.lights.size() + 1; lightIdx++)
+        {
+            JsonNode node;
+            BSPLight* inLight;
+            if (lightIdx == dumpData.lights.size())
+            {
+                node.name = std::format("sunlight");
+                nlohmann::json extras;
+                extras["sunlight"] = true;
+                node.extras = extras;
+                inLight = &dumpData.sunlight;
+            }
+            else
+            {
+                node.name = std::format("light_{}", lightIdx);
+                inLight = &dumpData.lights.at(lightIdx);
+            }
+            if (inLight->isLinkedToEntity == true)
+                continue;
+
+            JsonPunctualLightIndex jsLightIndex{};
+            jsLightIndex.light = static_cast<int>(lightIdx);
+            JsonNodeExtension extension{};
+            extension.KHR_lights_punctual = jsLightIndex;
+            node.extensions = extension;
+
+            std::array<float, 3> posArr({inLight->pos.x, inLight->pos.y, inLight->pos.z});
+            node.translation = posArr;
+
+            // for dumping, use forwardVector as euler angles
+            Eigen::AngleAxisf rollAxis(inLight->forwardVector.x, Eigen::Vector3f::UnitX());
+            Eigen::AngleAxisf pitchAxis(inLight->forwardVector.y, Eigen::Vector3f::UnitY());
+            Eigen::AngleAxisf yawAxis(inLight->forwardVector.z, Eigen::Vector3f::UnitZ());
+            Eigen::Quaternionf quat = yawAxis * pitchAxis * rollAxis;
+            node.rotation = {quat.x(), quat.y(), quat.z(), quat.w()};
+
+            addNodeToGltf(root, node, lightNodeIdx);
+        }
+    }
+
     void CreateMaterials(JsonRoot& root, BSPData& dumpData, bool isGfxWorld)
     {
         root.materials.emplace();
@@ -1609,6 +1849,12 @@ namespace
         root.asset.version = "2.0";
         root.asset.generator = "T6-BSP-Decompiler-v0.1";
 
+        if (isGfxWorld)
+        {
+            root.extensionsUsed = std::vector<std::string>({"KHR_lights_punctual"});
+            root.extensionsRequired = std::vector<std::string>({"KHR_lights_punctual"});
+        }
+
         JsonScene scene;
         if (isGfxWorld)
             scene.name = bspName + "_graphics";
@@ -1623,7 +1869,7 @@ namespace
         root.meshes.emplace();
 
         JsonNode rootNode;
-        rootNode.name = bspName;
+        rootNode.name = scene.name;
         rootNode.children.emplace();
         addNodeToGltf(root, rootNode, std::nullopt);
     }
@@ -1635,6 +1881,7 @@ namespace
 
         CreateMaterials(root, dumpData, isGfxWorld);
 
+        createComWorld(root, dumpData, isGfxWorld);
         createGfxWorld(root, dumpData, isGfxWorld);
         createColWorld(root, dumpData, isGfxWorld);
         createMapEnts(root, dumpData, isGfxWorld);
@@ -1661,6 +1908,7 @@ void DumperT6::Dump(AssetDumpingContext& context)
     const auto& comWorldPool = context.m_zone.m_pools.PoolAssets<T6::AssetComWorld>();
     const auto& gameWorldMpPool = context.m_zone.m_pools.PoolAssets<T6::AssetGameWorldMp>();
     const auto& skinnedvertsPool = context.m_zone.m_pools.PoolAssets<T6::AssetSkinnedVerts>();
+    const auto& lightDefPool = context.m_zone.m_pools.PoolAssets<T6::AssetLightDef>();
     const auto* mapEntsInfo = *mapEntsPool.begin();
     const auto* colWorldInfo = *colWorldPool.begin();
     const auto* comWorldInfo = *comWorldPool.begin();
@@ -1676,6 +1924,8 @@ void DumperT6::Dump(AssetDumpingContext& context)
     assetPtrs.gfxworld = gfxWorldInfo->Asset();
     assetPtrs.gameWorldMp = gameWorldMpInfo->Asset();
     assetPtrs.skinnedverts = skinnedvertsInfo->Asset();
+    for (const auto& lightDef : lightDefPool)
+        assetPtrs.lightDefs.emplace_back(lightDef->Asset());
     dumpBSPData(dumpData, context.m_zone.m_name, assetPtrs);
 
     { // gfx

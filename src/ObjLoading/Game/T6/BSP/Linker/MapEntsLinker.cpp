@@ -133,7 +133,10 @@ namespace
             if (entity.modelIndex != 0)
                 entityString.append(std::format("\"model\" \"*{}\"\n", entity.modelIndex));
             else // entities with generated models can't have rotation data
-                entityString.append(std::format("\"angles\" \"{}\"\n", BSPUtil::convertVec3ToString(angles)));
+            {
+                if (entity.type != ET_LIGHT) // light entities also can't have rotation data
+                    entityString.append(std::format("\"angles\" \"{}\"\n", BSPUtil::convertVec3ToString(angles)));
+            }
 
             entityString.append("}\n");
         }
