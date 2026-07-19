@@ -142,7 +142,7 @@ public:
         if (clipMap == nullptr)
             return false;
 
-        auto* oldGfx = (m_context.LoadDependency<AssetGfxWorld>("maps/mp/zm_transit.d3dbsp"));
+        auto* oldGfx = (m_context.LoadDependency<AssetGfxWorld>(bsp->bspName));
         if (oldGfx)
         {
             assert(!oldGfx->IsReference());
@@ -152,7 +152,7 @@ public:
         else
             m_context.AddAsset<AssetGfxWorld>(gfxWorld->name, gfxWorld);
 
-        auto* oldCol = (m_context.LoadDependency<AssetClipMapPvs>("maps/mp/zm_transit.d3dbsp"));
+        auto* oldCol = (m_context.LoadDependency<AssetClipMapPvs>(bsp->bspName));
         if (oldCol)
         {
             assert(!oldCol->IsReference());
@@ -162,7 +162,7 @@ public:
         else
             m_context.AddAsset<AssetClipMapPvs>(clipMap->name, clipMap);
 
-        auto* oldCom = (m_context.LoadDependency<AssetComWorld>("maps/mp/zm_transit.d3dbsp"));
+        auto* oldCom = (m_context.LoadDependency<AssetComWorld>(bsp->bspName));
         if (oldCom)
         {
             assert(!oldCom->IsReference());
@@ -172,7 +172,7 @@ public:
         else
             m_context.AddAsset<AssetComWorld>(comWorld->name, comWorld);
 
-        auto* oldEnts = (m_context.LoadDependency<AssetMapEnts>("maps/mp/zm_transit.d3dbsp"));
+        auto* oldEnts = (m_context.LoadDependency<AssetMapEnts>(bsp->bspName));
         if (oldEnts)
         {
             assert(!oldEnts->IsReference());
@@ -182,7 +182,7 @@ public:
         else
             m_context.AddAsset<AssetMapEnts>(mapEnts->name, mapEnts);
 
-        auto* oldGW = (m_context.LoadDependency<AssetGameWorldMp>("maps/mp/zm_transit.d3dbsp"));
+        auto* oldGW = (m_context.LoadDependency<AssetGameWorldMp>(bsp->bspName));
         if (oldGW)
         {
             assert(!oldGW->IsReference());

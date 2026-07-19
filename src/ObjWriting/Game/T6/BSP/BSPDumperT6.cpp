@@ -1447,28 +1447,8 @@ namespace
         entNode.name = "Entities";
         entNode.children.emplace();
         size_t entNodeIdx = addNodeToGltf(root, entNode, ROOT_NODE_IDX);
-        if (isGfxWorld)
-        {
-            JsonNode node;
-            node.name = "Brushmodels";
-            node.children.emplace();
-            addNodeToGltf(root, node, entNodeIdx);
-            JsonNode lnode;
-            lnode.name = "Lights";
-            lnode.children.emplace();
-            addNodeToGltf(root, lnode, entNodeIdx);
-        }
-        else
-        {
-            for (size_t i = 0; i < ET_COUNT; i++)
-            {
-                JsonNode node;
-                node.name = bspEntityTypeNames[i];
-                node.children.emplace();
-                addNodeToGltf(root, node, entNodeIdx);
-            }
-        }
 
+        std::vector<unsigned int> entityIndexes[ET_COUNT];
         int entIdx = 0;
         for (BSPEntity& entity : dumpData.entities)
         {
@@ -1518,10 +1498,13 @@ namespace
                         node.extensions = extension;
 
                         // overwrite entity rotation with light rotation
-                        //(*node.rotation)[0] = dumpData.lights.at(jsLightIndex.light).rotationQuaternion.x;
-                        //(*node.rotation)[1] = dumpData.lights.at(jsLightIndex.light).rotationQuaternion.y;
-                        //(*node.rotation)[2] = dumpData.lights.at(jsLightIndex.light).rotationQuaternion.z;
-                        //(*node.rotation)[3] = dumpData.lights.at(jsLightIndex.light).rotationQuaternion.w;
+                        BSPLight* inLight = &dumpData.lights.at(jsLightIndex.light);
+                        Eigen::Vector3f defaultDirection(0.0f, 0.0f, 1.0f);
+                        Eigen::Vector3f lightDirection(inLight->forwardVector.x, inLight->forwardVector.y, inLight->forwardVector.z);
+                        Eigen::Quaternionf forwardQuat = Eigen::Quaternionf::FromTwoVectors(defaultDirection, lightDirection);
+                        Eigen::AngleAxisf rollAxis(inLight->rollAngle, Eigen::Vector3f::UnitZ());
+                        Eigen::Quaternionf quat = forwardQuat * rollAxis;
+                        node.rotation = {quat.x(), quat.y(), quat.z(), quat.w()};
                         continue;
                     }
                     // remove unsed data that the user might think effects the light's properties
@@ -1546,18 +1529,8 @@ namespace
             }
             node.extras = js;
 
-            size_t nodeIdx;
-            if (isGfxWorld)
-            {
-                if (entity.type == ET_LIGHT)
-                    nodeIdx = addNodeToGltf(root, node, entNodeIdx + 2);
-                else
-                    nodeIdx = addNodeToGltf(root, node, entNodeIdx + 1);
-            }
-            else
-            {
-                nodeIdx = addNodeToGltf(root, node, (entNodeIdx + 1) + entity.type);
-            }
+            size_t nodeIdx = addNodeToGltf(root, node, std::nullopt);
+            entityIndexes[entity.type].emplace_back(static_cast<unsigned int>(nodeIdx));
 
             if (model != nullptr && model->surfaceSide != MSS_NONE)
             {
@@ -1593,6 +1566,17 @@ namespace
                     }
                 }
             }
+        }
+
+        for (size_t i = 0; i < ET_COUNT; i++)
+        {
+            if (entityIndexes[i].empty())
+                continue;
+
+            JsonNode node;
+            node.name = bspEntityTypeNames[i];
+            node.children = entityIndexes[i];
+            addNodeToGltf(root, node, entNodeIdx);
         }
     }
 

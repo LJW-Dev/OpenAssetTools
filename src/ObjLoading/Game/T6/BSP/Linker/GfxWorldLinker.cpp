@@ -10,7 +10,7 @@ using namespace BSPFlags;
 namespace
 {
     constexpr const char* DEFAULT_IMAGE_NAME = ",mc/lambert1";
-    constexpr char DEFAULT_PRIMARYLIGHT_INDEX = 2; // max 254
+    constexpr char DEFAULT_PRIMARYLIGHT_INDEX = 1; // max 254
     constexpr char DEFAULT_LIGHTMAP_INDEX = 0;     // max 30
     constexpr char DEFAULT_RPROBE_INDEX = 0;       // max 254
     constexpr float XMODEL_CULL_DIST = 10000.0f;

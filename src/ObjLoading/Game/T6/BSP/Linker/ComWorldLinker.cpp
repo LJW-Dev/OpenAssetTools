@@ -9,9 +9,6 @@ using namespace BSP;
 
 namespace
 {
-    constexpr const char* DEFAULT_2D_LIGHTDEF_NAME = "white_light";
-    constexpr const char* DEFAULT_3D_LIGHTDEF_NAME = "white_light_cube";
-
     class ComWorldLinkerImpl : public ComWorldLinker
     {
     private:
@@ -27,34 +24,16 @@ namespace
         {
         }
 
-        bool createDefaultLightDefs()
-        {
-            T6::GfxLightDef* lightDef2d = m_memory.Alloc<T6::GfxLightDef>();
-            lightDef2d->name = m_memory.Dup(DEFAULT_2D_LIGHTDEF_NAME);
-            lightDef2d->lmapLookupStart = 0;            // always 0
-            lightDef2d->attenuation.samplerState = 115; // always 115
-            auto image2dAsset = m_context.LoadDependency<T6::AssetImage>("whitesquare");
-            if (image2dAsset == nullptr)
-                return false;
-            lightDef2d->attenuation.image = image2dAsset->Asset();
-            m_context.AddAsset<T6::AssetLightDef>(lightDef2d->name, lightDef2d);
-
-            T6::GfxLightDef* lightDef3d = m_memory.Alloc<T6::GfxLightDef>();
-            lightDef3d->name = m_memory.Dup(DEFAULT_3D_LIGHTDEF_NAME);
-            lightDef3d->lmapLookupStart = 0;            // always 0
-            lightDef3d->attenuation.samplerState = 115; // always 115
-            auto image3dAsset = m_context.LoadDependency<T6::AssetImage>("whitesquare_ft");
-            if (image3dAsset == nullptr)
-                return false;
-            lightDef3d->attenuation.image = image3dAsset->Asset();
-            m_context.AddAsset<T6::AssetLightDef>(lightDef3d->name, lightDef3d);
-
-            return true;
-        }
-
         const char* createLightDefFromImage(std::string& imageName)
         {
-            const char* lightDefName = m_memory.Dup(std::format("image_{}", imageName).c_str());
+            const char* lightDefName;
+            if (imageName.empty())
+            {
+                imageName = ",$white";
+                lightDefName = "white_light";
+            }
+            else
+                lightDefName = m_memory.Dup(std::format("image_{}", imageName).c_str());
             if (m_context.LoadDependency<T6::AssetLightDef>(lightDefName) != nullptr)
                 return lightDefName;
 
@@ -81,12 +60,6 @@ namespace
             size_t totalLightCount = bsp->lights.size() + BSP_DEFAULT_LIGHT_COUNT;
             comWorld->primaryLightCount = static_cast<unsigned int>(totalLightCount);
             comWorld->primaryLights = m_memory.Alloc<ComPrimaryLight>(totalLightCount);
-
-            if (!createDefaultLightDefs())
-            {
-                con::error("Unable to create lightdef assets.");
-                return nullptr;
-            }
 
             for (size_t lightIdx = 0; lightIdx < totalLightCount; lightIdx++)
             {
@@ -135,10 +108,7 @@ namespace
                     light->cosHalfFovExpanded = 1.57079632f * 2;
                     break;
                 }
-                if (bspLight->image.empty())
-                    light->defName = (bspLight->type == LIGHT_TYPE_POINT ? DEFAULT_3D_LIGHTDEF_NAME : DEFAULT_2D_LIGHTDEF_NAME);
-                else
-                    light->defName = createLightDefFromImage(bspLight->image);
+                light->defName = createLightDefFromImage(bspLight->image);
                 if (light->defName == nullptr)
                 {
                     con::error("failed to create lightdef with image {}", bspLight->image);
