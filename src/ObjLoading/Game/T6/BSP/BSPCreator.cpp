@@ -66,46 +66,6 @@ namespace
         indices[2] = two[0];
     }
 
-    bool flagsMatchExact(int flag1, int flag2)
-    {
-        return (flag1 & flag2) == flag1;
-    }
-
-    bool flagsMatchAny(int flag1, int flag2)
-    {
-        return (flag1 & flag2) != 0;
-    }
-
-    bool convertStringToFlags(const std::string& flagStr, int& surfaceFlags, int& contentFlags)
-    {
-        surfaceFlags = 0;
-        contentFlags = 1;
-        bool matchedAnyFlag = false;
-        std::vector<std::string> flagStrVec = utils::StringSplit(flagStr, ',');
-        for (std::string& flag : flagStrVec)
-        {
-            utils::MakeStringLowerCase(flag);
-            utils::StringTrim(flag);
-            for (size_t typeIdx = 0; typeIdx < BSP_SURF_TYPE_COUNT; typeIdx++)
-            {
-                if (!flag.compare(surfaceTypeToNameMap[typeIdx]))
-                {
-                    s_SurfaceTypeFlags flags = surfaceTypeToFlagMap[typeIdx];
-                    surfaceFlags |= flags.surfaceFlags;
-                    contentFlags |= flags.contentFlags;
-                    matchedAnyFlag = true;
-
-                    if (typeIdx == BSP_SURF_TYPE_NONSOLID)
-                        contentFlags &= 0xFFFFFFFE;
-
-                    break;
-                }
-            }
-        }
-
-        return matchedAnyFlag;
-    }
-
     class GltfLoadException final : std::exception
     {
     public:
@@ -1424,6 +1384,11 @@ namespace
             }
         }
 
+        int convertSurfaceTypeToFlag(int surfaceType)
+        {
+            return surfaceType << 20;
+        }
+
         void LoadMaterials(const JsonRoot& jRoot)
         {
             if (jRoot.materials)
@@ -1449,38 +1414,68 @@ namespace
                     material.surfaceFlags = 0;
                     material.contentFlags = 0;
                     bool hasFlags = false;
-                    if (jsMaterial.extras && jsMaterial.extras->contains("sf"))
+                    if (jsMaterial.extras && jsMaterial.extras->contains("surfaceflags"))
                     {
                         hasFlags = true;
-                        nlohmann::json sf = jsMaterial.extras->at("sf");
-                        if (sf.is_number())
-                            material.surfaceFlags = sf;
-                        else if (sf.is_string())
+                        std::string flags = jsMaterial.extras->at("surfaceflags");
+
+                        if (m_is_world_gfx)
                         {
-                            std::string str = sf;
-                            material.surfaceFlags = atoi(str.c_str());
+                            std::vector<std::string> flagArray = utils::StringSplit(flags, ',');
+                            for (auto& flag : flagArray)
+                            {
+                                utils::StringTrim(flag);
+                                if (!flag.compare("onlycastshadow"))
+                                    material.surfaceFlags |= GFX_SURFACE_CASTS_SUN_SHADOW;
+                                else if (!flag.compare("sky"))
+                                    material.surfaceFlags |= GFX_SURFACE_IS_SKY;
+                                else if (!flag.compare("nodraw"))
+                                    material.surfaceFlags |= GFX_SURFACE_NO_DRAW;
+                                else
+                                    throw GltfLoadException(std::format("material ({}) invalid surfaceflag: ({})", material.materialName, flag));
+                            }
                         }
                         else
-                            throw GltfLoadException("Bad surface flags type ");
+                        {
+                            bool hasSurfaceType = false;
+                            std::vector<std::string> flagArray = utils::StringSplit(flags, ',');
+                            for (auto& flag : flagArray)
+                            {
+                                utils::StringTrim(flag);
+                                if (BSPFlags::surfaceFlags_NameToFlag.contains(flag))
+                                    material.surfaceFlags |= BSPFlags::surfaceFlags_NameToFlag.at(flag);
+                                else if (BSPFlags::surfaceFlags_NameToType.contains(flag))
+                                {
+                                    if (hasSurfaceType)
+                                        throw GltfLoadException(
+                                            std::format("material ({}) cannot have multiple surface types in surfaceflags", material.materialName));
+                                    hasSurfaceType = true;
+                                    material.surfaceFlags |= convertSurfaceTypeToFlag(BSPFlags::surfaceFlags_NameToType.at(flag));
+                                }
+                                else
+                                    throw GltfLoadException(std::format("material ({}) invalid surfaceflag: ({})", material.materialName, flag));
+                            }
+                        }
                     }
-                    if (jsMaterial.extras && jsMaterial.extras->contains("cf"))
+                    if (jsMaterial.extras && jsMaterial.extras->contains("contentflags"))
                     {
                         hasFlags = true;
-                        nlohmann::json cf = jsMaterial.extras->at("cf");
-                        if (cf.is_number())
-                            material.contentFlags = cf;
-                        else if (cf.is_string())
+                        nlohmann::json flags = jsMaterial.extras->at("contentflags");
+
+                        std::vector<std::string> flagArray = utils::StringSplit(flags, ',');
+                        for (auto& flag : flagArray)
                         {
-                            std::string str = cf;
-                            material.contentFlags = atoi(str.c_str());
+                            utils::StringTrim(flag);
+                            if (BSPFlags::contentFlags_NameToFlag.contains(flag))
+                                material.contentFlags |= BSPFlags::contentFlags_NameToFlag.at(flag);
+                            else
+                                throw GltfLoadException(std::format("material ({}) invalid contentflag: ({})", material.materialName, flag));
                         }
-                        else
-                            throw GltfLoadException("Bad content flags type ");
                     }
                     if (!hasFlags)
                     {
                         material.surfaceFlags = 0;
-                        material.contentFlags = 1;
+                        material.contentFlags = BSPFlags::contentFlags_NameToFlag.at("solid");
                     }
 
                     m_curr_bsp_world->materials.emplace_back(material);
@@ -1491,7 +1486,7 @@ namespace
             BSPMaterial emptyMaterial;
             emptyMaterial.materialType = MATERIAL_TYPE_COLOUR;
             emptyMaterial.surfaceFlags = 0;
-            emptyMaterial.contentFlags = 1;
+            emptyMaterial.contentFlags = BSPFlags::contentFlags_NameToFlag.at("solid");
             emptyMaterial.materialName = "";
             emptyMaterial.materialColour.x = 1.0f;
             emptyMaterial.materialColour.y = 1.0f;

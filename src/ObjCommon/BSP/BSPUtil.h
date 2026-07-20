@@ -32,6 +32,9 @@ namespace T6
             static vec4_t convertAnglesToQuat(vec3_t& angles);
             static vec4_t convertAxisToQuat(vec3_t axis[3]);
             static inline float lengthSquaredOfQuat(float quat[4]);
+
+            static bool flagsMatchExact(int test_flag, int inFlags);
+            static bool flagsMatchAny(int flag1, int flag2);
         };
     } // namespace BSP
 

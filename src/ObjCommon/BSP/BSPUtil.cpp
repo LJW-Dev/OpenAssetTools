@@ -411,3 +411,15 @@ std::string BSPUtil::convertVec3ToString(vec3_t& vec)
     std::string result = std::format("{} {} {}", roundf(vec.x), roundf(vec.y), roundf(vec.z));
     return result;
 }
+
+// return true if inFlags contains test_flag
+bool BSPUtil::flagsMatchExact(int test_flag, int inFlags)
+{
+    return (test_flag & inFlags) == test_flag;
+}
+
+// return true if any flags are the same between flag1 and flag2
+bool BSPUtil::flagsMatchAny(int flag1, int flag2)
+{
+    return (flag1 & flag2) != 0;
+}

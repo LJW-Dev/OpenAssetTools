@@ -69,52 +69,6 @@ namespace
         indices[2] = two[0];
     }
 
-    bool flagsMatchExact(int flag1, int flag2)
-    {
-        return (flag1 & flag2) == flag1;
-    }
-
-    bool flagsMatchAny(int flag1, int flag2)
-    {
-        return (flag1 & flag2) != 0;
-    }
-
-    int getSurfaceTypeFromFlags(int surfaceFlags)
-    {
-        return ((surfaceFlags >> 20) & 0x3F);
-    }
-
-    std::string convertFlagsToString(int surfaceflags, int contentflags)
-    {
-        std::string result;
-
-        for (size_t surfType = 0; surfType < BSP_SURF_TYPE_CLIPMISSILE; surfType++)
-        {
-            s_SurfaceTypeFlags sFlags = surfaceTypeToFlagMap[surfType];
-            if (getSurfaceTypeFromFlags(surfaceflags) == getSurfaceTypeFromFlags(sFlags.surfaceFlags)
-                && (sFlags.contentFlags == 0 || flagsMatchExact(sFlags.contentFlags, contentflags)))
-            {
-                if (surfType == BSP_SURF_TYPE_OPAQUEGLASS && !flagsMatchAny(sFlags.contentFlags, surfaceTypeToFlagMap[BSP_SURF_TYPE_GLASS].contentFlags))
-                    result += std::format("{}, ", surfaceTypeToNameMap[surfType]);
-            }
-        }
-
-        for (size_t surfType = BSP_SURF_TYPE_CLIPMISSILE; surfType < BSP_SURF_TYPE_COUNT; surfType++)
-        {
-            if (surfType == BSP_SURF_TYPE_ORIGIN || surfType == BSP_SURF_TYPE_PHYSICSGEOM || surfType == BSP_SURF_TYPE_LIGHTPORTAL)
-                continue;
-
-            s_SurfaceTypeFlags sFlags = surfaceTypeToFlagMap[surfType];
-            if ((sFlags.surfaceFlags == 0 || flagsMatchExact(sFlags.surfaceFlags, surfaceflags))
-                && (sFlags.contentFlags == 0 || flagsMatchExact(sFlags.contentFlags, contentflags)))
-                result += std::format("{}, ", surfaceTypeToNameMap[surfType]);
-        }
-
-        if (result.size() != 0)
-            result.resize(result.size() - 2);
-        return result;
-    }
-
     // center vertices around (0, 0, 0), return position that original vertices centred around
     vec3_t moveVerticesToOrigin(std::vector<BSPVertex>& inout_vertBuffer)
     {
@@ -1687,7 +1641,10 @@ namespace
             }
             else
             {
-                uniqueMaterials[material.materialName] = {true, std::vector<size_t>({brushIdx})};
+                bool isSolid = false;
+                if (BSPUtil::flagsMatchExact(BSPFlags::contentFlags_NameToFlag.at("solid"), material.contentFlags))
+                    isSolid = true;
+                uniqueMaterials[material.materialName] = {isSolid, std::vector<size_t>({brushIdx})};
             }
         }
 
@@ -1800,6 +1757,11 @@ namespace
         }
     }
 
+    int getSurfaceTypeFromFlags(int surfaceFlags)
+    {
+        return ((surfaceFlags >> 20) & 0x3F);
+    }
+
     void CreateMaterials(JsonRoot& root, BSPData& dumpData, bool isGfxWorld)
     {
         root.materials.emplace();
@@ -1815,58 +1777,86 @@ namespace
             material.name = mat.materialName;
             material.pbrMetallicRoughness.emplace();
             material.pbrMetallicRoughness->baseColorFactor = {mat.materialColour.x, mat.materialColour.y, mat.materialColour.z, mat.materialColour.w};
+
+            std::string surfaceFlags;
+            std::string contentFlags;
+            if (isGfxWorld)
+            {
+                if (BSPUtil::flagsMatchExact(GFX_SURFACE_CASTS_SUN_SHADOW, mat.surfaceFlags))
+                    surfaceFlags.append("onlycastshadow, ");
+                if (BSPUtil::flagsMatchExact(GFX_SURFACE_IS_SKY, mat.surfaceFlags))
+                    surfaceFlags.append("sky, ");
+                if (BSPUtil::flagsMatchExact(GFX_SURFACE_NO_DRAW, mat.surfaceFlags))
+                    surfaceFlags.append("nodraw, ");
+            }
+            else
+            {
+                if (BSPFlags::surfaceFlags_TypeToName.contains(getSurfaceTypeFromFlags(mat.surfaceFlags)))
+                    surfaceFlags.append(std::format("{}, ", BSPFlags::surfaceFlags_TypeToName.at(getSurfaceTypeFromFlags(mat.surfaceFlags))));
+                for (const auto& flagToStr : BSPFlags::surfaceFlags_FlagToName)
+                {
+                    if (BSPUtil::flagsMatchExact(flagToStr.first, mat.surfaceFlags))
+                        surfaceFlags.append(std::format("{}, ", flagToStr.second));
+                }
+                for (const auto& flagToStr : BSPFlags::contentFlags_FlagToName)
+                {
+                    if (BSPUtil::flagsMatchExact(flagToStr.first, mat.contentFlags))
+                        contentFlags.append(std::format("{}, ", flagToStr.second));
+                }
+            }
+
             nlohmann::json extrasJs;
-            extrasJs["sf"] = mat.surfaceFlags;
-            extrasJs["cf"] = mat.contentFlags;
+            extrasJs["surfaceflags"] = surfaceFlags.substr(0, surfaceFlags.empty() ? 0 : surfaceFlags.size() - 2);
+            extrasJs["contentflags"] = contentFlags.substr(0, contentFlags.empty() ? 0 : contentFlags.size() - 2);
             extrasJs["name"] = mat.materialName; // duplicate name incase editor changes the mat name
             material.extras = extrasJs;
             root.materials->emplace_back(material);
         }
     }
-
-    void createJsonHeader(JsonRoot& root, std::string& bspName, bool isGfxWorld)
-    {
-        root.asset.version = "2.0";
-        root.asset.generator = "T6-BSP-Decompiler-v0.1";
-
-        if (isGfxWorld)
-        {
-            root.extensionsUsed = std::vector<std::string>({"KHR_lights_punctual"});
-            root.extensionsRequired = std::vector<std::string>({"KHR_lights_punctual"});
-        }
-
-        JsonScene scene;
-        if (isGfxWorld)
-            scene.name = bspName + "_graphics";
-        else
-            scene.name = bspName + "_collision";
-        scene.nodes.emplace_back(0);
-        root.scenes.emplace();
-        root.scenes->emplace_back(scene);
-        root.scene = 0;
-
-        root.nodes.emplace();
-        root.meshes.emplace();
-
-        JsonNode rootNode;
-        rootNode.name = scene.name;
-        rootNode.children.emplace();
-        addNodeToGltf(root, rootNode, std::nullopt);
-    }
-
-    void createJson(JsonRoot& root, BSPData& dumpData, std::vector<uint8_t>& bufferData, bool isGfxWorld)
-    {
-        createJsonHeader(root, dumpData.name, isGfxWorld);
-        CreateBufferViews(root, dumpData, bufferData, isGfxWorld);
-
-        CreateMaterials(root, dumpData, isGfxWorld);
-
-        createComWorld(root, dumpData, isGfxWorld);
-        createGfxWorld(root, dumpData, isGfxWorld);
-        createColWorld(root, dumpData, isGfxWorld);
-        createMapEnts(root, dumpData, isGfxWorld);
-    }
 } // namespace
+
+void createJsonHeader(JsonRoot& root, std::string& bspName, bool isGfxWorld)
+{
+    root.asset.version = "2.0";
+    root.asset.generator = "T6-BSP-Decompiler-v0.1";
+
+    if (isGfxWorld)
+    {
+        root.extensionsUsed = std::vector<std::string>({"KHR_lights_punctual"});
+        root.extensionsRequired = std::vector<std::string>({"KHR_lights_punctual"});
+    }
+
+    JsonScene scene;
+    if (isGfxWorld)
+        scene.name = bspName + "_graphics";
+    else
+        scene.name = bspName + "_collision";
+    scene.nodes.emplace_back(0);
+    root.scenes.emplace();
+    root.scenes->emplace_back(scene);
+    root.scene = 0;
+
+    root.nodes.emplace();
+    root.meshes.emplace();
+
+    JsonNode rootNode;
+    rootNode.name = scene.name;
+    rootNode.children.emplace();
+    addNodeToGltf(root, rootNode, std::nullopt);
+}
+
+void createJson(JsonRoot& root, BSPData& dumpData, std::vector<uint8_t>& bufferData, bool isGfxWorld)
+{
+    createJsonHeader(root, dumpData.name, isGfxWorld);
+    CreateBufferViews(root, dumpData, bufferData, isGfxWorld);
+
+    CreateMaterials(root, dumpData, isGfxWorld);
+
+    createComWorld(root, dumpData, isGfxWorld);
+    createGfxWorld(root, dumpData, isGfxWorld);
+    createColWorld(root, dumpData, isGfxWorld);
+    createMapEnts(root, dumpData, isGfxWorld);
+}
 
 [[nodiscard]] std::optional<asset_type_t> DumperT6::GetHandlingAssetType() const
 {

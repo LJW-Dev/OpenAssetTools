@@ -141,14 +141,7 @@ namespace
                 gfxSurface->tris.mins = gfxSurface->bounds[0];
                 gfxSurface->tris.maxs = gfxSurface->bounds[1];
 
-                gfxSurface->flags = bspMaterial.contentFlags;
-                // if (flagsMatchAny(bspMaterial.contentFlags, BSPFlags::surfaceTypeToFlagMap[BSP_SURF_TYPE_SKY].contentFlags))
-                //     gfxSurface->flags |= GFX_SURFACE_IS_SKY;
-                // if (flagsMatchAny(bspMaterial.contentFlags, BSPFlags::surfaceTypeToFlagMap[BSP_SURF_TYPE_NODRAW].contentFlags))
-                //     gfxSurface->flags |= GFX_SURFACE_NO_DRAW;
-                // if (flagsMatchAny(bspMaterial.surfaceFlags, BSPFlags::surfaceTypeToFlagMap[BSP_SURF_TYPE_ONLYCASTSHADOW].surfaceFlags))
-                //     gfxSurface->flags |= GFX_SURFACE_CASTS_SUN_SHADOW;
-
+                gfxSurface->flags = bspMaterial.surfaceFlags;
                 gfxSurface->primaryLightIndex = DEFAULT_PRIMARYLIGHT_INDEX;
                 gfxSurface->lightmapIndex = DEFAULT_LIGHTMAP_INDEX;
                 gfxSurface->reflectionProbeIndex = DEFAULT_RPROBE_INDEX;
@@ -165,7 +158,6 @@ namespace
             // surface materials are written to by the game
             gfxWorld->dpvs.surfaceMaterials = m_memory.Alloc<GfxDrawSurf_align4>(staticSurfaceCount);
 
-            // set all surface types to lit opaque
             gfxWorld->dpvs.litSurfsBegin = static_cast<unsigned int>(bsp->litOpaqueSurfaceStart);
             gfxWorld->dpvs.litSurfsEnd = static_cast<unsigned int>(bsp->litOpaqueSurfaceStart + bsp->litOpaqueSurfaceCount);
             gfxWorld->dpvs.litTransSurfsBegin = static_cast<unsigned int>(bsp->litTransparentSurfaceStart);
