@@ -4,6 +4,7 @@
 #include "Game/IW4/Zone/Definition/ZoneDefWriterIW4.h"
 #include "Game/IW5/Zone/Definition/ZoneDefWriterIW5.h"
 #include "Game/T5/Zone/Definition/ZoneDefWriterT5.h"
+#include "Game/T6/T6.h"
 #include "Game/T6/Zone/Definition/ZoneDefWriterT6.h"
 #include "Pool/XAssetInfo.h"
 
@@ -13,6 +14,7 @@ namespace
 {
     constexpr auto META_DATA_KEY_GAME = "game";
     constexpr auto META_DATA_KEY_GDT = "gdt";
+    constexpr auto META_DATA_KEY_MAP = "map";
 } // namespace
 
 ZoneDefFilter ZoneDefFilter::AllEntries()
@@ -65,6 +67,19 @@ void AbstractZoneDefWriter::WriteZoneDef(std::ostream& stream, const Zone& zone,
 
     out.WriteComment(game->GetFullName());
     out.WriteMetaData(META_DATA_KEY_GAME, game->GetShortName());
+    if (zone.m_game_id == GameId::T6)
+    {
+        auto gfxWorldAssets = zone.m_pools.PoolAssets<T6::AssetGfxWorld>();
+        if (gfxWorldAssets.size() != 0)
+        {
+            if (zone.m_name.starts_with("mp"))
+                out.WriteMetaData(META_DATA_KEY_MAP, "mp");
+            else if (zone.m_name.starts_with("zm"))
+                out.WriteMetaData(META_DATA_KEY_MAP, "zm");
+            else if (zone.m_name.starts_with("so"))
+                out.WriteMetaData(META_DATA_KEY_MAP, "sp");
+        }
+    }
     out.EmptyLine();
 
     if (useGdt)
