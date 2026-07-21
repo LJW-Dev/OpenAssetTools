@@ -1432,7 +1432,7 @@ namespace
                                 else if (!flag.compare("nodraw"))
                                     material.surfaceFlags |= GFX_SURFACE_NO_DRAW;
                                 else
-                                    throw GltfLoadException(std::format("material ({}) invalid surfaceflag: ({})", material.materialName, flag));
+                                    con::warn("gfx: ignoring surfaceflag: ({}) on material ({})", material.materialName, flag);
                             }
                         }
                         else
@@ -1453,7 +1453,7 @@ namespace
                                     material.surfaceFlags |= convertSurfaceTypeToFlag(BSPFlags::surfaceFlags_NameToType.at(flag));
                                 }
                                 else
-                                    throw GltfLoadException(std::format("material ({}) invalid surfaceflag: ({})", material.materialName, flag));
+                                    con::warn("col: ignoring surfaceflag: ({}) on material ({})", material.materialName, flag);
                             }
                         }
                     }
@@ -1469,7 +1469,7 @@ namespace
                             if (BSPFlags::contentFlags_NameToFlag.contains(flag))
                                 material.contentFlags |= BSPFlags::contentFlags_NameToFlag.at(flag);
                             else
-                                throw GltfLoadException(std::format("material ({}) invalid contentflag: ({})", material.materialName, flag));
+                                con::warn("{}: ignoring contentflag: ({}) on material ({})", m_is_world_gfx ? "gfx" : "col", material.materialName, flag);
                         }
                     }
                     if (!hasFlags)
