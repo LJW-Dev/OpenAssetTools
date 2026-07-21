@@ -23,11 +23,11 @@ namespace
 
         SkinnedVertsDef* linkSkinnedVerts(BSPData* bsp) override
         {
-            // maxSkinnedVerts defines how many model verts can be drawn at once
-            // Low values cause models not to be drawn, so double origin's maxSkinnedVerts (163840) is used as a safe bet
+            // maxSkinnedVerts defines how many model verts can be drawn at once (includes viewmodel, xmodels, players, etc)
+            // most MP maps use 0x24000 as their maximum but pushing it to 0x30000 seems to work and may fix some custom weapons not drawing
             SkinnedVertsDef* skinnedVerts = m_memory.Alloc<SkinnedVertsDef>();
             skinnedVerts->name = m_memory.Dup("skinnedverts");
-            skinnedVerts->maxSkinnedVerts = 300000;
+            skinnedVerts->maxSkinnedVerts = 0x30000;
 
             return skinnedVerts;
         }
