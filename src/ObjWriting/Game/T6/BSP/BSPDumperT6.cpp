@@ -1441,7 +1441,16 @@ namespace
             nlohmann::json js;
             for (const auto& entityEntry : entity.entries)
             {
-                if (entity.type == ET_LIGHT)
+                if (!entity.classname.compare("worldspawn"))
+                {
+                    // only keep values that do anything
+                    if (!entityEntry.key.compare("classname") || !entityEntry.key.compare("skyboxmodel") || !entityEntry.key.compare("guid")
+                        || !entityEntry.key.compare("gravity"))
+                        js[entityEntry.key] = entityEntry.value;
+                    else
+                        continue;
+                }
+                else if (entity.type == ET_LIGHT)
                 {
                     if (!entityEntry.key.compare("lightToEntLinkNumber"))
                     {
