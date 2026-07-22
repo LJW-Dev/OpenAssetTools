@@ -121,47 +121,6 @@ public:
         ComWorld* comWorld = comWorldLinker->linkComWorld(bsp);
         if (comWorld == nullptr)
             return false;
-
-        MapEnts* mapEnts = mapEntsLinker->linkMapEnts(bsp);
-        if (mapEnts == nullptr)
-            return false;
-
-        GameWorldMp* gameWorldMp = gameWorldMpLinker->linkGameWorldMp(bsp);
-        if (gameWorldMp == nullptr)
-            return false;
-
-        SkinnedVertsDef* skinnedVerts = skinnedVertsLinker->linkSkinnedVerts(bsp);
-        if (skinnedVerts == nullptr)
-            return false;
-
-        GfxWorld* gfxWorld = gfxWorldLinker->linkGfxWorld(bsp);
-        if (gfxWorld == nullptr)
-            return false;
-
-        clipMap_t* clipMap = clipMapLinker->linkClipMap(bsp); // requires mapents asset
-        if (clipMap == nullptr)
-            return false;
-
-        auto* oldGfx = (m_context.LoadDependency<AssetGfxWorld>(bsp->bspName));
-        if (oldGfx)
-        {
-            assert(!oldGfx->IsReference());
-            GfxWorld* oldGfxPtr = oldGfx->Asset();
-            memcpy(oldGfxPtr, gfxWorld, sizeof(GfxWorld));
-        }
-        else
-            m_context.AddAsset<AssetGfxWorld>(gfxWorld->name, gfxWorld);
-
-        auto* oldCol = (m_context.LoadDependency<AssetClipMapPvs>(bsp->bspName));
-        if (oldCol)
-        {
-            assert(!oldCol->IsReference());
-            clipMap_t* oldColPtr = oldCol->Asset();
-            memcpy(oldColPtr, clipMap, sizeof(clipMap_t));
-        }
-        else
-            m_context.AddAsset<AssetClipMapPvs>(clipMap->name, clipMap);
-
         auto* oldCom = (m_context.LoadDependency<AssetComWorld>(bsp->bspName));
         if (oldCom)
         {
@@ -172,6 +131,9 @@ public:
         else
             m_context.AddAsset<AssetComWorld>(comWorld->name, comWorld);
 
+        MapEnts* mapEnts = mapEntsLinker->linkMapEnts(bsp);
+        if (mapEnts == nullptr)
+            return false;
         auto* oldEnts = (m_context.LoadDependency<AssetMapEnts>(bsp->bspName));
         if (oldEnts)
         {
@@ -182,6 +144,9 @@ public:
         else
             m_context.AddAsset<AssetMapEnts>(mapEnts->name, mapEnts);
 
+        GameWorldMp* gameWorldMp = gameWorldMpLinker->linkGameWorldMp(bsp);
+        if (gameWorldMp == nullptr)
+            return false;
         auto* oldGW = (m_context.LoadDependency<AssetGameWorldMp>(bsp->bspName));
         if (oldGW)
         {
@@ -192,6 +157,9 @@ public:
         else
             m_context.AddAsset<AssetGameWorldMp>(gameWorldMp->name, gameWorldMp);
 
+        SkinnedVertsDef* skinnedVerts = skinnedVertsLinker->linkSkinnedVerts(bsp);
+        if (skinnedVerts == nullptr)
+            return false;
         auto* oldSV = (m_context.LoadDependency<AssetSkinnedVerts>("skinnedverts"));
         if (oldSV)
         {
@@ -201,6 +169,32 @@ public:
         }
         else
             m_context.AddAsset<AssetSkinnedVerts>(skinnedVerts->name, skinnedVerts);
+
+        GfxWorld* gfxWorld = gfxWorldLinker->linkGfxWorld(bsp);
+        if (gfxWorld == nullptr)
+            return false;
+        auto* oldGfx = (m_context.LoadDependency<AssetGfxWorld>(bsp->bspName));
+        if (oldGfx)
+        {
+            assert(!oldGfx->IsReference());
+            GfxWorld* oldGfxPtr = oldGfx->Asset();
+            memcpy(oldGfxPtr, gfxWorld, sizeof(GfxWorld));
+        }
+        else
+            m_context.AddAsset<AssetGfxWorld>(gfxWorld->name, gfxWorld);
+
+        clipMap_t* clipMap = clipMapLinker->linkClipMap(bsp); // requires mapents asset
+        if (clipMap == nullptr)
+            return false;
+        auto* oldCol = (m_context.LoadDependency<AssetClipMapPvs>(bsp->bspName));
+        if (oldCol)
+        {
+            assert(!oldCol->IsReference());
+            clipMap_t* oldColPtr = oldCol->Asset();
+            memcpy(oldColPtr, clipMap, sizeof(clipMap_t));
+        }
+        else
+            m_context.AddAsset<AssetClipMapPvs>(clipMap->name, clipMap);
 
         return true;
     };
