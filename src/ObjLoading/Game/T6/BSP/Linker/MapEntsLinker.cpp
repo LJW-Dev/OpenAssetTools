@@ -9,6 +9,8 @@ namespace
 {
     inline const std::vector<const char*> DEFENDER_SPAWN_POINT_NAMES = {"mp_ctf_spawn_allies",
                                                                         "mp_ctf_spawn_allies_start",
+                                                                        "mp_res_spawn_allies",
+                                                                        "mp_res_spawn_allies_start",
                                                                         "mp_sd_spawn_defender",
                                                                         "mp_dom_spawn_allies_start",
                                                                         "mp_dem_spawn_defender_start",
@@ -21,6 +23,8 @@ namespace
 
     inline const std::vector<const char*> ATTACKER_SPAWN_POINT_NAMES = {"mp_ctf_spawn_axis",
                                                                         "mp_ctf_spawn_axis_start",
+                                                                        "mp_res_spawn_axis",
+                                                                        "mp_res_spawn_axis_start",
                                                                         "mp_sd_spawn_attacker",
                                                                         "mp_dom_spawn_axis_start",
                                                                         "mp_dem_spawn_attacker_start",
@@ -31,7 +35,7 @@ namespace
                                                                         "mp_tdm_spawn_team5_start",
                                                                         "mp_tdm_spawn_team6_start"};
 
-    inline const std::vector<const char*> FFA_SPAWN_POINT_NAMES = {"mp_tdm_spawn", "mp_dm_spawn", "mp_dom_spawn"};
+    inline const std::vector<const char*> FFA_SPAWN_POINT_NAMES = {"mp_tdm_spawn", "mp_dm_spawn", "mp_dom_spawn", "mp_multi_team_spawn"};
 
     void addSpawnsToEntString(BSP::BSPData* bsp, std::string& entityString)
     {
