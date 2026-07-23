@@ -1781,7 +1781,6 @@ namespace
             if (lightIdx != dumpData.lights.size())
             {
                 outLight.intensity = inLight->intensity;
-
                 nlohmann::json extras;
                 std::array<float, 4> superEllipseArr({inLight->superEllipse.x, inLight->superEllipse.y, inLight->superEllipse.z, inLight->superEllipse.w});
                 extras["superellipse"] = superEllipseArr;
@@ -1791,6 +1790,8 @@ namespace
                 extras["range"] = inLight->range;
                 outLight.extras = extras;
             }
+            else
+                outLight.intensity = 1000.0f;
 
             punctualLightsExtension.lights->emplace_back(outLight);
         }
