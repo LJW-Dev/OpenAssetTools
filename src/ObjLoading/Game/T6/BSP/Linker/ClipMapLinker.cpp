@@ -254,48 +254,46 @@ namespace
                 // tracing only checks if this is equal to 0 or not
                 currModel->contents = 1;
 
+                BSPUtil::matrixTranspose3x3(xmodelAxis, currModel->invScaledAxis);
+                currModel->invScaledAxis[0].x = (1.0f / bspModel.scale.x) * currModel->invScaledAxis[0].x;
+                currModel->invScaledAxis[0].y = (1.0f / bspModel.scale.x) * currModel->invScaledAxis[0].y;
+                currModel->invScaledAxis[0].z = (1.0f / bspModel.scale.x) * currModel->invScaledAxis[0].z;
+                currModel->invScaledAxis[1].x = (1.0f / bspModel.scale.y) * currModel->invScaledAxis[1].x;
+                currModel->invScaledAxis[1].y = (1.0f / bspModel.scale.y) * currModel->invScaledAxis[1].y;
+                currModel->invScaledAxis[1].z = (1.0f / bspModel.scale.y) * currModel->invScaledAxis[1].z;
+                currModel->invScaledAxis[2].x = (1.0f / bspModel.scale.z) * currModel->invScaledAxis[2].x;
+                currModel->invScaledAxis[2].y = (1.0f / bspModel.scale.z) * currModel->invScaledAxis[2].y;
+                currModel->invScaledAxis[2].z = (1.0f / bspModel.scale.z) * currModel->invScaledAxis[2].z;
+
                 if (!xModelAsset->IsReference())
                 {
-                    BSPUtil::calculateXmodelBounds(currModel->xmodel, xmodelAxis, currModel->absmin, currModel->absmax);
-                    currModel->absmin.x = (currModel->absmin.x * bspModel.scale.x) + bspModel.origin.x;
-                    currModel->absmin.y = (currModel->absmin.y * bspModel.scale.y) + bspModel.origin.y;
-                    currModel->absmin.z = (currModel->absmin.z * bspModel.scale.z) + bspModel.origin.z;
-                    currModel->absmax.x = (currModel->absmax.x * bspModel.scale.x) + bspModel.origin.x;
-                    currModel->absmax.y = (currModel->absmax.y * bspModel.scale.y) + bspModel.origin.y;
-                    currModel->absmax.z = (currModel->absmax.z * bspModel.scale.z) + bspModel.origin.z;
-
-                    if (currModel->xmodel->numCollmaps == 0)
-                        con::debug("Xmodel \"{}\" has no colision data", bspModel.name);
+                    xmodelAxis[0].x = xmodelAxis[0].x * bspModel.scale.x;
+                    xmodelAxis[0].y = xmodelAxis[0].y * bspModel.scale.x;
+                    xmodelAxis[0].z = xmodelAxis[0].z * bspModel.scale.x;
+                    xmodelAxis[1].x = xmodelAxis[1].x * bspModel.scale.y;
+                    xmodelAxis[1].y = xmodelAxis[1].y * bspModel.scale.y;
+                    xmodelAxis[1].z = xmodelAxis[1].z * bspModel.scale.y;
+                    xmodelAxis[2].x = xmodelAxis[2].x * bspModel.scale.z;
+                    xmodelAxis[2].y = xmodelAxis[2].y * bspModel.scale.z;
+                    xmodelAxis[2].z = xmodelAxis[2].z * bspModel.scale.z;
+                    BSPUtil::calculateXmodelColBounds(currModel->xmodel, xmodelAxis, currModel->absmin, currModel->absmax);
+                    currModel->absmin.x = currModel->absmin.x + bspModel.origin.x;
+                    currModel->absmin.y = currModel->absmin.y + bspModel.origin.y;
+                    currModel->absmin.z = currModel->absmin.z + bspModel.origin.z;
+                    currModel->absmax.x = currModel->absmax.x + bspModel.origin.x;
+                    currModel->absmax.y = currModel->absmax.y + bspModel.origin.y;
+                    currModel->absmax.z = currModel->absmax.z + bspModel.origin.z;
                 }
                 else
                 {
-                    if (bspModel.areBoundsValid)
-                    {
-                        currModel->absmin = bspModel.mins;
-                        currModel->absmax = bspModel.maxs;
-                    }
-                    else
-                    {
-                        con::debug("Unable to determine the bounds of xmodel: \"{}\"", bspModel.name);
-                        currModel->absmin.x = bspModel.origin.x - 1.0f;
-                        currModel->absmin.y = bspModel.origin.y - 1.0f;
-                        currModel->absmin.z = bspModel.origin.z - 1.0f;
-                        currModel->absmax.x = bspModel.origin.x + 1.0f;
-                        currModel->absmax.y = bspModel.origin.y + 1.0f;
-                        currModel->absmax.z = bspModel.origin.z + 1.0f;
-                    }
+                    con::debug("COL: Unable to determine the bounds of xmodel: \"{}\"", bspModel.name);
+                    currModel->absmin.x = bspModel.origin.x;
+                    currModel->absmin.y = bspModel.origin.y;
+                    currModel->absmin.z = bspModel.origin.z;
+                    currModel->absmax.x = bspModel.origin.x;
+                    currModel->absmax.y = bspModel.origin.y;
+                    currModel->absmax.z = bspModel.origin.z;
                 }
-
-                BSPUtil::matrixTranspose3x3(xmodelAxis, currModel->invScaledAxis);
-                currModel->invScaledAxis[0].x = (1.0f / bspModel.scale.x) * currModel->invScaledAxis[0].x;
-                currModel->invScaledAxis[0].y = (1.0f / bspModel.scale.y) * currModel->invScaledAxis[0].y;
-                currModel->invScaledAxis[0].z = (1.0f / bspModel.scale.z) * currModel->invScaledAxis[0].z;
-                currModel->invScaledAxis[1].x = (1.0f / bspModel.scale.x) * currModel->invScaledAxis[1].x;
-                currModel->invScaledAxis[1].y = (1.0f / bspModel.scale.y) * currModel->invScaledAxis[1].y;
-                currModel->invScaledAxis[1].z = (1.0f / bspModel.scale.z) * currModel->invScaledAxis[1].z;
-                currModel->invScaledAxis[2].x = (1.0f / bspModel.scale.x) * currModel->invScaledAxis[2].x;
-                currModel->invScaledAxis[2].y = (1.0f / bspModel.scale.y) * currModel->invScaledAxis[2].y;
-                currModel->invScaledAxis[2].z = (1.0f / bspModel.scale.z) * currModel->invScaledAxis[2].z;
 
                 memset(&currModel->writable, 0, sizeof(cStaticModelWritable));
             }

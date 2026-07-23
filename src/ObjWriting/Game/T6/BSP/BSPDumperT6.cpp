@@ -464,30 +464,42 @@ namespace
         return sqrtf(x * x + y * y + z * z);
     }
 
+    bool floatIsClose(float one, float two)
+    {
+        return fabs(one - two) < 1.0f;
+    }
+
     void dumpClipmapXModels(BSPData& dumpData, const clipMap_t* clipmap)
     {
+        // int ii = 0;
         for (size_t modelIdx = 0; modelIdx < clipmap->numStaticModels; modelIdx++)
         {
             cStaticModel_s* colModel = &clipmap->staticModelList[modelIdx];
 
+            vec3_t outOrig[3]{};
+            BSPUtil::matrixTranspose3x3(colModel->invScaledAxis, outOrig);
+
+            /*
+            This method of finding the original axis seems to have subtle errors, see below
+            */
             // axis vectors should be normalised (length 1), and when scaling is applied it's length will increase with scale
-            float length1 = lengthOfVector(colModel->invScaledAxis[0].x, colModel->invScaledAxis[0].y, colModel->invScaledAxis[0].z);
-            float length2 = lengthOfVector(colModel->invScaledAxis[1].x, colModel->invScaledAxis[1].y, colModel->invScaledAxis[1].z);
-            float length3 = lengthOfVector(colModel->invScaledAxis[2].x, colModel->invScaledAxis[2].y, colModel->invScaledAxis[2].z);
+            float length1 = lengthOfVector(outOrig[0].x, outOrig[0].y, outOrig[0].z);
+            float length2 = lengthOfVector(outOrig[1].x, outOrig[1].y, outOrig[1].z);
+            float length3 = lengthOfVector(outOrig[2].x, outOrig[2].y, outOrig[2].z);
             float forcedScale1 = 1.0f / length1;
             float forcedScale2 = 1.0f / length2;
             float forcedScale3 = 1.0f / length3;
 
             vec3_t origAxis[3]{};
-            origAxis[0].x = colModel->invScaledAxis[0].x * forcedScale1;
-            origAxis[0].y = colModel->invScaledAxis[0].y * forcedScale1;
-            origAxis[0].z = colModel->invScaledAxis[0].z * forcedScale1;
-            origAxis[1].x = colModel->invScaledAxis[1].x * forcedScale2;
-            origAxis[1].y = colModel->invScaledAxis[1].y * forcedScale2;
-            origAxis[1].z = colModel->invScaledAxis[1].z * forcedScale2;
-            origAxis[2].x = colModel->invScaledAxis[2].x * forcedScale3;
-            origAxis[2].y = colModel->invScaledAxis[2].y * forcedScale3;
-            origAxis[2].z = colModel->invScaledAxis[2].z * forcedScale3;
+            origAxis[0].x = outOrig[0].x * forcedScale1;
+            origAxis[0].y = outOrig[0].y * forcedScale1;
+            origAxis[0].z = outOrig[0].z * forcedScale1;
+            origAxis[1].x = outOrig[1].x * forcedScale2;
+            origAxis[1].y = outOrig[1].y * forcedScale2;
+            origAxis[1].z = outOrig[1].z * forcedScale2;
+            origAxis[2].x = outOrig[2].x * forcedScale3;
+            origAxis[2].y = outOrig[2].y * forcedScale3;
+            origAxis[2].z = outOrig[2].z * forcedScale3;
 
             BSPXModel model{};
             assert(colModel->xmodel != nullptr);
@@ -498,7 +510,69 @@ namespace
             LhcToRhcQuaternion(model.rotationQuaternion.v);
             model.scale = {forcedScale1, forcedScale2, forcedScale3};
             dumpData.colWorld.xmodels.emplace_back(model);
+
+            /*
+            vec3_t cminsOrig;
+            vec3_t cmaxsOrig;
+            vec3_t cmins;
+            vec3_t cmaxs;
+
+            // best so far: bad: 1538 total: 2082 - transpose before finding scaling then scale axis with scaling value
+            // even with scale found to be 1, results aren't correct
+            // scale: 1 1 1
+            // origin: -1357.4 1633.4 408.5
+            // orig: -1364.2158 1621.7128 408.64072, -1345.5366 1649.0393 439.38885
+            // new: -1372.5813 1616.6323 407.65405, -1343.4738 1653.3081 440.66187
+            // local: -15.181262 -16.767706 -0.8459563, 13.926324 19.908106 32.16186
+
+
+            * gfx:
+            scale: 1 1 1 origin: -1357.4 1633.4 408.5
+            orig: -1364.2158 1621.7128 408.64072, -1345.5366 1649.0393 439.38885
+            new: -1365.4347 1620.3545 407.24295, -1344.5284 1648.6028 438.61993
+            local: -8.034626 -13.045589 -1.2570589, 12.871585 15.20278 30.119923
+
+            BSPUtil::calculateXmodelColBounds(colModel->xmodel, origAxis, cminsOrig, cmaxsOrig);
+            cmins.x = cminsOrig.x + colModel->origin.x;
+            cmins.y = cminsOrig.y + colModel->origin.y;
+            cmins.z = cminsOrig.z + colModel->origin.z;
+            cmaxs.x = cmaxsOrig.x + colModel->origin.x;
+            cmaxs.y = cmaxsOrig.y + colModel->origin.y;
+            cmaxs.z = cmaxsOrig.z + colModel->origin.z;
+
+            if (!floatIsClose(colModel->absmin.x, cmins.x) || !floatIsClose(colModel->absmin.y, cmins.y) || !floatIsClose(colModel->absmin.z, cmins.z)
+                || !floatIsClose(colModel->absmax.x, cmaxs.x) || !floatIsClose(colModel->absmax.y, cmaxs.y) || !floatIsClose(colModel->absmax.z, cmaxs.z))
+            {
+                ii++;
+                con::info("scale: {} {} {} origin: {} {} {}\torig: {} {} {}, {} {} {}\tnew: {} {} {}, {} {} {}\tlocal: {} {} {}, {} {} {}",
+                          forcedScale1,
+                          forcedScale2,
+                          forcedScale3,
+                          colModel->origin.x,
+                          colModel->origin.y,
+                          colModel->origin.z,
+                          colModel->absmin.x,
+                          colModel->absmin.y,
+                          colModel->absmin.z,
+                          colModel->absmax.x,
+                          colModel->absmax.y,
+                          colModel->absmax.z,
+                          cmins.x,
+                          cmins.y,
+                          cmins.z,
+                          cmaxs.x,
+                          cmaxs.y,
+                          cmaxs.z,
+                          cminsOrig.x,
+                          cminsOrig.y,
+                          cminsOrig.z,
+                          cmaxsOrig.x,
+                          cmaxsOrig.y,
+                          cmaxsOrig.z);
+            }
+            */
         }
+        // con::info("bad: {} total: {}", ii, clipmap->numStaticModels);
     }
 
     void dumpClipmap(BSPData& dumpData, const clipMap_t* clipmap)

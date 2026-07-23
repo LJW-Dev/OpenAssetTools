@@ -87,7 +87,7 @@ float BSPUtil::distBetweenPoints(vec3_t& p1, vec3_t& p2)
     return sqrtf((x * x) + (y * y) + (z * z));
 }
 
-void BSPUtil::calculateXmodelBounds(XModel* xmodel, vec3_t axis[3], vec3_t& out_mins, vec3_t& out_maxs)
+void BSPUtil::calculateXmodelGfxBounds(XModel* xmodel, vec3_t axis[3], vec3_t& out_mins, vec3_t& out_maxs)
 {
     out_mins.x = 0.0f;
     out_mins.y = 0.0f;
@@ -113,6 +113,53 @@ void BSPUtil::calculateXmodelBounds(XModel* xmodel, vec3_t axis[3], vec3_t& out_
             rotatedVert.z = (vertex.x * axis[0].z) + (vertex.y * axis[1].z) + (vertex.z * axis[2].z);
 
             if (vertIndex == 0 && surfaceIndex == 0)
+            {
+                out_mins = rotatedVert;
+                out_maxs = rotatedVert;
+            }
+            else
+                BSPUtil::updateAABBWithPoint(rotatedVert, out_mins, out_maxs);
+        }
+    }
+}
+
+void BSPUtil::calculateXmodelColBounds(XModel* xmodel, vec3_t axis[3], vec3_t& out_mins, vec3_t& out_maxs)
+{
+    out_mins.x = 0.0f;
+    out_mins.y = 0.0f;
+    out_mins.z = 0.0f;
+    out_maxs.x = 0.0f;
+    out_maxs.y = 0.0f;
+    out_maxs.z = 0.0f;
+
+    if (xmodel->numCollSurfs == 0)
+        return;
+
+    for (int surfIdx = 0; surfIdx < xmodel->numCollSurfs; surfIdx++)
+    {
+        auto& surface = xmodel->collSurfs[surfIdx];
+        for (size_t vertIndex = 0u; vertIndex < 8; vertIndex++)
+        {
+            vec3_t vert;
+            if ((vertIndex & 1) != 0)
+                vert.x = surface.mins.x;
+            else
+                vert.x = surface.maxs.x;
+            if ((vertIndex & 2) != 0)
+                vert.y = surface.mins.y;
+            else
+                vert.y = surface.maxs.y;
+            if ((vertIndex & 4) != 0)
+                vert.z = surface.mins.z;
+            else
+                vert.z = surface.maxs.z;
+
+            vec3_t rotatedVert;
+            rotatedVert.x = (vert.x * axis[0].x) + (vert.y * axis[1].x) + (vert.z * axis[2].x);
+            rotatedVert.y = (vert.x * axis[0].y) + (vert.y * axis[1].y) + (vert.z * axis[2].y);
+            rotatedVert.z = (vert.x * axis[0].z) + (vert.y * axis[1].z) + (vert.z * axis[2].z);
+
+            if (vertIndex == 0 && surfIdx == 0)
             {
                 out_mins = rotatedVert;
                 out_maxs = rotatedVert;

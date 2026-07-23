@@ -16,7 +16,8 @@ namespace T6
             static vec3_t calcHalfSizeOfAABB(vec3_t& mins, vec3_t& maxs);
             static size_t allignBy128(size_t size);
             static float distBetweenPoints(vec3_t& p1, vec3_t& p2);
-            static void calculateXmodelBounds(XModel* xmodel, vec3_t axis[3], vec3_t& out_mins, vec3_t& out_maxs);
+            static void calculateXmodelGfxBounds(XModel* xmodel, vec3_t axis[3], vec3_t& out_mins, vec3_t& out_maxs);
+            static void calculateXmodelColBounds(XModel* xmodel, vec3_t axis[3], vec3_t& out_mins, vec3_t& out_maxs);
             static void convertAnglesToAxis(vec3_t* angles, vec3_t axis[3]);
             static vec3_t convertAnglesToForward(vec3_t& angles);
             static void convertQuaternionToAxis(vec4_t* quat, vec3_t axis[3]);

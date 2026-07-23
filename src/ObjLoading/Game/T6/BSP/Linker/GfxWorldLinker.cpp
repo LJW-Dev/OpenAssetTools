@@ -245,13 +245,23 @@ namespace
 
                 if (!xModelAsset->IsReference())
                 {
-                    BSPUtil::calculateXmodelBounds(currModel->model, currModel->placement.axis, currModelInst->mins, currModelInst->maxs);
-                    currModelInst->mins.x = (currModelInst->mins.x * bspModel.scale.x) + bspModel.origin.x;
-                    currModelInst->mins.y = (currModelInst->mins.y * bspModel.scale.y) + bspModel.origin.y;
-                    currModelInst->mins.z = (currModelInst->mins.z * bspModel.scale.z) + bspModel.origin.z;
-                    currModelInst->maxs.x = (currModelInst->maxs.x * bspModel.scale.x) + bspModel.origin.x;
-                    currModelInst->maxs.y = (currModelInst->maxs.y * bspModel.scale.y) + bspModel.origin.y;
-                    currModelInst->maxs.z = (currModelInst->maxs.z * bspModel.scale.z) + bspModel.origin.z;
+                    vec3_t scaledAxis[3];
+                    scaledAxis[0].x = currModel->placement.axis[0].x * currModel->placement.scale;
+                    scaledAxis[0].y = currModel->placement.axis[0].y * currModel->placement.scale;
+                    scaledAxis[0].z = currModel->placement.axis[0].z * currModel->placement.scale;
+                    scaledAxis[1].x = currModel->placement.axis[1].x * currModel->placement.scale;
+                    scaledAxis[1].y = currModel->placement.axis[1].y * currModel->placement.scale;
+                    scaledAxis[1].z = currModel->placement.axis[1].z * currModel->placement.scale;
+                    scaledAxis[2].x = currModel->placement.axis[2].x * currModel->placement.scale;
+                    scaledAxis[2].y = currModel->placement.axis[2].y * currModel->placement.scale;
+                    scaledAxis[2].z = currModel->placement.axis[2].z * currModel->placement.scale;
+                    BSPUtil::calculateXmodelGfxBounds(currModel->model, scaledAxis, currModelInst->mins, currModelInst->maxs);
+                    currModelInst->mins.x = currModelInst->mins.x + bspModel.origin.x;
+                    currModelInst->mins.y = currModelInst->mins.y + bspModel.origin.y;
+                    currModelInst->mins.z = currModelInst->mins.z + bspModel.origin.z;
+                    currModelInst->maxs.x = currModelInst->maxs.x + bspModel.origin.x;
+                    currModelInst->maxs.y = currModelInst->maxs.y + bspModel.origin.y;
+                    currModelInst->maxs.z = currModelInst->maxs.z + bspModel.origin.z;
 
                     assert(currModel->model->numLods <= 4);
                     for (uint16_t lodIdx = 0; lodIdx < currModel->model->numLods; lodIdx++)
@@ -277,6 +287,7 @@ namespace
                     }
                     else
                     {
+                        // this may cause rendering issues as the mins/maxs determine if the xmodel is in view or not
                         con::debug("GFX: Unable to determine the bounds of xmodel: \"{}\"", bspModel.name);
                         currModelInst->mins.x = bspModel.origin.x - 100.0f;
                         currModelInst->mins.y = bspModel.origin.y - 100.0f;
