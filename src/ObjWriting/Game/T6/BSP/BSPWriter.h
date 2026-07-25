@@ -5,12 +5,10 @@
 #include "SearchPath/ISearchPath.h"
 #include "Utils/MemoryManager.h"
 
-class SkinnedVertsLinker
+namespace T6
 {
-public:
-    virtual ~SkinnedVertsLinker() = default;
-
-    static std::unique_ptr<SkinnedVertsLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-
-    virtual SkinnedVertsDef* linkSkinnedVerts(BSP::BSPData* bsp) = 0;
-};
+    namespace BSP
+    {
+        void writeDumpDataToGltf(BSPData dumpData, const std::unique_ptr<std::ostream>& gfxFile, const std::unique_ptr<std::ostream>& colFile);
+    } // namespace BSP
+} // namespace T6

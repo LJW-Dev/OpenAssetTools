@@ -1,16 +1,26 @@
 #pragma once
 
-#include "Asset/IAssetCreator.h"
 #include "BSP/BSP.h"
-#include "SearchPath/ISearchPath.h"
-#include "Utils/MemoryManager.h"
+#include "Game/T6/T6.h"
 
-class SkinnedVertsLinker
+#include <string>
+#include <vector>
+
+namespace T6
 {
-public:
-    virtual ~SkinnedVertsLinker() = default;
+    namespace BSP
+    {
+        struct BSPAssetPtrs
+        {
+            const T6::MapEnts* mapEnts;
+            const T6::GameWorldMp* gameWorldMp;
+            const T6::ComWorld* comworld;
+            const T6::GfxWorld* gfxworld;
+            const T6::clipMap_t* clipmap;
+            const T6::SkinnedVertsDef* skinnedverts;
+            std::vector<T6::GfxLightDef*> lightDefs;
+        };
 
-    static std::unique_ptr<SkinnedVertsLinker> Create(MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context);
-
-    virtual SkinnedVertsDef* linkSkinnedVerts(BSP::BSPData* bsp) = 0;
-};
+        void dumpBSPData(BSPData& dumpData, std::string zoneName, BSPAssetPtrs& assetPtrs);
+    } // namespace BSP
+} // namespace T6

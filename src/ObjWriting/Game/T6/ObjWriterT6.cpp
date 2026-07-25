@@ -1,5 +1,6 @@
 #include "ObjWriterT6.h"
 
+#include "BSP/AddonMapEntsDumperT6.h"
 #include "BSP/BSPDumperT6.h"
 #include "FontIcon/FontIconDumperT6.h"
 #include "Game/T6/Material/MaterialJsonDumperT6.h"

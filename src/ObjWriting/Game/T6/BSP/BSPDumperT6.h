@@ -16,17 +16,17 @@ namespace T6
         };
     } // namespace BSP
 
-    namespace AddonMapEntsDumper
-    {
-        class DumperT6 final : public AbstractAssetDumper<AssetAddonMapEnts>
-        {
-        public:
-            [[nodiscard]] std::optional<asset_type_t> GetHandlingAssetType() const override;
-            [[nodiscard]] size_t GetProgressTotalCount(AssetDumpingContext& context) const override;
-
-        protected:
-            void DumpAsset(AssetDumpingContext& context, const XAssetInfo<AssetAddonMapEnts::Type>& asset) override;
-        };
-    } // namespace AddonMapEntsDumper
+    // namespace AddonMapEntsDumper
+    //{
+    //     class DumperT6 final : public AbstractAssetDumper<AssetAddonMapEnts>
+    //     {
+    //     public:
+    //         [[nodiscard]] std::optional<asset_type_t> GetHandlingAssetType() const override;
+    //         [[nodiscard]] size_t GetProgressTotalCount(AssetDumpingContext& context) const override;
+    //
+    //     protected:
+    //         void DumpAsset(AssetDumpingContext& context, const XAssetInfo<AssetAddonMapEnts::Type>& asset) override;
+    //     };
+    // } // namespace AddonMapEntsDumper
 
 } // namespace T6
