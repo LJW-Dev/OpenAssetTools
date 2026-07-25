@@ -228,8 +228,12 @@ namespace
 
                 currModel->placement.origin = bspModel.origin;
                 BSPUtil::convertQuaternionToAxis(&bspModel.rotationQuaternion, currModel->placement.axis);
-                if (bspModel.scale.x != bspModel.scale.y || bspModel.scale.x != bspModel.scale.z)
-                    con::warn("GFX model has non-uniform scaling, only X scale value will be used.");
+                vec3_t mScale;
+                mScale.x = std::round(bspModel.scale.x * 100.0f) / 100.0f;
+                mScale.y = std::round(bspModel.scale.y * 100.0f) / 100.0f;
+                mScale.z = std::round(bspModel.scale.z * 100.0f) / 100.0f;
+                if (mScale.x != mScale.y || mScale.x != mScale.z)
+                    con::warn("GFX xmodel has non-uniform scaling, only X scale value will be used.");
                 currModel->placement.scale = bspModel.scale.x;
 
                 currModel->flags = 0;
@@ -288,7 +292,7 @@ namespace
                     else
                     {
                         // this may cause rendering issues as the mins/maxs determine if the xmodel is in view or not
-                        con::debug("GFX: Unable to determine the bounds of xmodel: \"{}\"", bspModel.name);
+                        con::debug("GFX: Unable to determine the bounds of xmodel: \"{}\" which may cause rendering issues", bspModel.name);
                         currModelInst->mins.x = bspModel.origin.x - 100.0f;
                         currModelInst->mins.y = bspModel.origin.y - 100.0f;
                         currModelInst->mins.z = bspModel.origin.z - 100.0f;
@@ -763,7 +767,7 @@ namespace
             gfxWorld->skyBoxModel = m_memory.Dup(projInfo->skyboxName.c_str());
             if (m_context.LoadDependency<AssetXModel>(projInfo->skyboxName) == nullptr)
             {
-                con::warn("WARN: Unable to load the skybox xmodel {}!", projInfo->skyboxName);
+                con::warn("Unable to load the skybox xmodel {}!", projInfo->skyboxName);
             }
 
             // always 0 and 1

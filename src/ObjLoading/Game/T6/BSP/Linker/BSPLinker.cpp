@@ -25,7 +25,7 @@ private:
         auto asset = m_context.LoadDependency<AssetFootstepTable>(assetName);
         if (asset != nullptr)
             return asset->Asset();
-        con::info("Adding empty footsteptable {}", assetName);
+        con::debug("Adding empty footsteptable {}", assetName);
 
         FootstepTableDef* footstepTable = m_memory.Alloc<FootstepTableDef>();
         footstepTable->name = m_memory.Dup(assetName.c_str());
@@ -43,7 +43,7 @@ private:
         auto asset = m_context.LoadDependency<AssetRawFile>(assetName);
         if (asset != nullptr)
             return asset->Asset();
-        con::info("Adding empty rawfile {}", assetName);
+        con::debug("Adding empty rawfile {}", assetName);
 
         RawFile* rawFile = m_memory.Alloc<RawFile>();
         rawFile->name = m_memory.Dup(assetName.c_str());
@@ -69,7 +69,7 @@ private:
     {
         if (m_context.LoadDependency<AssetScript>("maps/mp/" + bsp->name + ".gsc") == nullptr)
         {
-            con::warn("maps/mp/" + bsp->name + ".gsc not found, make sure GSC file is in another fastfile.");
+            con::error("maps/mp/" + bsp->name + ".gsc not found, make sure GSC file is in another location.");
         }
         else
         {
@@ -108,6 +108,8 @@ public:
 
     bool linkBSP(BSPData* bsp) override
     {
+        con::info("------ Linking BSP Started ------");
+
         if (!addDefaultRequiredAssets(bsp))
             return false;
 
@@ -118,6 +120,7 @@ public:
         auto mapEntsLinker = MapEntsLinker::Create(m_memory, m_search_path, m_context);
         auto skinnedVertsLinker = SkinnedVertsLinker::Create(m_memory, m_search_path, m_context);
 
+        con::info("------ Linking Com World ------");
         ComWorld* comWorld = comWorldLinker->linkComWorld(bsp);
         if (comWorld == nullptr)
             return false;
@@ -131,6 +134,7 @@ public:
         else
             m_context.AddAsset<AssetComWorld>(comWorld->name, comWorld);
 
+        con::info("------ Linking Map Ents ------");
         MapEnts* mapEnts = mapEntsLinker->linkMapEnts(bsp);
         if (mapEnts == nullptr)
             return false;
@@ -144,6 +148,7 @@ public:
         else
             m_context.AddAsset<AssetMapEnts>(mapEnts->name, mapEnts);
 
+        con::info("------ Linking Game World Mp ------");
         GameWorldMp* gameWorldMp = gameWorldMpLinker->linkGameWorldMp(bsp);
         if (gameWorldMp == nullptr)
             return false;
@@ -157,6 +162,7 @@ public:
         else
             m_context.AddAsset<AssetGameWorldMp>(gameWorldMp->name, gameWorldMp);
 
+        con::info("------ Linking Skinned Verts ------");
         SkinnedVertsDef* skinnedVerts = skinnedVertsLinker->linkSkinnedVerts(bsp);
         if (skinnedVerts == nullptr)
             return false;
@@ -170,6 +176,7 @@ public:
         else
             m_context.AddAsset<AssetSkinnedVerts>(skinnedVerts->name, skinnedVerts);
 
+        con::info("------ Linking GFX World ------");
         GfxWorld* gfxWorld = gfxWorldLinker->linkGfxWorld(bsp);
         if (gfxWorld == nullptr)
             return false;
@@ -183,6 +190,7 @@ public:
         else
             m_context.AddAsset<AssetGfxWorld>(gfxWorld->name, gfxWorld);
 
+        con::info("------ Linking ClipMap ------");
         clipMap_t* clipMap = clipMapLinker->linkClipMap(bsp); // requires mapents asset
         if (clipMap == nullptr)
             return false;

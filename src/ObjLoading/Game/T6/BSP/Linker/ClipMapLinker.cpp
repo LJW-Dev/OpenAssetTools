@@ -89,7 +89,9 @@ namespace
     // so this is fixed by adding multiple parent AABB trees that hold 128 children each
     constexpr size_t MAX_AABB_TREE_CHILDREN = 128;
 
-    constexpr size_t MAX_PARTITION_TRIS = 2;
+    // There can be multiple partitions for each surface tri, but partitions bounds are used for tracing instead of the actual verts
+    // SO to try fix this and while optimising a bit, partitions are generated with maximum of two partitions
+    constexpr size_t MAX_PARTITION_TRIS = 2; // game uses maximum of 0x10
 
     constexpr vec3_t normalX = {1.0f, 0.0f, 0.0f};
     constexpr vec3_t normalY = {0.0f, 1.0f, 0.0f};
@@ -405,6 +407,8 @@ namespace
             }
         }
 
+        bool hitsDevError = false;
+
         size_t addBrushNodeFromBrushes(BSPData* bsp,
                                        CollisionOutput& output,
                                        CollisionData& data,
@@ -437,7 +441,11 @@ namespace
             *out_maxs = totalMaxs;
 
             if (brushes.size() > INT16_MAX)
-                con::error("ERROR: BRUSH SIZE EXCEEDS INT16_MAX - NOT IMPLEMENTED YET ");
+            {
+                hitsDevError = true;
+                con::error("DEV ERROR: MORE THAN 65535 BRUSHES IN A BRUSHNODE - NOT IMPLEMENTED YET");
+                return 1;
+            }
 
             cLeafBrushNode_s brushNode{};
             brushNode.axis = 0;
@@ -752,7 +760,7 @@ namespace
                 return true;
             else
             {
-                con::warn("Warning: two comparsion tris had every index match.");
+                con::warn("two comparsion tris had every index match.");
                 return true;
             }
         }
@@ -925,7 +933,7 @@ namespace
                 {
                     if (data.surfaceVerts.size() == UINT16_MAX)
                     {
-                        con::error("assert data.surfaceVerts.size() == UINT16_MAX");
+                        con::error("Failed to optimise collision terrain tris - exceeded {} tris", UINT16_MAX);
                         return false;
                     }
                     resizedVertexMap[i] = data.surfaceVerts.size();
@@ -937,11 +945,6 @@ namespace
 
             for (size_t idx : tempTerrainIndexBuffer)
             {
-                if (resizedVertexMap[idx] > UINT16_MAX)
-                {
-                    con::error("assert(resizedVertexMap[idx] > UINT16_MAX);");
-                    return false;
-                }
                 data.surfaceIndices.emplace_back(static_cast<uint16_t>(resizedVertexMap[idx]));
             }
 
@@ -1105,57 +1108,62 @@ namespace
             loadBSPNode(bsp, tree.get(), true, output, data);
             loadModelCollision(bsp, data, output);
 
-            con::info("data.staticSurfaceCount count: {}", data.staticSurfaceCount);
-            con::info("data.surfaceVec count: {}", data.surfaceVec.size());
-            con::info("data.partitionVec count: {}", data.partitionVec.size());
-            con::info("data.surfaceIndices count: {}", data.surfaceIndices.size());
-            con::info("data.surfaceVerts count: {}", data.surfaceVerts.size());
-
-            con::info("data.staticBrushCount count: {}", data.staticBrushCount);
-            con::info("data.brushVec count: {}", data.brushVec.size());
-            con::info("data.brushVerts count: {}", data.brushVerts.size());
-            con::info("data.models count: {}", data.models.size());
-            con::info("data.brushSides count: {}", data.brushSides.size());
-
-            con::info("output.modelVec count: {}", output.modelVec.size());
-            con::info("output.nodeVec count: {}", output.nodeVec.size());
-            con::info("output.leafVec count: {}", output.leafVec.size());
-            con::info("output.AABBTreeVec count: {}", output.AABBTreeVec.size());
-            con::info("output.brushNodeVec count: {}", output.brushNodeVec.size());
-            con::info("output.partitionVec count: {}", output.partitionVec.size());
-            con::info("output.uniqueVertIndexVec count: {}", output.uniqueVertIndexVec.size());
-
-            con::info("output leaf count: {}", leafCt);
-            con::info("output node count: {}", nodeCt);
-            con::info("empty unadded leafs count: {}", emptyCt);
-            con::info("largestObjectCountLeaf: {}", largestObjectCountLeaf);
-            con::info("largestBrushCountLeaf: {}", largestBrushCountLeaf);
-            con::info("largestTriCountLeaf: {}", largestTriCountLeaf);
-            con::info("TOTALBRUSHES: {}", TOTALBRUSHES);
-
+            bool hasError = false;
             if (output.modelVec.size() > 0x3FFF)
             {
                 con::error("ERROR: There are more than 0x3FFF entity brush models.");
-                return false;
+                hasError = true;
             }
             if (output.nodeVec.size() > 0xFFFF)
             {
                 con::error("exceeded 0xFFFF nodes in clipmap");
-                return false;
+                hasError = true;
             }
             if (output.leafVec.size() > 0xFFFF)
             {
                 con::error("exceeded 0xFFFF leafs in clipmap");
-                return false;
+                hasError = true;
             }
             if (output.AABBTreeVec.size() > 0xFFFF)
             {
                 con::error("exceeded 0xFFFF AABBTrees in clipmap");
-                return false;
+                hasError = true;
             }
             if (data.brushVec.size() > 0xFFFF)
             {
                 con::error("exceeded 0xFFFF brushes in clipmap");
+                hasError = true;
+            }
+            if (hasError)
+            {
+                con::error("Collision data has exceeded BO2 engine limits! Dumping backend data:");
+                con::error("data.staticSurfaceCount count: {}", data.staticSurfaceCount);
+                con::error("data.surfaceVec count: {}", data.surfaceVec.size());
+                con::error("data.partitionVec count: {}", data.partitionVec.size());
+                con::error("data.surfaceIndices count: {}", data.surfaceIndices.size());
+                con::error("data.surfaceVerts count: {}", data.surfaceVerts.size());
+
+                con::error("data.staticBrushCount count: {}", data.staticBrushCount);
+                con::error("data.brushVec count: {}", data.brushVec.size());
+                con::error("data.brushVerts count: {}", data.brushVerts.size());
+                con::error("data.models count: {}", data.models.size());
+                con::error("data.brushSides count: {}", data.brushSides.size());
+
+                con::error("output.modelVec count: {}", output.modelVec.size());
+                con::error("output.nodeVec count: {}", output.nodeVec.size());
+                con::error("output.leafVec count: {}", output.leafVec.size());
+                con::error("output.AABBTreeVec count: {}", output.AABBTreeVec.size());
+                con::error("output.brushNodeVec count: {}", output.brushNodeVec.size());
+                con::error("output.partitionVec count: {}", output.partitionVec.size());
+                con::error("output.uniqueVertIndexVec count: {}", output.uniqueVertIndexVec.size());
+
+                con::error("output leaf count: {}", leafCt);
+                con::error("output node count: {}", nodeCt);
+                con::error("empty unadded leafs count: {}", emptyCt);
+                con::error("largestObjectCountLeaf: {}", largestObjectCountLeaf);
+                con::error("largestBrushCountLeaf: {}", largestBrushCountLeaf);
+                con::error("largestTriCountLeaf: {}", largestTriCountLeaf);
+                con::error("TOTALBRUSHES: {}", TOTALBRUSHES);
                 return false;
             }
 
@@ -1285,13 +1293,12 @@ namespace
         }
 
         bool loadMaterials(clipMap_t* clipMap, BSPData* bsp)
-
         {
             // Clipmap materials define the properties of a material (bullet penetration, no collision, water, etc)
 
             if (bsp->colWorld.materials.size() > UINT16_MAX)
             {
-                con::error("Collision map exceeds 0xFFFF materials");
+                con::error("Collision exceeds 0xFFFF materials");
                 return false;
             }
 
@@ -1354,6 +1361,12 @@ namespace
             int walkableEdgeSize = (3 * clipMap->triCount + 31) / 32 * 4;
             clipMap->triEdgeIsWalkable = m_memory.Alloc<char>(walkableEdgeSize);
             memset(clipMap->triEdgeIsWalkable, 1, walkableEdgeSize * sizeof(char));
+
+            if (hitsDevError)
+            {
+                con::error("Unimplemented dev error hit, try reducing the number of brushes in complex areas of your map");
+                return nullptr;
+            }
 
             return clipMap;
         }

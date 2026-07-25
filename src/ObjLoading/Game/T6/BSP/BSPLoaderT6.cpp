@@ -33,6 +33,12 @@ namespace
 
         bool FinalizeZone(AssetCreationContext& context) override
         {
+            if (m_mapType == ZoneDefinitionMapType::SP)
+            {
+                con::error("BSP Loader: Singleplayer maps are not supported right now.");
+                return false;
+            }
+
             std::unique_ptr<BSPData> bsp = createBSPData(m_zone.m_name, m_search_path, m_mapType == ZoneDefinitionMapType::ZM);
             if (bsp == nullptr)
                 return false;
@@ -40,7 +46,7 @@ namespace
             std::unique_ptr<BSPLinker> linker = BSPLinker::Create(m_memory, m_search_path, context);
             bool result = linker->linkBSP(bsp.get());
             if (!result)
-                con::error("BSP link has failed.");
+                con::error("BSP linker has failed.");
 
             return result;
         }

@@ -66,6 +66,11 @@ namespace
         indices[2] = two[0];
     }
 
+    std::string getNodeName(const gltf::JsonNode& node)
+    {
+        return node.name.value_or("unnamed node");
+    }
+
     class GltfLoadException final : std::exception
     {
     public:
@@ -220,7 +225,8 @@ namespace
                 { JsonAccessorComponentType::FLOAT }
             ).value_or(nullptr);
             // clang-format on
-            assert(positionAccessor != nullptr);
+            if (positionAccessor == nullptr)
+                throw GltfLoadException(std::format("node {}: failed to get accessor position", nodeName));
 
             const auto vertexCount = positionAccessor->GetCount();
             NullAccessor nullAccessor(vertexCount);
@@ -234,13 +240,14 @@ namespace
                 { JsonAccessorComponentType::FLOAT }
             ).value_or(nullptr);
             VerifyAccessorVertexCount("NORMAL", normalAccessor, vertexCount);
-            assert(normalAccessor != nullptr);
+            if (normalAccessor == nullptr)
+                throw GltfLoadException(std::format("node {}: failed to get accessor normalAccessor", nodeName));
 
             const auto* uvAccessor = GetAccessorForIndex(
                 "TEXCOORD_0",
                 accessorsForVertex.m_uv_accessor,
                 { JsonAccessorType::VEC2 },
-                { JsonAccessorComponentType::FLOAT, JsonAccessorComponentType::UNSIGNED_BYTE, JsonAccessorComponentType::UNSIGNED_SHORT }
+                { JsonAccessorComponentType::FLOAT }
             ).value_or(&nullAccessor);
             VerifyAccessorVertexCount("TEXCOORD_0", uvAccessor, vertexCount);
 
@@ -248,7 +255,7 @@ namespace
                 "COLOR_0",
                 accessorsForVertex.m_color_accessor,
                 { JsonAccessorType::VEC3, JsonAccessorType::VEC4 },
-                { JsonAccessorComponentType::FLOAT, JsonAccessorComponentType::UNSIGNED_BYTE, JsonAccessorComponentType::UNSIGNED_SHORT }
+                { JsonAccessorComponentType::FLOAT }
             ).value_or(&onesAccessor);
             VerifyAccessorVertexCount("COLOR_0", colorAccessor, vertexCount);
 
@@ -258,17 +265,18 @@ namespace
                 { JsonAccessorType::SCALAR },
                 { JsonAccessorComponentType::UNSIGNED_BYTE, JsonAccessorComponentType::UNSIGNED_SHORT, JsonAccessorComponentType::UNSIGNED_INT }
             ).value_or(nullptr);
-            assert(indexAccessor != nullptr);
+            if (indexAccessor == nullptr)
+                throw GltfLoadException(std::format("node {}: failed to get accessor indexAccessor", nodeName));
             // clang-format on
 
             const auto indexCount = indexAccessor->GetCount();
             if (indexCount % 3 != 0)
-                throw GltfLoadException("Index count must be dividable by 3 for triangles");
+                throw GltfLoadException(std::format("node {}: Mesh is not triangulated", nodeName));
             const auto faceCount = indexCount / 3u;
             if (faceCount > UINT16_MAX)
-                throw GltfLoadException(std::format("Face count ({}) on node {} exceeded the UINT16_MAX", faceCount, nodeName));
+                throw GltfLoadException(std::format("node {}: Face count ({}) exceeded the UINT16_MAX", nodeName, faceCount));
             if (vertexCount > UINT16_MAX)
-                throw GltfLoadException(std::format("Vertex count ({}) on node {} exceeded the UINT16_MAX", vertexCount, nodeName));
+                throw GltfLoadException(std::format("node {}: Vertex count ({}) on exceeded the UINT16_MAX", nodeName, vertexCount));
 
             Eigen::Vector4f tempPosition(0, 0, 0, 1.0f);
             Eigen::Vector4f transformedPosition = nodeMatrix * tempPosition;
@@ -295,10 +303,11 @@ namespace
                 if (!indexAccessor->GetUnsigned(faceIndex * 3u + 0u, indices[0]) || !indexAccessor->GetUnsigned(faceIndex * 3u + 1u, indices[1])
                     || !indexAccessor->GetUnsigned(faceIndex * 3u + 2u, indices[2]))
                 {
-                    assert(false);
+                    throw GltfLoadException(std::format("node {}: failed to access indices", nodeName));
                 }
                 if (indices[0] > UINT16_MAX || indices[1] > UINT16_MAX || indices[2] > UINT16_MAX)
-                    throw GltfLoadException("Index number exceeded the UINT16_MAX");
+                    throw GltfLoadException(
+                        std::format("node {}: tri index numbers {} {} {} exceeded the UINT16_MAX", nodeName, indices[0], indices[1], indices[2]));
 
                 RhcToLhcIndices(indices);
                 m_curr_bsp_world->indices.emplace_back(static_cast<uint16_t>(indices[0]));
@@ -312,34 +321,34 @@ namespace
                 BSPVertex vertex{};
 
                 if (!positionAccessor->GetFloatVec3(vertexIndex, vertex.pos.v))
-                    assert(false);
+                    throw GltfLoadException(std::format("node {}: failed to access position", nodeName));
                 if (!normalAccessor->GetFloatVec3(vertexIndex, vertex.normal.v))
-                    assert(false);
+                    throw GltfLoadException(std::format("node {}: failed to access normal", nodeName));
                 std::optional<JsonAccessorType> colourType = colorAccessor->GetType();
                 if (!colourType.has_value())
                 {
                     if (!colorAccessor->GetFloatVec4(vertexIndex, vertex.color.v))
-                        assert(false);
+                        throw GltfLoadException(std::format("node {}: failed to access color", nodeName));
                 }
                 else if (*colourType == JsonAccessorType::VEC4)
                 {
                     if (!colorAccessor->GetFloatVec4(vertexIndex, vertex.color.v))
-                        assert(false);
+                        throw GltfLoadException(std::format("node {}: failed to access color", nodeName));
                 }
                 else if (*colourType == JsonAccessorType::VEC3)
                 {
                     vec3_t colorout{};
                     if (!colorAccessor->GetFloatVec3(vertexIndex, colorout.v))
-                        assert(false);
+                        throw GltfLoadException(std::format("node {}: failed to access color", nodeName));
                     vertex.color.x = colorout.x;
                     vertex.color.y = colorout.y;
                     vertex.color.z = colorout.z;
                     vertex.color.w = 1.0f;
                 }
                 else
-                    assert(false);
+                    throw GltfLoadException(std::format("node {}: failed to access color", nodeName));
                 if (!uvAccessor->GetFloatVec2(vertexIndex, vertex.texCoord.v))
-                    assert(false);
+                    throw GltfLoadException(std::format("node {}: failed to access uv", nodeName));
 
                 vertex.color.x *= materialColor.x;
                 vertex.color.y *= materialColor.y;
@@ -405,7 +414,8 @@ namespace
             {
                 light.type = LIGHT_TYPE_SPOT;
 
-                assert(jsLight.spot);
+                if (!jsLight.spot)
+                    throw GltfLoadException(std::format("node {}: light is spot but has no spot data", getNodeName(node)));
                 if (jsLight.spot->innerConeAngle)
                     light.innerConeAngle = *jsLight.spot->innerConeAngle;
                 else
@@ -417,7 +427,7 @@ namespace
                     light.outerConeAngle = std::numbers::pi_v<float> / 4.0f; /// spec of 45 degrees
             }
             else
-                assert(false);
+                throw GltfLoadException(std::format("node {}: bad light type", getNodeName(node)));
 
             if (!jsLight.color)
             {
@@ -451,14 +461,14 @@ namespace
             else
                 light.intensity = *jsLight.intensity;
             if (light.intensity < 0.0f)
-                throw GltfLoadException(std::format("light intensity must be positive"));
+                throw GltfLoadException(std::format("node {}: light intensity must be positive", getNodeName(node)));
 
             bool isSunlight = false;
             if (node.extras && node.extras->contains("sunlight"))
             {
                 nlohmann::json isSunlightJs = node.extras->at("sunlight");
                 if (!isSunlightJs.is_boolean())
-                    throw GltfLoadException("Sunlight property must be a boolean");
+                    throw GltfLoadException(std::format("node {}: Sunlight property must be a boolean", getNodeName(node)));
                 isSunlight = isSunlightJs;
             }
             if (isSunlight)
@@ -492,18 +502,18 @@ namespace
                     else if (rangeJs.is_number())
                         light.range = rangeJs;
                     else
-                        assert(false);
+                        throw GltfLoadException(std::format("node {}: bad light range type", getNodeName(node)));
                 }
                 else
                     light.range = sqrtf(light.intensity) / 2.0f; // how most light ranges in BO2 are calculated
                 if (light.range < 0.0f)
-                    throw GltfLoadException(std::format("light range must be positive"));
+                    throw GltfLoadException(std::format("node {}: light range must be positive", getNodeName(node)));
 
                 if (jsLight.extras && jsLight.extras->contains("superellipse"))
                 {
                     nlohmann::json ellipseJs = jsLight.extras->at("superellipse");
                     if (!ellipseJs.is_array() || ellipseJs.size() != 4)
-                        throw GltfLoadException(std::format("light superellipse must be a vec4"));
+                        throw GltfLoadException(std::format("node {}: light superellipse must be a vec4", getNodeName(node)));
 
                     std::array<float, 4> superEllipseArr = ellipseJs;
                     light.superEllipse.x = superEllipseArr[0];
@@ -512,7 +522,7 @@ namespace
                     light.superEllipse.w = superEllipseArr[3];
                     if (light.superEllipse.x < 0.0f || light.superEllipse.x > 1.0f || light.superEllipse.y < 0.0f || light.superEllipse.y > 1.0f
                         || light.superEllipse.z < 0.0f || light.superEllipse.z > 1.0f || light.superEllipse.w < 0.0f || light.superEllipse.w > 1.0f)
-                        throw GltfLoadException(std::format("light superellipse values must be between 0.0 and 1.0"));
+                        throw GltfLoadException(std::format("node {}: light superellipse values must be between 0.0 and 1.0", getNodeName(node)));
                 }
                 else
                     light.superEllipse = {0.75f, 1.0f, 0.75f, 1.0f}; // creates a circular light
@@ -525,7 +535,7 @@ namespace
                         std::string cullDistanceStr = cullDistanceJs;
                         int cullDist = atoi(cullDistanceStr.c_str());
                         if (cullDist < 0 || cullDist > INT16_MAX)
-                            throw GltfLoadException(std::format("light cullDist is less than 0 or greater than {}", INT16_MAX));
+                            throw GltfLoadException(std::format("node {}: light cullDist is less than 0 or greater than {}", getNodeName(node), INT16_MAX));
 
                         light.cullDistance = static_cast<size_t>(cullDist);
                     }
@@ -533,11 +543,11 @@ namespace
                     {
                         int cullDist = cullDistanceJs;
                         if (cullDist < 0 || cullDist > INT16_MAX)
-                            throw GltfLoadException(std::format("light cullDist is less than 0 or greater than {}", INT16_MAX));
+                            throw GltfLoadException(std::format("node {}: light cullDist is less than 0 or greater than {}", getNodeName(node), INT16_MAX));
                         light.cullDistance = static_cast<size_t>(cullDist);
                     }
                     else
-                        assert(false);
+                        throw GltfLoadException(std::format("node {}: bad light culldistance type", getNodeName(node)));
                 }
                 else
                     light.cullDistance = 1000;
@@ -553,12 +563,12 @@ namespace
                     else if (roundnessJs.is_number())
                         light.roundness = roundnessJs;
                     else
-                        assert(false);
+                        throw GltfLoadException(std::format("node {}: bad light roundness type", getNodeName(node)));
                 }
                 else
                     light.roundness = 1.0f;
                 if (light.roundness < 0.0f || light.roundness > 1.0f)
-                    throw GltfLoadException(std::format("light roundness must be between 0.0 and 1.0"));
+                    throw GltfLoadException(std::format("node {}: light roundness must be between 0.0 and 1.0", getNodeName(node)));
 
                 if (jsLight.extras && jsLight.extras->contains("image"))
                     light.image = jsLight.extras->at("image");
@@ -580,13 +590,13 @@ namespace
             for (const auto& primitive : mesh.primitives)
             {
                 if (!primitive.indices)
-                    throw GltfLoadException("Requires primitives indices");
+                    throw GltfLoadException(std::format("node {}: Requires primitives indices", getNodeName(node)));
                 if (primitive.mode.value_or(JsonMeshPrimitivesMode::TRIANGLES) != JsonMeshPrimitivesMode::TRIANGLES)
-                    throw GltfLoadException("Only triangles are supported");
+                    throw GltfLoadException(std::format("node {}: Only triangles are supported", getNodeName(node)));
                 if (!primitive.attributes.POSITION)
-                    throw GltfLoadException("Requires primitives attribute POSITION");
+                    throw GltfLoadException(std::format("node {}: Requires primitives attribute POSITION", getNodeName(node)));
                 if (!primitive.attributes.NORMAL)
-                    throw GltfLoadException("Requires primitives attribute NORMAL");
+                    throw GltfLoadException(std::format("node {}: Requires primitives attribute NORMAL", getNodeName(node)));
 
                 const AccessorsForVertex accessorsForVertex{
                     .m_position_accessor = *primitive.attributes.POSITION,
@@ -630,7 +640,7 @@ namespace
                     const auto& primitive = mesh.primitives.at(primIdx);
 
                     if (!primitive.attributes.POSITION)
-                        throw GltfLoadException("Requires primitives attribute POSITION");
+                        throw GltfLoadException(std::format("xmodel {}: Requires primitives attribute POSITION", xmodel.name));
 
                     // clang-format off
                      const auto* positionAccessor = GetAccessorForIndex(
@@ -640,13 +650,14 @@ namespace
                          { JsonAccessorComponentType::FLOAT }
                      ).value_or(nullptr);
                     // clang-format on
-                    assert(positionAccessor != nullptr);
+                    if (positionAccessor == nullptr)
+                        throw GltfLoadException(std::format("xmodel {}: failed to create positionAccessor", xmodel.name));
 
                     for (size_t vertexIndex = 0u; vertexIndex < positionAccessor->GetCount(); vertexIndex++)
                     {
                         vec3_t vertex;
                         if (!positionAccessor->GetFloatVec3(vertexIndex, vertex.v))
-                            assert(false);
+                            throw GltfLoadException(std::format("xmodel {}: failed to access position", xmodel.name));
 
                         Eigen::Vector4f position(vertex.x, vertex.y, vertex.z, 1.0f);
                         Eigen::Vector4f transformedPosition = nodeMatrix * position;
@@ -722,11 +733,9 @@ namespace
             xmodel.rotationQuaternion.w = rotationQuat.w();
             RhcToLhcQuaternion(xmodel.rotationQuaternion.v);
 
-            vec3_t mScale = getScaleFromMatrix(nodeMatrix);
-            xmodel.scale.x = std::round(mScale.x * 1000.0f) / 1000.0f;
-            xmodel.scale.y = std::round(mScale.y * 1000.0f) / 1000.0f;
-            xmodel.scale.z = std::round(mScale.z * 1000.0f) / 1000.0f;
+            xmodel.scale = getScaleFromMatrix(nodeMatrix);
 
+            // xmodel bounds calculated here are a hint to the linker, so if it can't determine bounds from the asset it uses these bounds instead
             calculateXmodelBounds(xmodel, node.mesh, nodeMatrix, jRoot);
 
             m_curr_bsp_world->xmodels.emplace_back(xmodel);
@@ -764,10 +773,7 @@ namespace
 
             std::string team = node.extras->at("spawnpoint");
             if (!m_bsp->isZombiesMap && team.compare("attacker") && team.compare("defender") && team.compare("all"))
-            {
-                con::warn("Ignoring spawn point with an invalid type (must be attacker, defender or all)");
-                return false;
-            }
+                throw GltfLoadException(std::format("spawnpoint {}: spawn point with an invalid type (must be attacker, defender or all)", getNodeName(node)));
 
             BSPSpawnPoint spawnPoint;
             spawnPoint.origin = origin;
@@ -785,10 +791,10 @@ namespace
                               std::optional<size_t> gfxAndColLinkNum)
         {
             if (!modelNodes && m_is_world_gfx)
-                throw GltfLoadException("GFX Script Model was made with no children");
+                throw GltfLoadException(std::format("node {}: GFX entity has model but was made with no children", getNodeName(parentNode)));
             if (!modelNodes && !gfxAndColLinkNum && !m_is_world_gfx)
-                throw GltfLoadException(std::format("COL Script Model (node: {}) was made with no children and has no gfxAndColLinkNumber",
-                                                    parentNode.name.value_or("unnamed node")));
+                throw GltfLoadException(
+                    std::format("node: {}: COL entity has model but was made with no children and has no gfxAndColLinkNumber", getNodeName(parentNode)));
 
             std::vector<std::pair<const JsonNode*, Eigen::Matrix4f>> terrainNodes;
             std::vector<std::pair<const JsonNode*, Eigen::Matrix4f>> brushNodes;
@@ -797,24 +803,31 @@ namespace
                 for (unsigned nodeIdx : *modelNodes)
                 {
                     const JsonNode& node = jRoot.nodes->at(nodeIdx);
-
-                    if (!node.extras || !node.extras->contains("model"))
-                        throw GltfLoadException(std::format("Script Model child {} has no model field", *node.name));
-
                     Eigen::Matrix4f nodeMatrix = createNodeMatrix(node);
                     Eigen::Matrix4f transformedNodeMatrix = parentEntityMatrix * nodeMatrix;
-
-                    std::string modelType = node.extras->at("model");
-                    if (!modelType.compare("brush"))
+                    if (!node.extras || !node.extras->contains("model"))
                     {
-                        if (m_is_world_gfx)
-                            throw GltfLoadException(std::format("Script Model child {} is a brush. Brushes can be used in collision files only.", *node.name));
-                        brushNodes.emplace_back(std::pair(&node, transformedNodeMatrix));
-                    }
-                    else if (!modelType.compare("terrain"))
                         terrainNodes.emplace_back(std::pair(&node, transformedNodeMatrix));
+                    }
                     else
-                        throw GltfLoadException(std::format("Script Model child {} model field value isn't brush or terrain", *node.name));
+                    {
+                        std::string modelType = node.extras->at("model");
+                        if (!modelType.compare("brush"))
+                        {
+                            if (m_is_world_gfx)
+                            {
+                                con::debug("node {}: converting entity model child brush to terrain as brushes can be used in collision files only.",
+                                           getNodeName(node));
+                                terrainNodes.emplace_back(std::pair(&node, transformedNodeMatrix));
+                            }
+                            else
+                                brushNodes.emplace_back(std::pair(&node, transformedNodeMatrix));
+                        }
+                        else if (!modelType.compare("terrain"))
+                            terrainNodes.emplace_back(std::pair(&node, transformedNodeMatrix));
+                        else
+                            throw GltfLoadException(std::format("node {}: entity model child model field value isn't brush or terrain", getNodeName(node)));
+                    }
                 }
             }
 
@@ -828,10 +841,11 @@ namespace
 
                 model.surfaceSide = MSS_GFX;
                 model.surfaceType = MST_NONE;
-                if (gfxAndColLinkNum)
+                if (gfxAndColLinkNum) // fill gfxToColModelLinkMap as GFX is always loaded first
                 {
                     if (gfxToColModelLinkMap.contains(*gfxAndColLinkNum))
-                        throw GltfLoadException(std::format("Script Model child GfxAndColLinkNumber {} is used by multiple gfx entities", *gfxAndColLinkNum));
+                        throw GltfLoadException(
+                            std::format("node {}: entity GfxAndColLinkNumber {} is used by multiple gfx entities", getNodeName(parentNode), *gfxAndColLinkNum));
                     else
                         gfxToColModelLinkMap[*gfxAndColLinkNum] = m_bsp->models.size();
                 }
@@ -842,8 +856,8 @@ namespace
                 if (gfxAndColLinkNum)
                 {
                     if (!gfxToColModelLinkMap.contains(*gfxAndColLinkNum))
-                        throw GltfLoadException(
-                            std::format("Script Model child GfxAndColLinkNumber {} has a collision node but no gfx node", *gfxAndColLinkNum));
+                        throw GltfLoadException(std::format(
+                            "node {}: entity GfxAndColLinkNumber {} has a collision node but no gfx node", getNodeName(parentNode), *gfxAndColLinkNum));
 
                     modelPtr = &m_bsp->models.at(gfxToColModelLinkMap.at(*gfxAndColLinkNum));
                 }
@@ -896,10 +910,7 @@ namespace
             assert(node.extras->contains("zone"));
 
             if (!node.extras->contains("spawner_group") || !node.extras->contains("spawnpoint_group"))
-            {
-                con::error("ignoring zone: Zone object must have a valid spawner_group and spawnpoint_group property");
-                return false;
-            }
+                throw GltfLoadException(std::format("zone {}: Zone must have a valid spawner_group and spawnpoint_group property", getNodeName(node)));
 
             Eigen::Vector4f position(0, 0, 0, 1.0f);
             Eigen::Vector4f transformedPosition = nodeMatrix * position;
@@ -987,7 +998,7 @@ namespace
                     value = std::format("{}", valNum);
                 }
                 else
-                    assert(false);
+                    throw GltfLoadException(std::format("entity {}: invalid entity data value type", getNodeName(node)));
                 if (!key.compare("origin") || !key.compare("angles") || !key.compare("GfxAndColLinkNumber"))
                     continue;
 
@@ -1047,7 +1058,7 @@ namespace
             if (!classname.compare("worldspawn"))
             {
                 if (m_bsp->containsWorldspawn)
-                    con::warn("WARNING: multiple worldspawn classes found, only one will be used.");
+                    throw GltfLoadException(std::format("multiple worldspawn entities found"));
                 m_bsp->worldspawn = entity;
                 m_bsp->containsWorldspawn = true;
 
@@ -1158,6 +1169,10 @@ namespace
             for (const auto rootNode : GetRootNodes(jRoot))
                 nodeQueue.emplace_back(s_nodes{rootNode, Eigen::Matrix4f::Identity()});
 
+            // a few rules for the bsp that require this traversal:
+            // - static surfaces must start at index 0, then script surfaces must come after
+            // - surface types are stored as contiguous indices rather then unsorted
+            // - we don't want to add entity model children nodes as they are parsed later on
             std::vector<s_nodes> colStaticNodes;
             std::vector<s_nodes> colStaticBrushNodes;
             std::vector<s_nodes> gfxLitOpaqueNodes;
@@ -1240,7 +1255,7 @@ namespace
                 for (const auto& node : gfxLitOpaqueNodes)
                 {
                     if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
-                        con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
+                        con::debug("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
                 }
                 m_bsp->litOpaqueSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->litOpaqueSurfaceStart;
 
@@ -1248,7 +1263,7 @@ namespace
                 for (const auto& node : gfxLitTransparentNodes)
                 {
                     if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
-                        con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
+                        con::debug("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
                 }
                 m_bsp->litTransparentSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->litTransparentSurfaceStart;
 
@@ -1256,7 +1271,7 @@ namespace
                 for (const auto& node : gfxEmissiveOpaqueNodes)
                 {
                     if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
-                        con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
+                        con::debug("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
                 }
                 m_bsp->emissiveOpaqueSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->emissiveOpaqueSurfaceStart;
 
@@ -1264,7 +1279,7 @@ namespace
                 for (const auto& node : gfxEmissiveTransparentnodes)
                 {
                     if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
-                        con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
+                        con::debug("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
                 }
                 m_bsp->emissiveTransparentSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->emissiveTransparentSurfaceStart;
 
@@ -1277,7 +1292,7 @@ namespace
                 for (const auto& node : colStaticNodes)
                 {
                     if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
-                        con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
+                        con::debug("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
                 }
                 m_bsp->staticTerrainSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->staticTerrainSurfaceStart;
 
@@ -1285,7 +1300,7 @@ namespace
                 for (const auto& node : colStaticBrushNodes)
                 {
                     if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
-                        con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
+                        con::debug("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
                 }
                 m_bsp->staticBrushSurfaceCount = m_curr_bsp_world->surfaces.size() - m_bsp->staticBrushSurfaceStart;
             }
@@ -1293,7 +1308,7 @@ namespace
             for (const auto& node : scriptNodes)
             {
                 if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
-                    con::warn("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
+                    con::debug("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
             }
         }
 
@@ -1403,7 +1418,7 @@ namespace
                     else if (jsMaterial.name && (*jsMaterial.name).length() != 0)
                         material.materialName = *jsMaterial.name;
                     else
-                        throw GltfLoadException("Materials must have a name.");
+                        throw GltfLoadException("Material must have a name.");
 
                     material.materialType = MATERIAL_TYPE_TEXTURE;
                     material.materialColour.x = 1.0f;
@@ -1469,7 +1484,7 @@ namespace
                             if (BSPFlags::contentFlags_NameToFlag.contains(flag))
                                 material.contentFlags |= BSPFlags::contentFlags_NameToFlag.at(flag);
                             else
-                                con::warn("{}: ignoring contentflag: ({}) on material ({})", m_is_world_gfx ? "gfx" : "col", material.materialName, flag);
+                                con::warn("{}: ignoring contentflag: ({}) on material ({})", getWorldTypeName(), material.materialName, flag);
                         }
                     }
                     if (!hasFlags)
@@ -1498,6 +1513,8 @@ namespace
     public:
         bool addGLTFDataToBSP(Input& gltfInput, bool isGfxWorld)
         {
+            con::info("------ Parsing {} BSP GLTF data ------", getWorldTypeName());
+
             JsonRoot jRoot;
             try
             {
@@ -1547,6 +1564,8 @@ namespace
 
 std::unique_ptr<BSPData> T6::BSP::createBSPData(std::string& mapName, ISearchPath& searchPath, bool isZombiesMap)
 {
+    con::info("------ Loading BSP Started ------");
+
     bool seperateColFile = true;
     bool isGfxFileGltf = true;
     bool isColFileGltf = true;
@@ -1631,9 +1650,11 @@ std::unique_ptr<BSPData> T6::BSP::createBSPData(std::string& mapName, ISearchPat
         }
     }
 
+    con::info("------ Finished parsing BSP GLTF data ------");
+
     if (!bsp->hasSunlightBeenSet)
     {
-        con::info("Writing default sun values");
+        con::info("No sunlight found, writing default sun values");
         bsp->sunlight.type = LIGHT_TYPE_DIRECTIONAL;
         bsp->sunlight.colour = {1.0f, 1.0f, 1.0f};
         bsp->sunlight.range = 1000.0f;
