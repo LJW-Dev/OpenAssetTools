@@ -24,4 +24,4 @@
 	url = https://github.com/Laupetin/webview.git
 [submodule "thirdparty/quickhull"]
 	path = thirdparty/quickhull
-	url = https://github.com/akuukka/quickhull
+	url = https://github.com/LJW-Dev/quickhull.git
