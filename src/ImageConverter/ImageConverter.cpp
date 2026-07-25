@@ -73,9 +73,15 @@ namespace
                 return false;
             }
 
-            const auto loadResult = image::LoadIwi(file);
+            auto loadResult = image::LoadIwi(file);
             if (!loadResult)
                 return false;
+
+            auto texture(std::move(loadResult->m_texture));
+
+            auto convertedTexture = ConvertTextureForDdsFileOutputIfNecessary(texture.get());
+            if (convertedTexture)
+                texture = std::move(convertedTexture);
 
             auto outPath = iwiPath;
             outPath.replace_extension(".dds");
@@ -87,7 +93,7 @@ namespace
                 return false;
             }
 
-            m_dds_writer.DumpImage(outFile, loadResult->m_texture.get());
+            m_dds_writer.DumpImage(outFile, texture.get());
             return true;
         }
 

@@ -2,12 +2,17 @@
 
 #include "Asset/GlobalAssetPoolsLoader.h"
 #include "Game/IW5/AssetMarkerIW5.h"
+#include "Game/IW5/Font/FontLoaderIW5.h"
 #include "Game/IW5/GameIW5.h"
 #include "Game/IW5/IW5.h"
 #include "Game/IW5/Image/ImageLoaderEmbeddedIW5.h"
 #include "Game/IW5/Image/ImageLoaderExternalIW5.h"
 #include "Game/IW5/Techset/PixelShaderLoaderIW5.h"
 #include "Game/IW5/Techset/VertexShaderLoaderIW5.h"
+#include "Game/IW5/Tracer/GdtLoaderTracerIW5.h"
+#include "Game/IW5/Tracer/RawLoaderTracerIW5.h"
+#include "Game/IW5/Weapon/AccuracyGraphLoaderIW5.h"
+#include "Game/IW5/XAnim/XAnimLoaderIW5.h"
 #include "Game/IW5/XModel/LoaderXModelIW5.h"
 #include "Leaderboard/LoaderLeaderboardIW5.h"
 #include "LightDef/LightDefLoaderIW5.h"
@@ -132,8 +137,7 @@ namespace
         collection.AddAssetCreator(phys_preset::CreateRawLoaderIW5(memory, searchPath, zone));
         collection.AddAssetCreator(phys_preset::CreateGdtLoaderIW5(memory, gdt, zone));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderPhysCollMap>(memory));
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderXAnim>(memory));
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderXModelSurfs>(memory));
+        collection.AddAssetCreator(xanim::CreateLoaderIW5(memory, searchPath, zone));
         collection.AddAssetCreator(xmodel::CreateLoaderIW5(memory, searchPath, zone));
         collection.AddAssetCreator(material::CreateLoaderIW5(memory, searchPath));
         collection.AddAssetCreator(techset::CreateVertexShaderLoaderIW5(memory, searchPath));
@@ -153,7 +157,7 @@ namespace
         // collection.AddAssetCreator(std::make_unique<AssetLoaderFxWorld>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderGfxWorld>(memory));
         collection.AddAssetCreator(light_def::CreateLoaderIW5(memory, searchPath));
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderFont>(memory));
+        collection.AddAssetCreator(font::CreateLoaderIW5(memory, searchPath));
         collection.AddAssetCreator(menu::CreateMenuListLoaderIW5(memory, searchPath));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderMenu>(memory));
         collection.AddAssetCreator(localize::CreateLoaderIW5(memory, searchPath, zone));
@@ -168,9 +172,12 @@ namespace
         collection.AddAssetCreator(string_table::CreateLoaderIW5(memory, searchPath));
         collection.AddAssetCreator(leaderboard::CreateLoaderIW5(memory, searchPath));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderStructuredDataDef>(memory));
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderTracer>(memory));
+        collection.AddAssetCreator(tracer::CreateRawLoaderIW5(memory, searchPath, zone));
+        collection.AddAssetCreator(tracer::CreateGdtLoaderIW5(memory, gdt, zone));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderVehicle>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderAddonMapEnts>(memory));
+
+        collection.AddSubAssetCreator(weapon::CreateAccuracyGraphLoaderIW5(memory, searchPath));
     }
 } // namespace
 

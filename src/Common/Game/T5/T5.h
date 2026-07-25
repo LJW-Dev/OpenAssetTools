@@ -66,6 +66,8 @@ namespace T5
         SUB_ASSET_TYPE_VERTEX_DECL,
         SUB_ASSET_TYPE_VERTEX_SHADER,
         SUB_ASSET_TYPE_PIXEL_SHADER,
+        SUB_ASSET_TYPE_ACCURACY_GRAPH,
+        SUB_ASSET_TYPE_FLAME_TABLE,
 
         SUB_ASSET_TYPE_COUNT
     };
@@ -147,6 +149,7 @@ namespace T5
         WFT_HIDETAGS,
         WFT_EXPLOSION_TAG,
         WFT_NOTETRACKSOUNDMAP,
+        WFT_ANIM_NAME,
 
         WFT_NUM_FIELD_TYPES
     };
@@ -172,6 +175,12 @@ namespace T5
         CFT_TYPE = CSPFT_NUM_BASE_FIELD_TYPES,
 
         CFT_NUM_FIELD_TYPES
+    };
+
+    struct AccuracyGraph
+    {
+        vec2_t* graphKnots;
+        int graphKnotCount;
     };
 
     using AssetPhysPreset = Asset<ASSET_TYPE_PHYSPRESET, PhysPreset>;
@@ -212,6 +221,8 @@ namespace T5
     using SubAssetVertexDecl = SubAsset<SUB_ASSET_TYPE_VERTEX_DECL, MaterialVertexDeclaration>;
     using SubAssetVertexShader = SubAsset<SUB_ASSET_TYPE_VERTEX_SHADER, MaterialVertexShader>;
     using SubAssetPixelShader = SubAsset<SUB_ASSET_TYPE_PIXEL_SHADER, MaterialPixelShader>;
+    using SubAssetAccuracyGraph = SubAsset<SUB_ASSET_TYPE_ACCURACY_GRAPH, AccuracyGraph>;
+    using SubAssetFlameTable = SubAsset<SUB_ASSET_TYPE_FLAME_TABLE, FlameTable>;
 } // namespace T5
 
 DEFINE_ASSET_NAME_ACCESSOR(T5::AssetPhysPreset, name);

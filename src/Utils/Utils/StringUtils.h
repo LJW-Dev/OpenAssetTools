@@ -1,5 +1,7 @@
 #pragma once
+
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace utils
@@ -13,8 +15,12 @@ namespace utils
     std::string UnescapeStringFromQuotationMarks(const std::string_view& str);
     void UnescapeStringFromQuotationMarks(std::ostream& stream, const std::string_view& str);
 
+    void MakeStringLowerCase(char* str);
     void MakeStringLowerCase(std::string& str);
+    void MakeStringUpperCase(char* str);
     void MakeStringUpperCase(std::string& str);
+
+    bool StringEqualsIgnoreCase(std::string_view lhs, std::string_view rhs);
 
     void StringTrimL(std::string& str);
     void StringTrimR(std::string& str);

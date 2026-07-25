@@ -303,7 +303,7 @@ namespace T5
 
     union XAnimIndices
     {
-        char* _1;
+        unsigned char* _1;
         uint16_t* _2;
         void* data;
     };
@@ -325,14 +325,14 @@ namespace T5
 
     union XAnimDynamicIndicesTrans
     {
-        char _1[1];
+        unsigned char _1[1];
         uint16_t _2[1];
     };
 
     struct XAnimPartTransFrames
     {
-        float mins[3];
-        float size[3];
+        vec3_t mins;
+        vec3_t size;
         XAnimDynamicFrames frames;
         XAnimDynamicIndicesTrans indices;
     };
@@ -346,31 +346,36 @@ namespace T5
     struct XAnimPartTrans
     {
         uint16_t size;
-        char smallTrans;
+        unsigned char smallTrans;
         XAnimPartTransData u;
     };
 
     struct type_align(4) XQuat
+    {
+        int16_t value[4];
+    };
+
+    struct type_align(4) XQuat2
     {
         int16_t value[2];
     };
 
     union XAnimDynamicIndicesQuat
     {
-        char _1[1];
+        unsigned char _1[1];
         uint16_t _2[1];
     };
 
     struct XAnimDeltaPartQuatDataFrames
     {
-        XQuat* frames;
+        XQuat2* frames;
         XAnimDynamicIndicesQuat indices;
     };
 
     union XAnimDeltaPartQuatData
     {
         XAnimDeltaPartQuatDataFrames frames;
-        XQuat frame0;
+        XQuat2 frame0;
     };
 
     struct XAnimDeltaPartQuat
@@ -383,6 +388,22 @@ namespace T5
     {
         XAnimPartTrans* trans;
         XAnimDeltaPartQuat* quat;
+    };
+
+    enum XAnimPartType
+    {
+        PART_TYPE_NO_QUAT = 0x0,
+        PART_TYPE_HALF_QUAT = 0x1,
+        PART_TYPE_FULL_QUAT = 0x2,
+        PART_TYPE_HALF_QUAT_NO_SIZE = 0x3,
+        PART_TYPE_FULL_QUAT_NO_SIZE = 0x4,
+        PART_TYPE_SMALL_TRANS = 0x5,
+        PART_TYPE_TRANS = 0x6,
+        PART_TYPE_TRANS_NO_SIZE = 0x7,
+        PART_TYPE_NO_TRANS = 0x8,
+        PART_TYPE_ALL = 0x9,
+
+        PART_TYPE_COUNT
     };
 
     struct XAnimParts
@@ -399,9 +420,9 @@ namespace T5
         bool bLeftHandGripIK;
         bool bStreamable;
         unsigned int streamedFileSize;
-        unsigned char boneCount[10];
+        unsigned char boneCount[PART_TYPE_COUNT];
         unsigned char notifyCount;
-        char assetType;
+        unsigned char assetType;
         bool isDefault;
         unsigned int randomDataShortCount;
         unsigned int indexCount;
@@ -410,11 +431,11 @@ namespace T5
         float primedLength;
         float loopEntryTime;
         uint16_t* names;
-        char* dataByte;
+        unsigned char* dataByte;
         int16_t* dataShort;
         int* dataInt;
         int16_t* randomDataShort;
-        char* randomDataByte;
+        unsigned char* randomDataByte;
         int* randomDataInt;
         XAnimIndices indices;
         XAnimNotifyInfo* notify;
@@ -488,8 +509,8 @@ namespace T5
 
     struct XSurfaceCollisionTree
     {
-        float trans[3];
-        float scale[3];
+        vec3_t trans;
+        vec3_t scale;
         unsigned int nodeCount;
         XSurfaceCollisionNode* nodes;
         unsigned int leafCount;
@@ -3103,7 +3124,7 @@ namespace T5
         unsigned int dynEntClientWordCount[2];
         unsigned int dynEntClientCount[2];
         unsigned int* dynEntCellBits[2];
-        char* dynEntVisData[2][3];
+        raw_byte16* dynEntVisData[2][3];
     };
 
     struct GfxWorldLodChain
@@ -3289,9 +3310,9 @@ namespace T5
         uint16_t letter;
         char x0;
         char y0;
-        char dx;
-        char pixelWidth;
-        char pixelHeight;
+        unsigned char dx;
+        unsigned char pixelWidth;
+        unsigned char pixelHeight;
         float s0;
         float t0;
         float s1;
@@ -3757,7 +3778,8 @@ namespace T5
         WEAPON_ICON_RATIO_1TO1 = 0x0,
         WEAPON_ICON_RATIO_2TO1 = 0x1,
         WEAPON_ICON_RATIO_4TO1 = 0x2,
-        WEAPON_ICON_RATIO_COUNT = 0x3,
+
+        WEAPON_ICON_RATIO_NUM,
     };
 
     enum weapType_t
@@ -3770,7 +3792,8 @@ namespace T5
         WEAPTYPE_BOMB = 0x5,
         WEAPTYPE_MINE = 0x6,
         WEAPTYPE_MELEE = 0x7,
-        WEAPTYPE_NUM = 0x8,
+
+        WEAPTYPE_NUM,
     };
 
     enum weapClass_t
@@ -3788,7 +3811,8 @@ namespace T5
         WEAPCLASS_ITEM = 0xA,
         WEAPCLASS_MELEE = 0xB,
         WEAPCLASS_KILLSTREAK_ALT_STORED_WEAPON = 0xC,
-        WEAPCLASS_NUM = 0xD,
+
+        WEAPCLASS_NUM,
     };
 
     enum PenetrateType
@@ -3797,7 +3821,8 @@ namespace T5
         PENETRATE_TYPE_SMALL = 0x1,
         PENETRATE_TYPE_MEDIUM = 0x2,
         PENETRATE_TYPE_LARGE = 0x3,
-        PENETRATE_TYPE_COUNT = 0x4,
+
+        PENETRATE_TYPE_NUM,
     };
 
     enum ImpactType
@@ -3818,7 +3843,8 @@ namespace T5
         IMPACT_TYPE_TANK_SHELL = 0xD,
         IMPACT_TYPE_BOLT = 0xE,
         IMPACT_TYPE_BLADE = 0xF,
-        IMPACT_TYPE_COUNT = 0x10,
+
+        IMPACT_TYPE_NUM,
     };
 
     enum weapInventoryType_t
@@ -3828,7 +3854,8 @@ namespace T5
         WEAPINVENTORY_ITEM = 0x2,
         WEAPINVENTORY_ALTMODE = 0x3,
         WEAPINVENTORY_MELEE = 0x4,
-        WEAPINVENTORYCOUNT = 0x5,
+
+        WEAPINVENTORY_NUM,
     };
 
     enum weapFireType_t
@@ -3840,7 +3867,8 @@ namespace T5
         WEAPON_FIRETYPE_BURSTFIRE4 = 0x4,
         WEAPON_FIRETYPE_STACKED = 0x5,
         WEAPON_FIRETYPE_MINIGUN = 0x6,
-        WEAPON_FIRETYPECOUNT = 0x7,
+
+        WEAPON_FIRETYPE_NUM,
     };
 
     enum weapClipType_t
@@ -3851,7 +3879,8 @@ namespace T5
         WEAPON_CLIPTYPE_DP28 = 0x3,
         WEAPON_CLIPTYPE_PTRS = 0x4,
         WEAPON_CLIPTYPE_LMG = 0x5,
-        WEAPON_CLIPTYPECOUNT = 0x6,
+
+        WEAPON_CLIPTYPE_NUM,
     };
 
     enum OffhandClass
@@ -3861,7 +3890,8 @@ namespace T5
         OFFHAND_CLASS_SMOKE_GRENADE = 0x2,
         OFFHAND_CLASS_FLASH_GRENADE = 0x3,
         OFFHAND_CLASS_GEAR = 0x4,
-        OFFHAND_CLASS_COUNT = 0x5,
+
+        OFFHAND_CLASS_NUM,
     };
 
     enum OffhandSlot
@@ -3871,7 +3901,8 @@ namespace T5
         OFFHAND_SLOT_TACTICAL_GRENADE = 0x2,
         OFFHAND_SLOT_EQUIPMENT = 0x3,
         OFFHAND_SLOT_SPECIFIC_USE = 0x4,
-        OFFHAND_SLOT_COUNT = 0x5,
+
+        OFFHAND_SLOT_NUM,
     };
 
     enum weapStance_t
@@ -3879,7 +3910,8 @@ namespace T5
         WEAPSTANCE_STAND = 0x0,
         WEAPSTANCE_DUCK = 0x1,
         WEAPSTANCE_PRONE = 0x2,
-        WEAPSTANCE_NUM = 0x3,
+
+        WEAPSTANCE_NUM,
     };
 
     enum activeReticleType_t
@@ -3887,7 +3919,8 @@ namespace T5
         VEH_ACTIVE_RETICLE_NONE = 0x0,
         VEH_ACTIVE_RETICLE_PIP_ON_A_STICK = 0x1,
         VEH_ACTIVE_RETICLE_BOUNCING_DIAMOND = 0x2,
-        VEH_ACTIVE_RETICLE_COUNT = 0x3,
+
+        VEH_ACTIVE_RETICLE_NUM,
     };
 
     enum ammoCounterClipType_t
@@ -3899,14 +3932,16 @@ namespace T5
         AMMO_COUNTER_CLIP_ROCKET = 0x4,
         AMMO_COUNTER_CLIP_BELTFED = 0x5,
         AMMO_COUNTER_CLIP_ALTWEAPON = 0x6,
-        AMMO_COUNTER_CLIP_COUNT = 0x7,
+
+        AMMO_COUNTER_CLIP_NUM,
     };
 
     enum weapOverlayReticle_t
     {
         WEAPOVERLAYRETICLE_NONE = 0x0,
         WEAPOVERLAYRETICLE_CROSSHAIR = 0x1,
-        WEAPOVERLAYRETICLE_NUM = 0x2,
+
+        WEAPOVERLAYRETICLE_NUM,
     };
 
     enum WeapOverlayInteface_t
@@ -3914,7 +3949,8 @@ namespace T5
         WEAPOVERLAYINTERFACE_NONE = 0x0,
         WEAPOVERLAYINTERFACE_JAVELIN = 0x1,
         WEAPOVERLAYINTERFACE_TURRETSCOPE = 0x2,
-        WEAPOVERLAYINTERFACECOUNT = 0x3,
+
+        WEAPOVERLAYINTERFACE_NUM,
     };
 
     enum weapProjExposion_t
@@ -3929,7 +3965,8 @@ namespace T5
         WEAPPROJEXP_FIRE = 0x7,
         WEAPPROJEXP_NAPALMBLOB = 0x8,
         WEAPPROJEXP_BOLT = 0x9,
-        WEAPPROJEXP_NUM = 0xA,
+
+        WEAPPROJEXP_NUM,
     };
 
     enum WeapStickinessType
@@ -3940,7 +3977,8 @@ namespace T5
         WEAPSTICKINESS_GROUND = 0x3,
         WEAPSTICKINESS_GROUND_WITH_YAW = 0x4,
         WEAPSTICKINESS_FLESH = 0x5,
-        WEAPSTICKINESS_COUNT = 0x6,
+
+        WEAPSTICKINESS_NUM,
     };
 
     enum WeapRotateType
@@ -3948,7 +3986,8 @@ namespace T5
         WEAPROTATE_GRENADE_ROTATE = 0x0,
         WEAPROTATE_BLADE_ROTATE = 0x1,
         WEAPROTATE_CYLINDER_ROTATE = 0x2,
-        WEAPROTATE_COUNT = 0x3,
+
+        WEAPROTATE_NUM,
     };
 
     enum guidedMissileType_t
@@ -3960,7 +3999,8 @@ namespace T5
         MISSILE_GUIDANCE_BALLISTIC = 0x4,
         MISSILE_GUIDANCE_WIREGUIDED = 0x5,
         MISSILE_GUIDANCE_TVGUIDED = 0x6,
-        MISSILE_GUIDANCE_COUNT = 0x7,
+
+        MISSILE_GUIDANCE_NUM,
     };
 
     enum weapAnimFiles_t
@@ -4097,7 +4137,7 @@ namespace T5
         HITLOC_COUNT
     };
 
-    struct flameTable
+    struct FlameTable
     {
         float flameVar_streamChunkGravityStart;
         float flameVar_streamChunkGravityEnd;
@@ -4720,8 +4760,8 @@ namespace T5
         int scanPauseTime;
         const char* flameTableFirstPerson;
         const char* flameTableThirdPerson;
-        flameTable* flameTableFirstPersonPtr;
-        flameTable* flameTableThirdPersonPtr;
+        FlameTable* flameTableFirstPersonPtr;
+        FlameTable* flameTableThirdPersonPtr;
         FxEffectDef* tagFx_preparationEffect;
         FxEffectDef* tagFlash_preparationEffect;
         bool doGibbing;

@@ -17,6 +17,8 @@
 
 using namespace menu;
 
+constexpr auto ITEM_TYPE_OWNERDRAW = 8;
+
 class ItemScopeOperations
 {
     inline static const CommonItemFeatureType IW4_FEATURE_TYPE_BY_TYPE[0x18]{
@@ -253,8 +255,8 @@ namespace menu::item_scope_sequences
         {
             assert(state->m_current_item);
 
-            state->m_current_item->m_rect.x = MenuMatcherFactory::TokenNumericExpressionValue(state, result);
-            state->m_current_item->m_rect.y = MenuMatcherFactory::TokenNumericExpressionValue(state, result);
+            state->m_current_item->m_rect.x += MenuMatcherFactory::TokenNumericExpressionValue(state, result);
+            state->m_current_item->m_rect.y += MenuMatcherFactory::TokenNumericExpressionValue(state, result);
         }
     };
 
@@ -306,10 +308,10 @@ namespace menu::item_scope_sequences
                 create.KeywordIgnoreCase(std::move(keyName)).Capture(CAPTURE_FIRST_TOKEN),
                 create.Char('{'),
                 create.Optional(create.And({
-                    create.Text().Capture(CAPTURE_VALUE),
+                    create.TextOrNumeric().Capture(CAPTURE_VALUE),
                     create.OptionalLoop(create.And({
                         create.Char(';'),
-                        create.Text().Capture(CAPTURE_VALUE),
+                        create.TextOrNumeric().Capture(CAPTURE_VALUE),
                     })),
                 })),
                 create.Char('}'),
@@ -705,6 +707,7 @@ void ItemScopeSequences::AddSequences(FeatureLevel featureLevel, bool permissive
     AddSequence(std::make_unique<GenericIntPropertySequence>("ownerdraw",
                                                              [](const MenuFileParserState* state, const TokenPos&, const int value)
                                                              {
+                                                                 state->m_current_item->m_type = ITEM_TYPE_OWNERDRAW;
                                                                  state->m_current_item->m_owner_draw = value;
                                                              }));
     AddSequence(std::make_unique<GenericIntPropertySequence>("align",

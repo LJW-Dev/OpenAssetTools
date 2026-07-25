@@ -1,11 +1,15 @@
 #include "ObjWriterIW4.h"
 
+#include "Game/IW4/Font/FontDumperIW4.h"
+#include "Game/IW4/Image/ImageDumperIW4.h"
+#include "Game/IW4/Maps/MapEntsDumperIW4.h"
 #include "Game/IW4/Material/MaterialJsonDumperIW4.h"
 #include "Game/IW4/Techset/PixelShaderDumperIW4.h"
 #include "Game/IW4/Techset/TechsetDumperIW4.h"
 #include "Game/IW4/Techset/VertexShaderDumperIW4.h"
+#include "Game/IW4/Tracer/TracerDumperIW4.h"
+#include "Game/IW4/XAnim/XAnimDumperIW4.h"
 #include "Game/IW4/XModel/XModelDumperIW4.h"
-#include "Image/ImageDumperIW4.h"
 #include "Leaderboard/LeaderboardJsonDumperIW4.h"
 #include "LightDef/LightDefDumperIW4.h"
 #include "Localize/LocalizeDumperIW4.h"
@@ -20,7 +24,6 @@
 #include "Sound/SndCurveDumperIW4.h"
 #include "StringTable/StringTableDumperIW4.h"
 #include "StructuredDataDef/StructuredDataDefDumperIW4.h"
-#include "Tracer/TracerDumperIW4.h"
 #include "Vehicle/VehicleDumperIW4.h"
 #include "Weapon/WeaponDumperIW4.h"
 
@@ -30,7 +33,7 @@ void ObjWriter::RegisterAssetDumpers(AssetDumpingContext& context)
 {
     RegisterAssetDumper(std::make_unique<phys_preset::InfoStringDumperIW4>());
     RegisterAssetDumper(std::make_unique<phys_collmap::DumperIW4>());
-    // REGISTER_DUMPER(AssetDumperXAnimParts)
+    RegisterAssetDumper(std::make_unique<xanim::DumperIW4>());
     RegisterAssetDumper(std::make_unique<xmodel::DumperIW4>());
     RegisterAssetDumper(std::make_unique<material::JsonDumperIW4>());
 #ifdef EXPERIMENTAL_MATERIAL_COMPILATION
@@ -53,11 +56,11 @@ void ObjWriter::RegisterAssetDumpers(AssetDumpingContext& context)
     // REGISTER_DUMPER(AssetDumperComWorld)
     // REGISTER_DUMPER(AssetDumperGameWorldSp)
     // REGISTER_DUMPER(AssetDumperGameWorldMp)
-    // REGISTER_DUMPER(AssetDumperMapEnts)
+    RegisterAssetDumper(std::make_unique<map_ents::DumperIW4>());
     // REGISTER_DUMPER(AssetDumperFxWorld)
     // REGISTER_DUMPER(AssetDumperGfxWorld)
     RegisterAssetDumper(std::make_unique<light_def::DumperIW4>());
-    // REGISTER_DUMPER(AssetDumperFont_s)
+    RegisterAssetDumper(std::make_unique<font::JsonDumperIW4>());
     RegisterAssetDumper(std::make_unique<menu::MenuListDumperIW4>());
     RegisterAssetDumper(std::make_unique<menu::MenuDumperIW4>());
     RegisterAssetDumper(std::make_unique<localize::DumperIW4>());

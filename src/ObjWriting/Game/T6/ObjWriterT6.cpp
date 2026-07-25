@@ -3,14 +3,17 @@
 #include "BSP/AddonMapEntsDumperT6.h"
 #include "BSP/BSPDumperT6.h"
 #include "FontIcon/FontIconDumperT6.h"
+#include "Game/T6/Font/FontDumperT6.h"
+#include "Game/T6/Image/ImageDumperT6.h"
+#include "Game/T6/Maps/MapEntsDumperT6.h"
 #include "Game/T6/Material/MaterialJsonDumperT6.h"
 #include "Game/T6/Techset/TechsetDumperT6.h"
+#include "Game/T6/XAnim/XAnimDumperT6.h"
 #include "Game/T6/XModel/XModelDumperT6.h"
-#include "Image/ImageDumperT6.h"
 #include "Leaderboard/LeaderboardJsonDumperT6.h"
 #include "LightDef/LightDefDumperT6.h"
 #include "Localize/LocalizeDumperT6.h"
-#include "Maps/MapEntsDumperT6.h"
+#include "Maps/AddonMapEntsDumperT6.h"
 #include "PhysConstraints/PhysConstraintsInfoStringDumperT6.h"
 #include "PhysPreset/PhysPresetInfoStringDumperT6.h"
 #include "Qdb/QdbDumperT6.h"
@@ -35,7 +38,7 @@ void ObjWriter::RegisterAssetDumpers(AssetDumpingContext& context)
     RegisterAssetDumper(std::make_unique<phys_preset::InfoStringDumperT6>());
     RegisterAssetDumper(std::make_unique<phys_constraints::InfoStringDumperT6>());
     // REGISTER_DUMPER(AssetDumperDestructibleDef, m_destructible_def)
-    // REGISTER_DUMPER(AssetDumperXAnimParts, m_xanim_parts)
+    RegisterAssetDumper(std::make_unique<xanim::DumperT6>());
     RegisterAssetDumper(std::make_unique<xmodel::DumperT6>());
     RegisterAssetDumper(std::make_unique<material::JsonDumperT6>());
     RegisterAssetDumper(std::make_unique<techset::DumperT6>(
@@ -55,7 +58,7 @@ void ObjWriter::RegisterAssetDumpers(AssetDumpingContext& context)
     RegisterAssetDumper(std::make_unique<map_ents::DumperT6>());
     // REGISTER_DUMPER(AssetDumperGfxWorld, m_gfx_world)
     RegisterAssetDumper(std::make_unique<light_def::DumperT6>());
-    // REGISTER_DUMPER(AssetDumperFont, m_font)
+    RegisterAssetDumper(std::make_unique<font::JsonDumperT6>());
     RegisterAssetDumper(font_icon::CreateDumperT6());
     // REGISTER_DUMPER(AssetDumperMenuList, m_menu_list)
     // REGISTER_DUMPER(AssetDumperMenuDef, m_menu_def)
@@ -78,7 +81,7 @@ void ObjWriter::RegisterAssetDumpers(AssetDumpingContext& context)
     // REGISTER_DUMPER(AssetDumperKeyValuePairs, m_key_value_pairs)
     RegisterAssetDumper(std::make_unique<vehicle::DumperT6>());
     // REGISTER_DUMPER(AssetDumperMemoryBlock, m_memory_block)
-    // REGISTER_DUMPER(AssetDumperAddonMapEnts, m_addon_map_ents)
+    RegisterAssetDumper(std::make_unique<addon_map_ents::DumperT6>());
     RegisterAssetDumper(std::make_unique<tracer::DumperT6>());
     // REGISTER_DUMPER(AssetDumperSkinnedVertsDef, m_skinned_verts)
     RegisterAssetDumper(std::make_unique<qdb::DumperT6>());

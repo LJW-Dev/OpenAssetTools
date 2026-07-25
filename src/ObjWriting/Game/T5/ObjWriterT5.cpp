@@ -1,23 +1,28 @@
 #include "ObjWriterT5.h"
 
+#include "Game/T5/Font/FontDumperT5.h"
+#include "Game/T5/Image/ImageDumperT5.h"
+#include "Game/T5/Maps/MapEntsDumperT5.h"
 #include "Game/T5/Material/MaterialJsonDumperT5.h"
 #include "Game/T5/Techset/TechsetDumperT5.h"
+#include "Game/T5/XAnim/XAnimDumperT5.h"
 #include "Game/T5/XModel/XModelDumperT5.h"
-#include "Image/ImageDumperT5.h"
 #include "LightDef/LightDefDumperT5.h"
 #include "Localize/LocalizeDumperT5.h"
+#include "PhysConstraints/PhysConstraintsInfoStringDumperT5.h"
 #include "PhysPreset/PhysPresetInfoStringDumperT5.h"
 #include "RawFile/RawFileDumperT5.h"
 #include "StringTable/StringTableDumperT5.h"
+#include "Weapon/WeaponDumperT5.h"
 
 using namespace T5;
 
 void ObjWriter::RegisterAssetDumpers(AssetDumpingContext& context)
 {
     RegisterAssetDumper(std::make_unique<phys_preset::InfoStringDumperT5>());
-    // REGISTER_DUMPER(AssetDumperPhysConstraints, m_phys_constraints)
+    RegisterAssetDumper(std::make_unique<phys_constraints::InfoStringDumperT5>());
     // REGISTER_DUMPER(AssetDumperDestructibleDef, m_destructible_def)
-    // REGISTER_DUMPER(AssetDumperXAnimParts, m_xanim_parts)
+    RegisterAssetDumper(std::make_unique<xanim::DumperT5>());
     RegisterAssetDumper(std::make_unique<xmodel::DumperT5>());
     RegisterAssetDumper(std::make_unique<material::JsonDumperT5>());
     RegisterAssetDumper(std::make_unique<techset::DumperT5>(
@@ -34,14 +39,14 @@ void ObjWriter::RegisterAssetDumpers(AssetDumpingContext& context)
     // REGISTER_DUMPER(AssetDumperComWorld, m_com_world)
     // REGISTER_DUMPER(AssetDumperGameWorldSp, m_game_world_sp)
     // REGISTER_DUMPER(AssetDumperGameWorldMp, m_game_world_mp)
-    // REGISTER_DUMPER(AssetDumperMapEnts, m_map_ents)
+    RegisterAssetDumper(std::make_unique<map_ents::DumperT5>());
     // REGISTER_DUMPER(AssetDumperGfxWorld, m_gfx_world)
     RegisterAssetDumper(std::make_unique<light_def::DumperT5>());
-    // REGISTER_DUMPER(AssetDumperFont, m_font)
+    RegisterAssetDumper(std::make_unique<font::JsonDumperT5>());
     // REGISTER_DUMPER(AssetDumperMenuList, m_menu_list)
     // REGISTER_DUMPER(AssetDumperMenuDef, m_menu_def)
     RegisterAssetDumper(std::make_unique<localize::DumperT5>());
-    // REGISTER_DUMPER(AssetDumperWeapon, m_weapon)
+    RegisterAssetDumper(std::make_unique<weapon::DumperT5>());
     // REGISTER_DUMPER(AssetDumperSndDriverGlobals, m_snd_driver_globals)
     // REGISTER_DUMPER(AssetDumperFxEffectDef, m_fx)
     // REGISTER_DUMPER(AssetDumperFxImpactTable, m_fx_impact_table)

@@ -88,7 +88,7 @@ namespace T6
     struct XRigidVertList;
     struct XSurface;
     struct XModel;
-    struct flameTable;
+    struct FlameTable;
     struct cStaticModel_s;
     struct FxElemVelStateSample;
     struct FxElemVisStateSample;
@@ -405,7 +405,8 @@ namespace T6
         CONSTRAINT_LAUNCH = 0x7,
         CONSTRAINT_ROPE = 0x8,
         CONSTRAINT_LIGHT = 0x9,
-        NUM_CONSTRAINT_TYPES = 0xA,
+
+        NUM_CONSTRAINT_TYPES
     };
 
     enum AttachPointType
@@ -468,9 +469,25 @@ namespace T6
 
     union XAnimIndices
     {
-        char* _1;
+        unsigned char* _1;
         uint16_t* _2;
         void* data;
+    };
+
+    enum XAnimPartType
+    {
+        PART_TYPE_NO_QUAT = 0x0,
+        PART_TYPE_HALF_QUAT = 0x1,
+        PART_TYPE_FULL_QUAT = 0x2,
+        PART_TYPE_HALF_QUAT_NO_SIZE = 0x3,
+        PART_TYPE_FULL_QUAT_NO_SIZE = 0x4,
+        PART_TYPE_SMALL_TRANS = 0x5,
+        PART_TYPE_TRANS = 0x6,
+        PART_TYPE_TRANS_NO_SIZE = 0x7,
+        PART_TYPE_NO_TRANS = 0x8,
+        PART_TYPE_ALL = 0x9,
+
+        PART_TYPE_COUNT
     };
 
     struct XAnimParts
@@ -487,9 +504,9 @@ namespace T6
         bool bDelta3D;
         bool bLeftHandGripIK;
         unsigned int streamedFileSize;
-        unsigned char boneCount[10];
+        unsigned char boneCount[PART_TYPE_COUNT];
         unsigned char notifyCount;
-        char assetType;
+        unsigned char assetType;
         bool isDefault;
         unsigned int randomDataShortCount;
         unsigned int indexCount;
@@ -498,11 +515,11 @@ namespace T6
         float primedLength;
         float loopEntryTime;
         uint16_t* names;
-        char* dataByte;
+        unsigned char* dataByte;
         int16_t* dataShort;
         int* dataInt;
         int16_t* randomDataShort;
-        char* randomDataByte;
+        unsigned char* randomDataByte;
         int* randomDataInt;
         XAnimIndices indices;
         XAnimNotifyInfo* notify;
@@ -822,7 +839,7 @@ namespace T6
         uint32_t valid : 1;
     };
 
-    enum MapType
+    enum MapType : unsigned char
     {
         MAPTYPE_NONE = 0x0,
         MAPTYPE_INVALID1 = 0x1,
@@ -884,7 +901,7 @@ namespace T6
     struct GfxImage
     {
         GfxTexture texture;
-        char mapType;
+        MapType mapType;
         char semantic;
         char category;
         bool delayLoadPixels;
@@ -1296,8 +1313,6 @@ namespace T6
         vec3_t sunFxPosition;
     };
 
-    typedef tdef_align32(4) GfxDrawSurf GfxDrawSurf_align4;
-
     struct GfxWorldDpvsStatic
     {
         unsigned int smodelCount;
@@ -1320,7 +1335,7 @@ namespace T6
         GfxStaticModelInst* smodelInsts;
         GfxSurface* surfaces;
         GfxStaticModelDrawInst* smodelDrawInsts;
-        GfxDrawSurf_align4* surfaceMaterials;
+        GfxDrawSurf* surfaceMaterials;
         raw_byte128* surfaceCastsSunShadow;
         raw_byte128* surfaceCastsShadow;
         raw_byte128* smodelCastsShadow;
@@ -4016,9 +4031,9 @@ namespace T6
         uint16_t letter;
         char x0;
         char y0;
-        char dx;
-        char pixelWidth;
-        char pixelHeight;
+        unsigned char dx;
+        unsigned char pixelWidth;
+        unsigned char pixelHeight;
         float s0;
         float t0;
         float s1;
@@ -4314,7 +4329,7 @@ namespace T6
         AMMO_COUNTER_CLIP_COUNT = 0x7,
     };
 
-    enum WeapOverlayInteface_t
+    enum WeapOverlayInterface_t
     {
         WEAPOVERLAYINTERFACE_NONE = 0x0,
         WEAPOVERLAYINTERFACE_JAVELIN = 0x1,
@@ -4690,7 +4705,7 @@ namespace T6
         float adsMoveSpeedScale;
         float sprintDurationScale;
         weapOverlayReticle_t overlayReticle;
-        WeapOverlayInteface_t overlayInterface;
+        WeapOverlayInterface_t overlayInterface;
         float overlayWidth;
         float overlayHeight;
         float fAdsBobFactor;
@@ -4963,8 +4978,8 @@ namespace T6
         int scanPauseTime;
         const char* flameTableFirstPerson;
         const char* flameTableThirdPerson;
-        flameTable* flameTableFirstPersonPtr;
-        flameTable* flameTableThirdPersonPtr;
+        FlameTable* flameTableFirstPersonPtr;
+        FlameTable* flameTableThirdPersonPtr;
         FxEffectDef* tagFx_preparationEffect;
         FxEffectDef* tagFlash_preparationEffect;
         bool doGibbing;
@@ -5660,7 +5675,7 @@ namespace T6
 
     union XAnimDynamicIndicesTrans
     {
-        char _1[1];
+        unsigned char _1[1];
         uint16_t _2[1];
     };
 
@@ -5681,14 +5696,8 @@ namespace T6
     struct XAnimPartTrans
     {
         uint16_t size;
-        char smallTrans;
+        unsigned char smallTrans;
         XAnimPartTransData u;
-    };
-
-    union XAnimDynamicIndicesDeltaQuat2
-    {
-        char _1[1];
-        uint16_t _2[1];
     };
 
     struct type_align(4) XQuat2
@@ -5696,10 +5705,16 @@ namespace T6
         int16_t value[2];
     };
 
+    union XAnimDynamicIndicesQuat2
+    {
+        unsigned char _1[1];
+        uint16_t _2[1];
+    };
+
     struct type_align32(4) XAnimDeltaPartQuatDataFrames2
     {
         XQuat2* frames;
-        XAnimDynamicIndicesDeltaQuat2 indices;
+        XAnimDynamicIndicesQuat2 indices;
     };
 
     union XAnimDeltaPartQuatData2
@@ -5714,21 +5729,21 @@ namespace T6
         XAnimDeltaPartQuatData2 u;
     };
 
-    union XAnimDynamicIndicesDeltaQuat
-    {
-        char _1[1];
-        uint16_t _2[1];
-    };
-
     struct type_align(4) XQuat
     {
         int16_t value[4];
     };
 
+    union XAnimDynamicIndicesQuat
+    {
+        unsigned char _1[1];
+        uint16_t _2[1];
+    };
+
     struct type_align32(4) XAnimDeltaPartQuatDataFrames
     {
         XQuat* frames;
-        XAnimDynamicIndicesDeltaQuat indices;
+        XAnimDynamicIndicesQuat indices;
     };
 
     union XAnimDeltaPartQuatData
@@ -6716,7 +6731,7 @@ namespace T6
         int animDuration;
     };
 
-    struct flameTable
+    struct FlameTable
     {
         float flameVar_streamChunkGravityStart;
         float flameVar_streamChunkGravityEnd;

@@ -2,12 +2,15 @@
 
 #include "Asset/GlobalAssetPoolsLoader.h"
 #include "Game/T5/AssetMarkerT5.h"
+#include "Game/T5/Font/FontLoaderT5.h"
 #include "Game/T5/GameT5.h"
 #include "Game/T5/Image/ImageLoaderEmbeddedT5.h"
 #include "Game/T5/Image/ImageLoaderExternalT5.h"
 #include "Game/T5/T5.h"
 #include "Game/T5/Techset/PixelShaderLoaderT5.h"
 #include "Game/T5/Techset/VertexShaderLoaderT5.h"
+#include "Game/T5/Weapon/AccuracyGraphLoaderT5.h"
+#include "Game/T5/XAnim/XAnimLoaderT5.h"
 #include "Game/T5/XModel/LoaderXModelT5.h"
 #include "LightDef/LightDefLoaderT5.h"
 #include "Localize/LoaderLocalizeT5.h"
@@ -17,6 +20,9 @@
 #include "PhysPreset/RawLoaderPhysPresetT5.h"
 #include "RawFile/LoaderRawFileT5.h"
 #include "StringTable/LoaderStringTableT5.h"
+#include "Weapon/FlameTableLoaderT5.h"
+#include "Weapon/WeaponGdtLoaderT5.h"
+#include "Weapon/WeaponRawLoaderT5.h"
 
 #include <memory>
 
@@ -112,7 +118,7 @@ namespace
         collection.AddAssetCreator(phys_preset::CreateGdtLoaderT5(memory, gdt, zone));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderPhysConstraints>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderDestructibleDef>(memory));
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderXAnim>(memory));
+        collection.AddAssetCreator(xanim::CreateLoaderT5(memory, searchPath, zone));
         collection.AddAssetCreator(xmodel::CreateLoaderT5(memory, searchPath, zone));
         collection.AddAssetCreator(material::CreateLoaderT5(memory, searchPath));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderTechniqueSet>(memory));
@@ -127,11 +133,12 @@ namespace
         // collection.AddAssetCreator(std::make_unique<AssetLoaderMapEnts>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderGfxWorld>(memory));
         collection.AddAssetCreator(light_def::CreateLoaderT5(memory, searchPath));
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderFont>(memory));
+        collection.AddAssetCreator(font::CreateLoaderT5(memory, searchPath));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderMenuList>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderMenu>(memory));
         collection.AddAssetCreator(localize::CreateLoaderT5(memory, searchPath, zone));
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderWeapon>(memory));
+        collection.AddAssetCreator(weapon::CreateRawLoaderT5(memory, searchPath, zone));
+        collection.AddAssetCreator(weapon::CreateGdtLoaderT5(memory, searchPath, gdt, zone));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderSoundDriverGlobals>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderFx>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderImpactFx>(memory));
@@ -145,6 +152,8 @@ namespace
 
         collection.AddSubAssetCreator(techset::CreateVertexShaderLoaderT5(memory, searchPath));
         collection.AddSubAssetCreator(techset::CreatePixelShaderLoaderT5(memory, searchPath));
+        collection.AddSubAssetCreator(weapon::CreateAccuracyGraphLoaderT5(memory, searchPath));
+        collection.AddSubAssetCreator(weapon::CreateFlameTableLoaderT5(memory, searchPath, zone));
     }
 } // namespace
 

@@ -2,12 +2,15 @@
 
 #include "Asset/GlobalAssetPoolsLoader.h"
 #include "Game/IW3/AssetMarkerIW3.h"
+#include "Game/IW3/Font/FontLoaderIW3.h"
 #include "Game/IW3/GameIW3.h"
 #include "Game/IW3/IW3.h"
 #include "Game/IW3/Image/ImageLoaderEmbeddedIW3.h"
 #include "Game/IW3/Image/ImageLoaderExternalIW3.h"
 #include "Game/IW3/Techset/PixelShaderLoaderIW3.h"
 #include "Game/IW3/Techset/VertexShaderLoaderIW3.h"
+#include "Game/IW3/Weapon/AccuracyGraphLoaderIW3.h"
+#include "Game/IW3/XAnim/XAnimLoaderIW3.h"
 #include "Game/IW3/XModel/LoaderXModelIW3.h"
 #include "LightDef/LightDefLoaderIW3.h"
 #include "Localize/AssetLoaderLocalizeIW3.h"
@@ -18,6 +21,8 @@
 #include "RawFile/AssetLoaderRawFileIW3.h"
 #include "Sound/LoaderSoundCurveIW3.h"
 #include "StringTable/AssetLoaderStringTableIW3.h"
+#include "Weapon/WeaponGdtLoaderIW3.h"
+#include "Weapon/WeaponRawLoaderIW3.h"
 
 #include <memory>
 
@@ -99,7 +104,7 @@ namespace
 
         collection.AddAssetCreator(phys_preset::CreateRawLoaderIW3(memory, searchPath, zone));
         collection.AddAssetCreator(phys_preset::CreateGdtLoaderIW3(memory, gdt, zone));
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderXAnim>(memory));
+        collection.AddAssetCreator(xanim::CreateLoaderIW3(memory, searchPath, zone));
         collection.AddAssetCreator(xmodel::CreateLoaderIW3(memory, searchPath, zone));
         collection.AddAssetCreator(material::CreateLoaderIW3(memory, searchPath));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderTechniqueSet>(memory));
@@ -115,11 +120,12 @@ namespace
         // collection.AddAssetCreator(std::make_unique<AssetLoaderMapEnts>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderGfxWorld>(memory));
         collection.AddAssetCreator(light_def::CreateLoaderIW3(memory, searchPath));
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderFont>(memory));
+        collection.AddAssetCreator(font::CreateLoaderIW3(memory, searchPath));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderMenuList>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderMenu>(memory));
         collection.AddAssetCreator(localize::CreateLoaderIW3(memory, searchPath, zone));
-        // collection.AddAssetCreator(std::make_unique<AssetLoaderWeapon>(memory));
+        collection.AddAssetCreator(weapon::CreateRawLoaderIW3(memory, searchPath, zone));
+        collection.AddAssetCreator(weapon::CreateGdtLoaderIW3(memory, searchPath, gdt, zone));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderSoundDriverGlobals>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderFx>(memory));
         // collection.AddAssetCreator(std::make_unique<AssetLoaderImpactFx>(memory));
@@ -128,6 +134,7 @@ namespace
 
         collection.AddSubAssetCreator(techset::CreateVertexShaderLoaderIW3(memory, searchPath));
         collection.AddSubAssetCreator(techset::CreatePixelShaderLoaderIW3(memory, searchPath));
+        collection.AddSubAssetCreator(weapon::CreateAccuracyGraphLoaderIW3(memory, searchPath));
     }
 } // namespace
 

@@ -6,7 +6,8 @@
 #include "Game/T6/Weapon/WeaponFields.h"
 #include "Game/T6/Weapon/WeaponStrings.h"
 #include "Utils/Logging/Log.h"
-#include "Weapon/AccuracyGraphLoader.h"
+#include "Utils/StringUtils.h"
+#include "Weapon/WeaponCommon.h"
 
 #include <cassert>
 #include <cstring>
@@ -390,56 +391,87 @@ namespace
         }
     };
 
-    void ConvertAccuracyGraph(
-        const GenericGraph2D& graph, vec2_t*& originalGraphKnots, int& originalGraphKnotCount, vec2_t*& graphKnots, int& graphKnotCount, MemoryManager& memory)
+    bool LoadAccuracyGraph(const std::string& graphName,
+                           vec2_t*& originalGraphKnots,
+                           int& originalGraphKnotCount,
+                           vec2_t*& graphKnots,
+                           int& graphKnotCount,
+                           AssetCreationContext& context)
     {
-        originalGraphKnotCount = static_cast<int>(graph.knots.size());
-        originalGraphKnots = memory.Alloc<vec2_t>(originalGraphKnotCount);
+        auto* accuracyGraphAsset = context.LoadSubAsset<SubAssetAccuracyGraph>(graphName);
+        if (!accuracyGraphAsset)
+            return false;
 
-        for (auto i = 0; i < originalGraphKnotCount; i++)
-        {
-            const auto& commonKnot = graph.knots[i];
-            originalGraphKnots[i].x = static_cast<float>(commonKnot.x);
-            originalGraphKnots[i].y = static_cast<float>(commonKnot.y);
-        }
+        const auto* accuracyGraph = accuracyGraphAsset->Asset();
 
-        graphKnots = originalGraphKnots;
-        graphKnotCount = originalGraphKnotCount;
+        assert(accuracyGraphAsset->m_dependencies.empty());
+        assert(accuracyGraphAsset->m_used_script_strings.empty());
+        assert(accuracyGraphAsset->m_indirect_asset_references.empty());
+
+        originalGraphKnots = accuracyGraph->graphKnots;
+        originalGraphKnotCount = accuracyGraph->graphKnotCount;
+
+        graphKnots = accuracyGraph->graphKnots;
+        graphKnotCount = accuracyGraph->graphKnotCount;
+
+        return true;
     }
 
     bool LoadAccuracyGraphs(WeaponFullDef& weaponFullDef, MemoryManager& memory, ISearchPath& searchPath, AssetCreationContext& context)
     {
-        auto& accuracyGraphLoader = context.GetZoneAssetCreationState<AccuracyGraphLoader>();
-
         if (weaponFullDef.weapDef.aiVsAiAccuracyGraphName && weaponFullDef.weapDef.aiVsAiAccuracyGraphName[0])
         {
-            const auto* graph = accuracyGraphLoader.LoadAiVsAiGraph(searchPath, weaponFullDef.weapDef.aiVsAiAccuracyGraphName);
-            if (!graph)
+            if (!LoadAccuracyGraph(weapon::GetAssetNameForAiVsAiAccuracyGraph(weaponFullDef.weapDef.aiVsAiAccuracyGraphName),
+                                   weaponFullDef.weapDef.originalAiVsAiAccuracyGraphKnots,
+                                   weaponFullDef.weapDef.originalAiVsAiAccuracyGraphKnotCount,
+                                   weaponFullDef.weapDef.aiVsAiAccuracyGraphKnots,
+                                   weaponFullDef.weapDef.aiVsAiAccuracyGraphKnotCount,
+                                   context))
+            {
                 return false;
-
-            ConvertAccuracyGraph(*graph,
-                                 weaponFullDef.weapDef.originalAiVsAiAccuracyGraphKnots,
-                                 weaponFullDef.weapDef.originalAiVsAiAccuracyGraphKnotCount,
-                                 weaponFullDef.weapDef.aiVsAiAccuracyGraphKnots,
-                                 weaponFullDef.weapDef.aiVsAiAccuracyGraphKnotCount,
-                                 memory);
+            }
         }
 
         if (weaponFullDef.weapDef.aiVsPlayerAccuracyGraphName && weaponFullDef.weapDef.aiVsPlayerAccuracyGraphName[0])
         {
-            const auto* graph = accuracyGraphLoader.LoadAiVsPlayerGraph(searchPath, weaponFullDef.weapDef.aiVsPlayerAccuracyGraphName);
-            if (!graph)
+            if (!LoadAccuracyGraph(weapon::GetAssetNameForAiVsPlayerAccuracyGraph(weaponFullDef.weapDef.aiVsPlayerAccuracyGraphName),
+                                   weaponFullDef.weapDef.originalAiVsPlayerAccuracyGraphKnots,
+                                   weaponFullDef.weapDef.originalAiVsPlayerAccuracyGraphKnotCount,
+                                   weaponFullDef.weapDef.aiVsPlayerAccuracyGraphKnots,
+                                   weaponFullDef.weapDef.aiVsPlayerAccuracyGraphKnotCount,
+                                   context))
+            {
                 return false;
-
-            ConvertAccuracyGraph(*graph,
-                                 weaponFullDef.weapDef.originalAiVsPlayerAccuracyGraphKnots,
-                                 weaponFullDef.weapDef.originalAiVsPlayerAccuracyGraphKnotCount,
-                                 weaponFullDef.weapDef.aiVsPlayerAccuracyGraphKnots,
-                                 weaponFullDef.weapDef.aiVsPlayerAccuracyGraphKnotCount,
-                                 memory);
+            }
         }
 
         return true;
+    }
+
+    bool LoadFlameTable(const char* flameTableName, FlameTable*& flameTablePtr, AssetRegistration<AssetWeapon>& registration, AssetCreationContext& context)
+    {
+        if (flameTableName && flameTableName[0] != '\0')
+        {
+            auto* flameTableAsset = context.LoadSubAsset<SubAssetFlameTable>(flameTableName);
+            if (!flameTableAsset)
+                return false;
+
+            for (auto* dependency : flameTableAsset->m_dependencies)
+                registration.AddDependency(dependency);
+
+            assert(flameTableAsset->m_used_script_strings.empty());
+            assert(flameTableAsset->m_indirect_asset_references.empty());
+
+            flameTablePtr = flameTableAsset->Asset();
+        }
+
+        return true;
+    }
+
+    bool LoadFlameTables(WeaponFullDef& weaponFullDef, AssetRegistration<AssetWeapon>& registration, AssetCreationContext& context)
+    {
+        return LoadFlameTable(weaponFullDef.weapDef.flameTableFirstPerson, weaponFullDef.weapDef.flameTableFirstPersonPtr, registration, context)
+               && LoadFlameTable(weaponFullDef.weapDef.flameTableThirdPerson, weaponFullDef.weapDef.flameTableThirdPersonPtr, registration, context);
     }
 
     void LinkWeaponFullDefSubStructs(WeaponFullDef& weapon)
@@ -462,25 +494,109 @@ namespace
         weapon.weapDef.locationDamageMultipliers = weapon.locationDamageMultipliers;
     }
 
-    void CalculateWeaponFields(WeaponFullDef& weapon)
+    bool IsDefaultWeapon(const WeaponFullDef& weapon)
     {
-        // iAttachments
+        return strcmp(weapon.weapVariantDef.szInternalName, "defaultweapon") == 0 || strcmp(weapon.weapVariantDef.szInternalName, "defaultweapon_mp") == 0;
+    }
+
+    void SetWeaponDefaults(WeaponFullDef& weapon)
+    {
+        if (IsDefaultWeapon(weapon))
+            return;
+
+        if (!weapon.weapDef.viewLastShotEjectEffect)
+            weapon.weapDef.viewLastShotEjectEffect = weapon.weapDef.viewShellEjectEffect;
+        if (!weapon.weapDef.worldLastShotEjectEffect)
+            weapon.weapDef.worldLastShotEjectEffect = weapon.weapDef.worldShellEjectEffect;
+        if (!weapon.weapDef.raiseSound)
+            weapon.weapDef.raiseSound = "wpn_default_raise";
+        if (!weapon.weapDef.putawaySound)
+            weapon.weapDef.putawaySound = "wpn_default_putaway";
+        if (!weapon.weapDef.pickupSound)
+            weapon.weapDef.pickupSound = "wpn_default_pickup";
+        if (!weapon.weapDef.ammoPickupSound)
+            weapon.weapDef.ammoPickupSound = "wpn_default_ammo_pickup";
+        if (!weapon.weapDef.emptyFireSound)
+            weapon.weapDef.emptyFireSound = "wpn_default_no_ammo";
+    }
+
+    void SetupTransitionTimes(WeaponFullDef& weapon)
+    {
+        if (weapon.weapVariantDef.iAdsTransInTime <= 0)
+            weapon.weapVariantDef.fOOPosAnimLength[0] = 1.0f / 300.0f; // 0.0033333334f;
+        else
+            weapon.weapVariantDef.fOOPosAnimLength[0] = 1.0f / static_cast<float>(weapon.weapVariantDef.iAdsTransInTime);
+
+        if (weapon.weapVariantDef.iAdsTransOutTime <= 0)
+            weapon.weapVariantDef.fOOPosAnimLength[1] = 1.0f / 500.0f; // 0.0020000001f
+        else
+            weapon.weapVariantDef.fOOPosAnimLength[1] = 1.0f / static_cast<float>(weapon.weapVariantDef.iAdsTransOutTime);
+    }
+
+    void CheckWeaponDamageRanges(WeaponFullDef& weapon)
+    {
+        if (strcmp(weapon.weapVariantDef.szInternalName, "none") == 0)
+            return;
+
+        if (weapon.weapDef.damageRange[0] <= 0.0)
+            weapon.weapDef.damageRange[0] = 999999.0f;
+        if (weapon.weapDef.damageRange[5] <= 0.0)
+            weapon.weapDef.damageRange[5] = 999999.12f; // oddly specific number, no clue
+    }
+
+    void CheckCrosshairValues(const WeaponFullDef& weapon)
+    {
+        if (weapon.weapDef.enemyCrosshairRange > 15000.0f)
+            con::warn("Weapon {}: Enemy crosshair ranges should be less than 15000", weapon.weapVariantDef.szInternalName);
+    }
+
+    void CheckProjectileValues(const WeaponFullDef& weapon)
+    {
+        if (weapon.weapDef.weapType != WEAPTYPE_PROJECTILE)
+            return;
+
+        if (weapon.weapDef.iProjectileSpeed <= 0)
+            con::warn("Weapon {}: Projectile speed must be greater than 0.0", weapon.weapVariantDef.szDisplayName);
+
+        if (weapon.weapDef.destabilizationCurvatureMax >= 1000000000.0f || weapon.weapDef.destabilizationCurvatureMax < 0.0f)
+            con::warn("Weapon {}: Destabilization angle must be between 0 and 45 degrees", weapon.weapVariantDef.szDisplayName);
+
+        if (weapon.weapDef.destabilizationRateTime < 0.0f)
+            con::warn("Weapon {}: Destabilization rate time must be non-negative", weapon.weapVariantDef.szDisplayName);
+    }
+
+    void CheckSharedAmmoValues(const WeaponFullDef& weapon)
+    {
+        if (weapon.weapVariantDef.szAmmoName)
+            utils::MakeStringLowerCase(const_cast<char*>(weapon.weapVariantDef.szAmmoName));
+
+        if (weapon.weapVariantDef.szClipName)
+            utils::MakeStringLowerCase(const_cast<char*>(weapon.weapVariantDef.szClipName));
+    }
+
+    void CheckAttachModelTags(const WeaponFullDef& weapon)
+    {
+        for (auto* tag : weapon.attachViewModelTag)
+        {
+            if (tag)
+                utils::MakeStringLowerCase(const_cast<char*>(tag));
+        }
+
+        for (auto* tag : weapon.attachWorldModelTag)
+        {
+            if (tag)
+                utils::MakeStringLowerCase(const_cast<char*>(tag));
+        }
+    }
+
+    void SetupAttachmentField(WeaponFullDef& weapon)
+    {
         weapon.weapVariantDef.iAttachments = 0;
         for (auto i = 1u; i < sizeof(WeaponVariantDef::iAttachments) * 8; i++) // Bit for default attachment always 0
         {
             if (weapon.attachments[i])
                 weapon.weapVariantDef.iAttachments |= 1 << i;
         }
-
-        if (weapon.weapVariantDef.iAdsTransInTime <= 0)
-            weapon.weapVariantDef.fOOPosAnimLength[0] = 0.0033333334f;
-        else
-            weapon.weapVariantDef.fOOPosAnimLength[0] = 1.0f / static_cast<float>(weapon.weapVariantDef.iAdsTransInTime);
-
-        if (weapon.weapVariantDef.iAdsTransOutTime <= 0)
-            weapon.weapVariantDef.fOOPosAnimLength[1] = 0.0020000001f;
-        else
-            weapon.weapVariantDef.fOOPosAnimLength[1] = 1.0f / static_cast<float>(weapon.weapVariantDef.iAdsTransOutTime);
     }
 
     bool IsStringOverride(const char* baseString, const char* overrideString)
@@ -608,7 +724,7 @@ namespace weapon
     {
     }
 
-    AssetCreationResult InfoStringLoaderT6::CreateAsset(const std::string& assetName, const InfoString& infoString, AssetCreationContext& context)
+    AssetCreationResult InfoStringLoaderT6::CreateAsset(const std::string& assetName, const InfoString& infoString, AssetCreationContext& context) const
     {
         auto* weaponFullDef = m_memory.Alloc<WeaponFullDef>();
         weaponFullDef->weapVariantDef.szInternalName = m_memory.Dup(assetName.c_str());
@@ -625,10 +741,27 @@ namespace weapon
             return AssetCreationResult::Failure();
         }
 
-        CalculateWeaponFields(*weaponFullDef);
-        CalculateAttachmentFields(*weaponFullDef);
+        if (!LoadAccuracyGraphs(*weaponFullDef, m_memory, m_search_path, context))
+        {
+            con::error("Failed to load accuracy tables of weapon: \"{}\"", assetName);
+            return AssetCreationResult::Failure();
+        }
 
-        LoadAccuracyGraphs(*weaponFullDef, m_memory, m_search_path, context);
+        if (!LoadFlameTables(*weaponFullDef, registration, context))
+        {
+            con::error("Failed to load flame tables of weapon: \"{}\"", assetName);
+            return AssetCreationResult::Failure();
+        }
+
+        SetWeaponDefaults(*weaponFullDef);
+        SetupTransitionTimes(*weaponFullDef);
+        CheckWeaponDamageRanges(*weaponFullDef);
+        SetupAttachmentField(*weaponFullDef);
+        CalculateAttachmentFields(*weaponFullDef);
+        CheckCrosshairValues(*weaponFullDef);
+        CheckProjectileValues(*weaponFullDef);
+        CheckSharedAmmoValues(*weaponFullDef);
+        CheckAttachModelTags(*weaponFullDef);
 
         return AssetCreationResult::Success(context.AddAsset(std::move(registration)));
     }

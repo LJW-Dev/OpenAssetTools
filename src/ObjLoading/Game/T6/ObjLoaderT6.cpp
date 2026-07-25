@@ -6,12 +6,15 @@
 #include "FontIcon/JsonLoaderFontIconT6.h"
 #include "Game/T6/AssetMarkerT6.h"
 #include "Game/T6/CommonT6.h"
+#include "Game/T6/Font/FontLoaderT6.h"
 #include "Game/T6/GameT6.h"
 #include "Game/T6/Image/ImageLoaderEmbeddedT6.h"
 #include "Game/T6/Image/ImageLoaderExternalT6.h"
 #include "Game/T6/T6.h"
 #include "Game/T6/Techset/PixelShaderLoaderT6.h"
 #include "Game/T6/Techset/VertexShaderLoaderT6.h"
+#include "Game/T6/Weapon/AccuracyGraphLoaderT6.h"
+#include "Game/T6/XAnim/XAnimLoaderT6.h"
 #include "Game/T6/XModel/LoaderXModelT6.h"
 #include "Image/Dx12TextureLoader.h"
 #include "Image/IwiLoader.h"
@@ -43,6 +46,7 @@
 #include "Weapon/AttachmentUniqueGdtLoaderT6.h"
 #include "Weapon/AttachmentUniqueRawLoaderT6.h"
 #include "Weapon/CamoJsonLoaderT6.h"
+#include "Weapon/FlameTableLoaderT6.h"
 #include "Weapon/WeaponGdtLoaderT6.h"
 #include "Weapon/WeaponRawLoaderT6.h"
 #include "ZBarrier/GdtLoaderZBarrierT6.h"
@@ -387,7 +391,7 @@ namespace T6
             collection.AddAssetCreator(phys_constraints::CreateRawLoaderT6(memory, searchPath, zone));
             collection.AddAssetCreator(phys_constraints::CreateGdtLoaderT6(memory, searchPath, gdt, zone));
             // collection.AddAssetCreator(std::make_unique<AssetLoaderDestructibleDef>(memory));
-            // collection.AddAssetCreator(std::make_unique<AssetLoaderXAnim>(memory));
+            collection.AddAssetCreator(xanim::CreateLoaderT6(memory, searchPath, zone));
             collection.AddAssetCreator(xmodel::CreateLoaderT6(memory, searchPath, zone));
             collection.AddAssetCreator(material::CreateLoaderT6(memory, searchPath));
             collection.AddAssetCreator(image::CreateLoaderEmbeddedT6(memory, searchPath));
@@ -401,7 +405,7 @@ namespace T6
             // collection.AddAssetCreator(std::make_unique<AssetLoaderMapEnts>(memory));
             // collection.AddAssetCreator(std::make_unique<AssetLoaderGfxWorld>(memory));
             collection.AddAssetCreator(light_def::CreateLoaderT6(memory, searchPath));
-            // collection.AddAssetCreator(std::make_unique<AssetLoaderFont>(memory));
+            collection.AddAssetCreator(font::CreateLoaderT6(memory, searchPath));
             collection.AddAssetCreator(font_icon::CreateCsvLoaderT6(memory, searchPath));
             collection.AddAssetCreator(font_icon::CreateJsonLoaderT6(memory, searchPath));
             // collection.AddAssetCreator(std::make_unique<AssetLoaderMenuList>(memory));
@@ -440,6 +444,8 @@ namespace T6
 
             collection.AddSubAssetCreator(techset::CreateVertexShaderLoaderT6(memory, searchPath));
             collection.AddSubAssetCreator(techset::CreatePixelShaderLoaderT6(memory, searchPath));
+            collection.AddSubAssetCreator(weapon::CreateAccuracyGraphLoaderT6(memory, searchPath));
+            collection.AddSubAssetCreator(weapon::CreateFlameTableLoaderT6(memory, searchPath, zone));
 
             if (definition.m_map_type != ZoneDefinitionMapType::NONE)
                 collection.AddAssetCreator(BSP::CreateLoaderT6(memory, searchPath, zone, definition.m_map_type));

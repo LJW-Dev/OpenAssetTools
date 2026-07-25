@@ -1,5 +1,7 @@
 #include "FastFileContext.h"
 
+#include "Game/AutoSearchPaths.h"
+#include "IObjLoader.h"
 #include "Web/Binds/ZoneBinds.h"
 #include "Web/UiCommunication.h"
 #include "ZoneLoading.h"
@@ -38,54 +40,87 @@ namespace
     };
 } // namespace
 
-LoadedZone::LoadedZone(std::unique_ptr<Zone> zone, std::string filePath)
-    : m_zone(std::move(zone)),
-      m_file_path(std::move(filePath))
-{
-}
-
 void FastFileContext::Destroy()
 {
     // Unload all zones
     m_loaded_zones.clear();
 }
 
-std::expected<LoadedZone*, std::string> FastFileContext::LoadFastFile(const std::string& path)
+std::expected<LoadedZoneInformation*, std::string> FastFileContext::LoadFastFile(const std::string& path)
 {
     auto zone = ZoneLoading::LoadZone(path, std::make_unique<LoadingEventProgressReporter>(fs::path(path).filename().replace_extension().string()));
     if (!zone)
         return std::unexpected(std::move(zone.error()));
 
-    auto loadedZone = std::make_unique<LoadedZone>(std::move(*zone), path);
-
-    LoadedZone* result;
+    auto searchPathsForZone = AutoSearchPaths::GetForGame((*zone)->m_game_id)->GetSearchPathsForZonePath(path);
     {
-        std::lock_guard lock(m_zone_lock);
-        result = m_loaded_zones.emplace_back(std::move(loadedZone)).get();
+        std::lock_guard lock(m_search_path_lock);
+        for (const auto& searchPathStr : searchPathsForZone)
+            m_shared_search_paths.RefSearchPath(searchPathStr);
     }
 
-    ui::NotifyZoneLoaded(*result);
+    auto loadedZone = std::make_unique<LoadedZoneInformation>(std::move(*zone), path, std::move(searchPathsForZone));
 
-    return result;
+    LoadedZoneInformation* loadedZonePtr;
+    {
+        std::lock_guard lock(m_zone_lock);
+        loadedZonePtr = m_loaded_zones.emplace_back(std::move(loadedZone)).get();
+    }
+
+    {
+        std::shared_lock lock(m_search_path_lock);
+        auto* objLoader = IObjLoader::GetObjLoaderForGame(loadedZonePtr->GetZone().m_game_id);
+        objLoader->LoadReferencedContainersForZone(m_shared_search_paths.GetSearchPath(), loadedZonePtr->GetZone());
+    }
+
+    ui::NotifyZoneLoaded(*loadedZonePtr);
+
+    return loadedZonePtr;
 }
 
 std::expected<void, std::string> FastFileContext::UnloadZone(const std::string& zoneName)
 {
+    std::unique_ptr<LoadedZoneInformation> removedLoadedZone;
+
     {
         std::lock_guard lock(m_zone_lock);
         const auto existingZone = std::ranges::find_if(m_loaded_zones,
-                                                       [&zoneName](const std::unique_ptr<LoadedZone>& loadedZone)
+                                                       [&zoneName](const std::unique_ptr<LoadedZoneInformation>& loadedZone)
                                                        {
-                                                           return loadedZone->m_zone->m_name == zoneName;
+                                                           return loadedZone->GetZone().m_name == zoneName;
                                                        });
 
-        if (existingZone != m_loaded_zones.end())
-        {
-            m_loaded_zones.erase(existingZone);
-            ui::NotifyZoneUnloaded(zoneName);
-            return {};
-        }
+        if (existingZone == m_loaded_zones.end())
+            return std::unexpected(std::format("No zone with name {} loaded", zoneName));
+
+        removedLoadedZone = std::move(*existingZone);
+        m_loaded_zones.erase(existingZone);
+
+        ui::NotifyZoneUnloaded(zoneName);
     }
 
-    return std::unexpected(std::format("No zone with name {} loaded", zoneName));
+    assert(removedLoadedZone);
+
+    {
+        std::shared_lock lock(m_search_path_lock);
+        IObjLoader::GetObjLoaderForGame(removedLoadedZone->GetZone().m_game_id)->UnloadContainersOfZone(removedLoadedZone->GetZone());
+    }
+
+    {
+        std::lock_guard lock(m_search_path_lock);
+        for (const auto& searchPathStr : removedLoadedZone->GetSearchPaths())
+            m_shared_search_paths.UnrefSearchPath(searchPathStr);
+    }
+
+    return {};
+}
+
+ReadAccess<const std::vector<std::unique_ptr<LoadedZoneInformation>>> FastFileContext::GetLoadedZones()
+{
+    return ReadAccess<const std::vector<std::unique_ptr<LoadedZoneInformation>>>(std::shared_lock(m_zone_lock), m_loaded_zones);
+}
+
+ReadAccess<ISearchPath> FastFileContext::GetSearchPaths()
+{
+    return ReadAccess(std::shared_lock(m_search_path_lock), m_shared_search_paths.GetSearchPath());
 }

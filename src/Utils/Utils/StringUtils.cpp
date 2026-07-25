@@ -4,6 +4,14 @@
 #include <cctype>
 #include <sstream>
 
+namespace
+{
+    bool ichar_equals(const char a, const char b)
+    {
+        return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+    }
+} // namespace
+
 namespace utils
 {
     std::string EscapeStringForQuotationMarks(const std::string_view& str)
@@ -91,16 +99,33 @@ namespace utils
         }
     }
 
+    void MakeStringLowerCase(char* str)
+    {
+        for (auto* c = str; *c; c++)
+            *c = static_cast<char>(tolower(static_cast<unsigned char>(*c)));
+    }
+
     void MakeStringLowerCase(std::string& str)
     {
         for (auto& c : str)
             c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
     }
 
+    void MakeStringUpperCase(char* str)
+    {
+        for (auto* c = str; *c; c++)
+            *c = static_cast<char>(toupper(static_cast<unsigned char>(*c)));
+    }
+
     void MakeStringUpperCase(std::string& str)
     {
         for (auto& c : str)
             c = static_cast<char>(toupper(static_cast<unsigned char>(c)));
+    }
+
+    bool StringEqualsIgnoreCase(std::string_view lhs, std::string_view rhs)
+    {
+        return std::ranges::equal(lhs, rhs, ichar_equals);
     }
 
     void StringTrimL(std::string& str)

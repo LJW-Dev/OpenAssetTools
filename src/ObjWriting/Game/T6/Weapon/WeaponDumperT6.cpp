@@ -1,7 +1,9 @@
 #include "WeaponDumperT6.h"
 
+#include "Dumping/SubAssetDeduplicationDumperState.h"
 #include "Game/T6/InfoString/InfoStringFromStructConverter.h"
 #include "Game/T6/ObjConstantsT6.h"
+#include "Game/T6/Weapon/FlameTableFields.h"
 #include "Game/T6/Weapon/WeaponFields.h"
 #include "Game/T6/Weapon/WeaponStrings.h"
 #include "InfoString/InfoString.h"
@@ -267,22 +269,23 @@ namespace
         }
     };
 
-    GenericGraph2D ConvertAccuracyGraph(const char* graphName, const vec2_t* originalKnots, const unsigned originalKnotCount)
+    class InfoStringFromFlameTableConverter final : public InfoStringFromStructConverter
     {
-        GenericGraph2D graph;
-
-        graph.name = graphName;
-        graph.knots.resize(originalKnotCount);
-
-        for (auto i = 0u; i < originalKnotCount; i++)
+    protected:
+        void FillFromExtensionField(const cspField_t& field) override
         {
-            auto& knot = graph.knots[i];
-            knot.x = originalKnots[i].x;
-            knot.y = originalKnots[i].y;
+            assert(false);
         }
 
-        return graph;
-    }
+    public:
+        InfoStringFromFlameTableConverter(const FlameTable* structure,
+                                          const cspField_t* fields,
+                                          const size_t fieldCount,
+                                          std::function<std::string(scr_string_t)> scriptStringValueCallback)
+            : InfoStringFromStructConverter(structure, fields, fieldCount, std::move(scriptStringValueCallback))
+        {
+        }
+    };
 
     void CopyToFullDef(const WeaponVariantDef* weapon, WeaponFullDef* fullDef)
     {
@@ -430,6 +433,23 @@ namespace
         return converter.Convert();
     }
 
+    GenericGraph2D ConvertAccuracyGraph(std::string graphName, const vec2_t* originalKnots, const unsigned originalKnotCount)
+    {
+        GenericGraph2D graph;
+
+        graph.name = std::move(graphName);
+        graph.knots.resize(originalKnotCount);
+
+        for (auto i = 0u; i < originalKnotCount; i++)
+        {
+            auto& knot = graph.knots[i];
+            knot.x = originalKnots[i].x;
+            knot.y = originalKnots[i].y;
+        }
+
+        return graph;
+    }
+
     void DumpAccuracyGraphs(AssetDumpingContext& context, const XAssetInfo<WeaponVariantDef>& asset)
     {
         auto* accuracyGraphWriter = context.GetZoneAssetDumperState<AccuracyGraphWriter>();
@@ -439,23 +459,68 @@ namespace
         if (!weapDef)
             return;
 
-        if (weapDef->aiVsAiAccuracyGraphName && weapDef->originalAiVsAiAccuracyGraphKnots
-            && accuracyGraphWriter->ShouldDumpAiVsAiGraph(weapDef->aiVsAiAccuracyGraphName))
+        if (weapDef->aiVsAiAccuracyGraphName && weapDef->originalAiVsAiAccuracyGraphKnots)
         {
-            AccuracyGraphWriter::DumpAiVsAiGraph(context,
-                                                 ConvertAccuracyGraph(weapDef->aiVsAiAccuracyGraphName,
-                                                                      weapDef->originalAiVsAiAccuracyGraphKnots,
-                                                                      weapDef->originalAiVsAiAccuracyGraphKnotCount));
+            auto graphName = weapon::GetAssetNameForAiVsAiAccuracyGraph(weapDef->aiVsAiAccuracyGraphName);
+            if (accuracyGraphWriter->ShouldDumpGraph(graphName))
+            {
+                const auto graph =
+                    ConvertAccuracyGraph(std::move(graphName), weapDef->originalAiVsAiAccuracyGraphKnots, weapDef->originalAiVsAiAccuracyGraphKnotCount);
+                AccuracyGraphWriter::DumpGraph(context, graph);
+            }
         }
 
-        if (weapDef->aiVsPlayerAccuracyGraphName && weapDef->originalAiVsPlayerAccuracyGraphKnots
-            && accuracyGraphWriter->ShouldDumpAiVsPlayerGraph(weapDef->aiVsPlayerAccuracyGraphName))
+        if (weapDef->aiVsPlayerAccuracyGraphName && weapDef->originalAiVsPlayerAccuracyGraphKnots)
         {
-            AccuracyGraphWriter::DumpAiVsPlayerGraph(context,
-                                                     ConvertAccuracyGraph(weapDef->aiVsPlayerAccuracyGraphName,
-                                                                          weapDef->originalAiVsPlayerAccuracyGraphKnots,
-                                                                          weapDef->originalAiVsPlayerAccuracyGraphKnotCount));
+            auto graphName = weapon::GetAssetNameForAiVsPlayerAccuracyGraph(weapDef->aiVsPlayerAccuracyGraphName);
+            if (accuracyGraphWriter->ShouldDumpGraph(graphName))
+            {
+                const auto graph = ConvertAccuracyGraph(
+                    std::move(graphName), weapDef->originalAiVsPlayerAccuracyGraphKnots, weapDef->originalAiVsPlayerAccuracyGraphKnotCount);
+                AccuracyGraphWriter::DumpGraph(context, graph);
+            }
         }
+    }
+
+    void DumpFlameTable(const AssetDumpingContext& context,
+                        SubAssetDeduplicationDumperState<FlameTable>& deduplicator,
+                        const char* flameTableName,
+                        const FlameTable* flameTable)
+    {
+        if (!flameTable || !flameTableName || flameTableName[0] == '\0')
+            return;
+
+        if (!deduplicator.ShouldDumpSubAsset(flameTable))
+            return;
+
+        const auto assetFile = context.OpenAssetFile(weapon::GetFileNameForFlameTable(flameTableName));
+
+        if (!assetFile)
+            return;
+
+        auto& stream = *assetFile;
+        InfoStringFromFlameTableConverter converter(flameTable,
+                                                    flameTableFields,
+                                                    std::extent_v<decltype(flameTableFields)>,
+                                                    [](const scr_string_t scrStr) -> std::string
+                                                    {
+                                                        assert(false);
+                                                        return "";
+                                                    });
+
+        const auto infoString = converter.Convert();
+
+        const auto stringValue = infoString.ToString(INFO_STRING_PREFIX_FLAME_TABLE);
+        stream.write(stringValue.c_str(), stringValue.size());
+    }
+
+    void DumpFlameTables(AssetDumpingContext& context, const XAssetInfo<WeaponVariantDef>& asset)
+    {
+        auto* deduplicator = context.GetZoneAssetDumperState<SubAssetDeduplicationDumperState<FlameTable>>();
+        const auto weapon = asset.Asset();
+
+        DumpFlameTable(context, *deduplicator, weapon->weapDef->flameTableFirstPerson, weapon->weapDef->flameTableFirstPersonPtr);
+        DumpFlameTable(context, *deduplicator, weapon->weapDef->flameTableThirdPerson, weapon->weapDef->flameTableThirdPersonPtr);
     }
 } // namespace
 
@@ -485,5 +550,6 @@ namespace weapon
         }
 
         DumpAccuracyGraphs(context, asset);
+        DumpFlameTables(context, asset);
     }
 } // namespace weapon

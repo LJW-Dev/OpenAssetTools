@@ -313,14 +313,14 @@ namespace IW5
 
     union XAnimDynamicIndicesTrans
     {
-        char _1[1];
+        unsigned char _1[1];
         uint16_t _2[1];
     };
 
     struct type_align32(4) XAnimPartTransFrames
     {
-        float mins[3];
-        float size[3];
+        vec3_t mins;
+        vec3_t size;
         XAnimDynamicFrames frames;
         XAnimDynamicIndicesTrans indices;
     };
@@ -340,7 +340,7 @@ namespace IW5
 
     union XAnimDynamicIndicesQuat2
     {
-        char _1[1];
+        unsigned char _1[1];
         uint16_t _2[1];
     };
 
@@ -369,7 +369,7 @@ namespace IW5
 
     union XAnimDynamicIndicesQuat
     {
-        char _1[1];
+        unsigned char _1[1];
         uint16_t _2[1];
     };
 
@@ -403,6 +403,29 @@ namespace IW5
         XAnimDeltaPartQuat* quat;
     };
 
+    enum XAnimPartType
+    {
+        PART_TYPE_NO_QUAT = 0x0,
+        PART_TYPE_HALF_QUAT = 0x1,
+        PART_TYPE_FULL_QUAT = 0x2,
+        PART_TYPE_HALF_QUAT_NO_SIZE = 0x3,
+        PART_TYPE_FULL_QUAT_NO_SIZE = 0x4,
+        PART_TYPE_SMALL_TRANS = 0x5,
+        PART_TYPE_TRANS = 0x6,
+        PART_TYPE_TRANS_NO_SIZE = 0x7,
+        PART_TYPE_NO_TRANS = 0x8,
+        PART_TYPE_ALL = 0x9,
+
+        PART_TYPE_COUNT
+    };
+
+    enum XAnimFlags
+    {
+        ANIM_LOOP = 0x1,
+        ANIM_DELTA = 0x2,
+        ANIM_DELTA_3D = 0x4,
+    };
+
     struct XAnimParts
     {
         const char* name;
@@ -413,7 +436,7 @@ namespace IW5
         unsigned short randomDataIntCount;
         unsigned short numframes;
         unsigned char flags;
-        unsigned char boneCount[10];
+        unsigned char boneCount[PART_TYPE_COUNT];
         unsigned char notifyCount;
         unsigned char assetType;
         bool isDefault;
@@ -492,8 +515,8 @@ namespace IW5
 
     struct XSurfaceCollisionTree
     {
-        float trans[3];
-        float scale[3];
+        vec3_t trans;
+        vec3_t scale;
         unsigned int nodeCount;
         XSurfaceCollisionNode* nodes;
         unsigned int leafCount;
@@ -515,6 +538,11 @@ namespace IW5
     };
 
     typedef tdef_align32(16) XSurfaceTri XSurfaceTri16;
+
+    enum XSurfaceFlag
+    {
+        XSURFACE_FLAG_DEFORMED = 0x40
+    };
 
     struct XSurface
     {
@@ -920,7 +948,6 @@ namespace IW5
         CAMERA_REGION_LIT_TRANS = 0x1,
         CAMERA_REGION_EMISSIVE = 0x2,
         CAMERA_REGION_DEPTH_HACK = 0x3,
-        CAMERA_REGION_LIGHT_MAP_OPAQUE = 0x4,
 
         CAMERA_REGION_COUNT,
         CAMERA_REGION_NONE = CAMERA_REGION_COUNT,

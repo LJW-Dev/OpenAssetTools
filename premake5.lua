@@ -100,7 +100,8 @@ include "thirdparty/json.lua"
 include "thirdparty/minilzo.lua"
 include "thirdparty/minizip.lua"
 include "thirdparty/salsa20.lua"
-include "thirdparty/webview.lua"
+include "thirdparty/stb.lua"
+include "thirdparty/webwindowed.lua"
 include "thirdparty/zlib.lua"
 include "thirdparty/quickhull.lua"
 
@@ -116,11 +117,12 @@ group "ThirdParty"
     minilzo:project()
     minizip:project()
     salsa20:project()
+    stb:project()
     zlib:project()
     quickhull:project()
     
     if _OPTIONS["modman"] then
-        webview:project()
+        webwindowed:project()
     end
 group ""
 

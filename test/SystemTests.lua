@@ -3,6 +3,8 @@ SystemTests = {}
 function SystemTests:include(includes)
     if includes:handle(self:name()) then
 		includedirs {
+			"%{wks.location}/src/ObjLoading",
+			"%{wks.location}/src/ObjWriting",
 			path.join(TestFolder(), "SystemTests")
 		}
 	end
@@ -41,6 +43,7 @@ function SystemTests:project()
 		Utils:include(includes)
         ZoneLoading:include(includes)
         ZoneWriting:include(includes)
+		ObjCommonTestUtils:include(includes)
         ObjLoading:include(includes)
         ObjCompiling:include(includes)
         ObjWriting:include(includes)
@@ -53,6 +56,7 @@ function SystemTests:project()
 		links:linkto(Utils)
 		links:linkto(ZoneLoading)
 		links:linkto(ZoneWriting)
+		links:linkto(ObjCommonTestUtils)
 		links:linkto(ObjLoading)
 		links:linkto(ObjCompiling)
 		links:linkto(ObjWriting)
