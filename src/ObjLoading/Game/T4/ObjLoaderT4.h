@@ -11,6 +11,7 @@ namespace T4
         void LoadReferencedContainersForZone(ISearchPath& searchPath, Zone& zone) const override;
         void UnloadContainersOfZone(Zone& zone) const override;
 
-        void ConfigureCreatorCollection(AssetCreatorCollection& collection, Zone& zone, ISearchPath& searchPath, IGdtQueryable& gdt) const override;
+        void ConfigureCreatorCollection(
+            AssetCreatorCollection& collection, Zone& zone, ISearchPath& searchPath, IGdtQueryable& gdt, ZoneDefinition& definition) const override;
     };
 } // namespace T4

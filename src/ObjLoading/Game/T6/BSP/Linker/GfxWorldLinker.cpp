@@ -156,7 +156,7 @@ namespace
                 gfxWorld->dpvs.sortedSurfIndex[surfIdx] = static_cast<uint16_t>(surfIdx);
 
             // surface materials are written to by the game
-            gfxWorld->dpvs.surfaceMaterials = m_memory.Alloc<GfxDrawSurf_align4>(staticSurfaceCount);
+            gfxWorld->dpvs.surfaceMaterials = m_memory.Alloc<GfxDrawSurf>(staticSurfaceCount);
 
             gfxWorld->dpvs.litSurfsBegin = static_cast<unsigned int>(bsp->litOpaqueSurfaceStart);
             gfxWorld->dpvs.litSurfsEnd = static_cast<unsigned int>(bsp->litOpaqueSurfaceStart + bsp->litOpaqueSurfaceCount);
