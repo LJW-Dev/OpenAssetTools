@@ -1650,7 +1650,7 @@ std::unique_ptr<BSPData> T6::BSP::createBSPData(std::string& mapName, ISearchPat
         }
     }
 
-    con::info("------ Finished parsing BSP GLTF data ------");
+    con::info("------ Finalising parsing BSP GLTF data ------");
 
     if (!bsp->hasSunlightBeenSet)
     {
