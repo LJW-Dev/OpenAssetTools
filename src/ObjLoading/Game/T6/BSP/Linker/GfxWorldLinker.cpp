@@ -196,21 +196,6 @@ namespace
                 return false;
             }
 
-            char color = DEFAULT_LIGHTGRID_COLOUR;
-            float sunIntensity = bsp->sunlight.intensity;
-            if (sunIntensity < 0.0f || sunIntensity > 20000.0f)
-            {
-                con::error("Sun intensity ({}) needs to be between 0 and 20000", sunIntensity);
-                return false;
-            }
-            else
-            {
-                float normalised = sunIntensity / 20000.0f;
-                normalised *= 255.0f;
-                float clean = roundf(normalised);
-                color = static_cast<char>(clean);
-            }
-
             for (size_t modelIdx = 0; modelIdx < modelCount; modelIdx++)
             {
                 auto currModel = &gfxWorld->dpvs.smodelDrawInsts[modelIdx];
@@ -279,7 +264,10 @@ namespace
 
                         currModel->lmapVertexInfo[lodIdx].numLmapVertexColors = vertCount;
                         currModel->lmapVertexInfo[lodIdx].lmapVertexColors = m_memory.Alloc<unsigned int>(vertCount);
-                        memset(currModel->lmapVertexInfo[lodIdx].lmapVertexColors, color, sizeof(unsigned int) * vertCount);
+                        uint32_t vertColor = pack32::Vec4PackGfxColor(
+                            vec4_t({bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z, 0.0f}).v);
+                        for (uint16_t vertIdx = 0; vertIdx < vertCount; vertIdx++)
+                            currModel->lmapVertexInfo[lodIdx].lmapVertexColors[vertIdx] = vertColor;
                     }
                 }
                 else
@@ -458,6 +446,20 @@ namespace
             return true;
         }
 
+        char compressColorIntoLightmapChar(float color)
+        {
+            if (color < 0.0f)
+                color = 0.0f;
+            else if (color > 1.0f)
+                color = 1.0f;
+
+            color /= 32.0f;
+            color = sqrtf(color);
+
+            color *= 255.0f;
+            return static_cast<char>(roundf(color));
+        }
+
         bool loadLightGrid(BSPData* bsp, GfxWorld* gfxWorld)
         {
             // world to lightgrid coords conversion:
@@ -522,25 +524,18 @@ namespace
             }
             gfxWorld->lightGrid.entries = entryArray;
 
-            char color = DEFAULT_LIGHTGRID_COLOUR;
-            float sunIntensity = bsp->sunlight.intensity;
-            if (sunIntensity < 0.0f || sunIntensity > 20000.0f)
-            {
-                con::error("Sun intensity ({}) needs to be between 0 and 20000", sunIntensity);
-                return false;
-            }
-            else
-            {
-                float normalised = sunIntensity / 20000.0f;
-                normalised *= 255.0f;
-                float clean = roundf(normalised);
-                color = static_cast<char>(clean);
-            }
-
             // colours are looked up with a lightgrid entries colorsIndex
             gfxWorld->lightGrid.colorCount = 0x1000; // 0x1000 as it should be enough to hold every index
             gfxWorld->lightGrid.colors = m_memory.Alloc<GfxCompressedLightGridColors>(gfxWorld->lightGrid.colorCount);
-            memset(gfxWorld->lightGrid.colors, color, rowDataStartSize * sizeof(uint16_t));
+            for (size_t colIdx = 0; colIdx < gfxWorld->lightGrid.colorCount; colIdx++)
+            {
+                for (size_t row = 0; row < 56; row++)
+                {
+                    gfxWorld->lightGrid.colors[colIdx].rgb[row][0] = compressColorIntoLightmapChar(bsp->sunlight.colour.x);
+                    gfxWorld->lightGrid.colors[colIdx].rgb[row][1] = compressColorIntoLightmapChar(bsp->sunlight.colour.y);
+                    gfxWorld->lightGrid.colors[colIdx].rgb[row][2] = compressColorIntoLightmapChar(bsp->sunlight.colour.z);
+                }
+            }
 
             // we use the colours array instead of coeffs array
             gfxWorld->lightGrid.coeffCount = 0;
@@ -687,11 +682,12 @@ namespace
 
         void loadSunData(BSPData* bsp, GfxWorld* gfxWorld)
         {
+            // only these values are actually used by the game, the rest are set by dvars
             gfxWorld->sunParse.initWorldSun->angles = BSPUtil::convertForwardVectorToViewAngles(bsp->sunlight.forwardVector);
             gfxWorld->sunParse.initWorldSun->sunCd.x = bsp->sunlight.colour.x;
             gfxWorld->sunParse.initWorldSun->sunCd.y = bsp->sunlight.colour.y;
             gfxWorld->sunParse.initWorldSun->sunCd.z = bsp->sunlight.colour.z;
-            gfxWorld->sunParse.initWorldSun->sunCd.w = 1.0f;
+            gfxWorld->sunParse.initWorldSun->sunCd.w = bsp->sunlight.intensity;
 
             // fog is not implemented yet, values taken from mp_dig
             gfxWorld->sunParse.initWorldFog->baseDist = 150.0f;

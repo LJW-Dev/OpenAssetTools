@@ -648,21 +648,21 @@ namespace
             }
             else
                 assert(false);
-
+            
+            nlohmann::json extras;
             if (lightIdx != dumpData.lights.size())
             {
                 outLight.intensity = inLight->intensity;
-                nlohmann::json extras;
                 std::array<float, 4> superEllipseArr({inLight->superEllipse.x, inLight->superEllipse.y, inLight->superEllipse.z, inLight->superEllipse.w});
                 extras["superellipse"] = superEllipseArr;
                 extras["culldistance"] = inLight->cullDistance;
                 extras["roundness"] = inLight->roundness;
                 extras["image"] = inLight->image;
                 extras["range"] = inLight->range;
-                outLight.extras = extras;
             }
             else
-                outLight.intensity = 1000.0f;
+                extras["intensity"] = inLight->intensity; 
+            outLight.extras = extras;
 
             punctualLightsExtension.lights->emplace_back(outLight);
         }

@@ -1031,8 +1031,21 @@ namespace
         }
     }
 
+    void dumpGfxWorldSun(BSPData& dumpData, const GfxWorld* gfxWorld)
+    {
+        dumpData.sunlight.type = LIGHT_TYPE_DIRECTIONAL;
+        dumpData.sunlight.colour.x = gfxWorld->sunParse.initWorldSun->sunCd.x;
+        dumpData.sunlight.colour.y = gfxWorld->sunParse.initWorldSun->sunCd.y;
+        dumpData.sunlight.colour.z = gfxWorld->sunParse.initWorldSun->sunCd.z;
+        dumpData.sunlight.intensity = gfxWorld->sunParse.initWorldSun->sunCd.w;
+        vec3_t angles = gfxWorld->sunParse.initWorldSun->angles;
+        dumpData.sunlight.forwardVector = BSPUtil::convertAnglesToForward(angles);
+        dumpData.sunlight.rollAngle = 0.0f;
+    }
+
     void dumpGfxWorld(BSPData& dumpData, const GfxWorld* gfxWorld)
     {
+        dumpGfxWorldSun(dumpData, gfxWorld);
         dumpGfxWorldSurfaces(dumpData, gfxWorld);
         dumpGfxWorldXModels(dumpData, gfxWorld);
     }
@@ -1047,9 +1060,11 @@ namespace
             switch (inLight->type)
             {
             case GFX_LIGHT_TYPE_NONE:
-                assert(lightIdx == 0);
+                assert(lightIdx == EMPTY_LIGHT_INDEX);
                 continue;
             case GFX_LIGHT_TYPE_DIR:
+                if (lightIdx == SUN_LIGHT_INDEX) // sunlight is generated in GFX World
+                    continue;
                 outLight.type = LIGHT_TYPE_DIRECTIONAL;
                 break;
             case GFX_LIGHT_TYPE_OMNI:
@@ -1073,35 +1088,29 @@ namespace
             outLight.colour.x = inLight->diffuseColor.x;
             outLight.colour.y = inLight->diffuseColor.y;
             outLight.colour.z = inLight->diffuseColor.z;
-            if (lightIdx != SUN_LIGHT_INDEX)
+            outLight.pos = inLight->origin;
+            LhcToRhcCoordinates(outLight.pos.v);
+            outLight.range = inLight->radius;
+            outLight.intensity = inLight->dAttenuation;
+            outLight.superEllipse = inLight->aAbB;
+            assert(inLight->cullDist > 0);
+            outLight.cullDistance = inLight->cullDist;
+            outLight.roundness = inLight->roundness;
+
+            bool foundLightDef = false;
+            for (const auto& lightDef : lightDefs)
             {
-                outLight.pos = inLight->origin;
-                LhcToRhcCoordinates(outLight.pos.v);
-                outLight.range = inLight->radius;
-                outLight.intensity = inLight->dAttenuation;
-                outLight.superEllipse = inLight->aAbB;
-                assert(inLight->cullDist > 0);
-                outLight.cullDistance = inLight->cullDist;
-                outLight.roundness = inLight->roundness;
-
-                bool foundLightDef = false;
-                for (const auto& lightDef : lightDefs)
+                if (!strcmp(inLight->defName, lightDef->name))
                 {
-                    if (!strcmp(inLight->defName, lightDef->name))
-                    {
-                        outLight.image = lightDef->attenuation.image->name;
-                        foundLightDef = true;
-                        break;
-                    }
+                    outLight.image = lightDef->attenuation.image->name;
+                    foundLightDef = true;
+                    break;
                 }
-                if (!foundLightDef)
-                    assert(false);
             }
+            if (!foundLightDef)
+                assert(false);
 
-            if (lightIdx == SUN_LIGHT_INDEX)
-                dumpData.sunlight = outLight;
-            else
-                dumpData.lights.emplace_back(outLight);
+            dumpData.lights.emplace_back(outLight);
         }
     }
 } // namespace

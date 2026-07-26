@@ -456,13 +456,6 @@ namespace
             RhcToLhcCoordinates(eulerAngles.v);
             light.rollAngle = eulerAngles.z;
 
-            if (!jsLight.intensity)
-                light.intensity = 10000.0f; // adjusted from spec to better match BO2
-            else
-                light.intensity = *jsLight.intensity;
-            if (light.intensity < 0.0f)
-                throw GltfLoadException(std::format("node {}: light intensity must be positive", getNodeName(node)));
-
             bool isSunlight = false;
             if (node.extras && node.extras->contains("sunlight"))
             {
@@ -479,8 +472,22 @@ namespace
                     throw GltfLoadException("Sunlight must be a sun/directional light");
                 if (m_bsp->hasSunlightBeenSet)
                     throw GltfLoadException("Multiple sunlights found");
-                if (!jsLight.intensity)
-                    light.intensity = 1000.0f;
+                if (jsLight.extras && jsLight.extras->contains("intensity"))
+                {
+                    nlohmann::json intensityJs = jsLight.extras->at("intensity");
+                    if (intensityJs.is_string())
+                    {
+                        std::string intensityStr = intensityJs;
+                        light.intensity = static_cast<float>(atof(intensityStr.c_str()));
+                    }
+                    else if (intensityJs.is_number())
+                        light.intensity = intensityJs;
+                    else
+                        throw GltfLoadException(std::format("sunlight {}: bad light intensity type", getNodeName(node)));
+                }
+                else
+                    light.intensity = 1.0f;
+
                 m_bsp->sunlight = light;
                 m_bsp->hasSunlightBeenSet = true;
             }
@@ -490,6 +497,13 @@ namespace
                 Eigen::Vector4f transformedPosition = nodeMatrix * position;
                 light.pos = vec3_t{transformedPosition.x(), transformedPosition.y(), transformedPosition.z()};
                 RhcToLhcCoordinates(light.pos.v);
+
+                if (!jsLight.intensity)
+                    light.intensity = 10000.0f; // adjusted from spec to better match BO2
+                else
+                    light.intensity = *jsLight.intensity;
+                if (light.intensity < 0.0f)
+                    throw GltfLoadException(std::format("node {}: light intensity must be positive", getNodeName(node)));
 
                 if (jsLight.extras && jsLight.extras->contains("range"))
                 {
