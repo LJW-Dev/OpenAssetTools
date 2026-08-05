@@ -109,7 +109,7 @@ public:
 
     bool linkBSP(BSPData* bsp) override
     {
-        con::info("------ Linking BSP Started ------");
+        con::info("Linking BSP Started");
 
         if (!addDefaultRequiredAssets(bsp))
             return false;
@@ -121,7 +121,7 @@ public:
         auto mapEntsLinker = MapEntsLinker::Create(m_memory, m_search_path, m_context);
         auto skinnedVertsLinker = SkinnedVertsLinker::Create(m_memory, m_search_path, m_context);
 
-        con::info("------ Linking Com World ------");
+        con::info("- Linking Com World");
         ComWorld* comWorld = comWorldLinker->linkComWorld(bsp);
         if (comWorld == nullptr)
             return false;
@@ -135,7 +135,7 @@ public:
         else
             m_context.AddAsset<AssetComWorld>(comWorld->name, comWorld);
 
-        con::info("------ Linking Map Ents ------");
+        con::info("- Linking Map Ents");
         MapEnts* mapEnts = mapEntsLinker->linkMapEnts(bsp);
         if (mapEnts == nullptr)
             return false;
@@ -149,7 +149,7 @@ public:
         else
             m_context.AddAsset<AssetMapEnts>(mapEnts->name, mapEnts);
 
-        con::info("------ Linking Game World Mp ------");
+        con::info("- Linking Game World Mp");
         GameWorldMp* gameWorldMp = gameWorldMpLinker->linkGameWorldMp(bsp);
         if (gameWorldMp == nullptr)
             return false;
@@ -163,7 +163,7 @@ public:
         else
             m_context.AddAsset<AssetGameWorldMp>(gameWorldMp->name, gameWorldMp);
 
-        con::info("------ Linking Skinned Verts ------");
+        con::info("- Linking Skinned Verts");
         SkinnedVertsDef* skinnedVerts = skinnedVertsLinker->linkSkinnedVerts(bsp);
         if (skinnedVerts == nullptr)
             return false;
@@ -177,7 +177,7 @@ public:
         else
             m_context.AddAsset<AssetSkinnedVerts>(skinnedVerts->name, skinnedVerts);
 
-        con::info("------ Linking GFX World ------");
+        con::info("- Linking GFX World");
         GfxWorld* gfxWorld = gfxWorldLinker->linkGfxWorld(bsp);
         if (gfxWorld == nullptr)
             return false;
@@ -191,7 +191,7 @@ public:
         else
             m_context.AddAsset<AssetGfxWorld>(gfxWorld->name, gfxWorld);
 
-        con::info("------ Linking ClipMap ------");
+        con::info("- Linking ClipMap");
         clipMap_t* clipMap = clipMapLinker->linkClipMap(bsp); // requires mapents asset
         if (clipMap == nullptr)
             return false;

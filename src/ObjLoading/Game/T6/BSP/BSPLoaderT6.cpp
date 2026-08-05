@@ -47,6 +47,8 @@ namespace
             bool result = linker->linkBSP(bsp.get());
             if (!result)
                 con::error("BSP linker has failed.");
+            else
+                con::info("BSP linker completed successfully.");
 
             return result;
         }

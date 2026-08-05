@@ -1521,7 +1521,7 @@ namespace
     public:
         bool addGLTFDataToBSP(Input& gltfInput, bool isGfxWorld)
         {
-            con::info("------ Parsing {} BSP GLTF data ------", getWorldTypeName());
+            con::info("- Parsing {} BSP GLTF data", getWorldTypeName());
 
             JsonRoot jRoot;
             try
@@ -1572,7 +1572,7 @@ namespace
 
 std::unique_ptr<BSPData> T6::BSP::createBSPData(std::string& mapName, ISearchPath& searchPath, bool isZombiesMap)
 {
-    con::info("------ Loading BSP Started ------");
+    con::info("Loading BSP data started");
 
     bool seperateColFile = true;
     bool isGfxFileGltf = true;
@@ -1657,8 +1657,6 @@ std::unique_ptr<BSPData> T6::BSP::createBSPData(std::string& mapName, ISearchPat
                 return nullptr;
         }
     }
-
-    con::info("------ Finalising parsing BSP GLTF data ------");
 
     if (!bsp->hasSunlightBeenSet)
     {

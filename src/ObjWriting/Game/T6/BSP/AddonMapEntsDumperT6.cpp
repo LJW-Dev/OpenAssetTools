@@ -904,7 +904,7 @@ namespace
 
 void AddonMapEntsDumper::DumperT6::DumpAsset(AssetDumpingContext& context, const XAssetInfo<AssetAddonMapEnts::Type>& asset)
 {
-    con::info("------ Addon Map Ents Dumping Started ------");
+    con::info("Addon Map Ents BSP Dumping Started");
 
     const auto addonMapEnts = asset.Asset();
 
@@ -926,7 +926,7 @@ void AddonMapEntsDumper::DumperT6::DumpAsset(AssetDumpingContext& context, const
     dumpAddonMaterials(addonDumpData, addonMapEnts);
     dumpAddonMapEnts(addonDumpData, addonMapEnts);
 
-    con::info("------ Addon Map Ents Writing Started ------");
+    con::info("Addon Map Ents BSP Writing Started");
 
     JsonRoot root;
     std::vector<uint8_t> bufferData;
@@ -935,7 +935,7 @@ void AddonMapEntsDumper::DumperT6::DumpAsset(AssetDumpingContext& context, const
     const auto assetFile = context.OpenAssetFile("bsp/map_col_addons.glb");
     if (!assetFile)
     {
-        con::error("Unable to open addon map ents bsp output file.");
+        con::error("Unable to open addon map ents bsp output file bsp/map_col_addons.glb.");
         return;
     }
     writeGltf(root, bufferData, assetFile.get());

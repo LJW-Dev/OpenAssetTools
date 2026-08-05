@@ -22,7 +22,7 @@ void DumperT6::Dump(AssetDumpingContext& context)
     if (gfxWorldPool.size() != 1)
         return;
 
-    con::info("------ BSP Dumping Started ------");
+    con::info("BSP Dumping Started");
 
     const auto& colWorldPool = context.m_zone.m_pools.PoolAssets<T6::AssetClipMapPvs>();
     const auto& mapEntsPool = context.m_zone.m_pools.PoolAssets<T6::AssetMapEnts>();
@@ -48,7 +48,7 @@ void DumperT6::Dump(AssetDumpingContext& context)
         assetPtrs.lightDefs.emplace_back(lightDef->Asset());
     dumpBSPData(dumpData, context.m_zone.m_name, assetPtrs);
 
-    con::info("------ BSP Writing Started ------");
+    con::info("BSP Writing Started");
 
     const std::unique_ptr<std::ostream> gfxAssetFile = context.OpenAssetFile("bsp/map_gfx.glb");
     if (!gfxAssetFile)
@@ -64,6 +64,8 @@ void DumperT6::Dump(AssetDumpingContext& context)
     }
 
     writeDumpDataToGltf(dumpData, gfxAssetFile, colAssetFile);
+
+    con::info("Dumped BSP \"{}\"", context.m_zone.m_name);
 
     context.IncrementProgress();
 }
