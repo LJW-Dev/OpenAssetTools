@@ -772,7 +772,7 @@ namespace
     void createJsonHeader(JsonRoot& root, std::string& bspName, bool isGfxWorld)
     {
         root.asset.version = "2.0";
-        root.asset.generator = "T6-BSP-Decompiler-v0.1";
+        root.asset.generator = "OAT-T6-BSP-Decompiler-v1.0";
 
         if (isGfxWorld)
         {
