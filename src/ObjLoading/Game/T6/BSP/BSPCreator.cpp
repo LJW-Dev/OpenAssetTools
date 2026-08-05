@@ -1442,10 +1442,8 @@ namespace
 
                     material.surfaceFlags = 0;
                     material.contentFlags = 0;
-                    bool hasFlags = false;
                     if (jsMaterial.extras && jsMaterial.extras->contains("surfaceflags"))
                     {
-                        hasFlags = true;
                         std::string flags = jsMaterial.extras->at("surfaceflags");
 
                         if (m_is_world_gfx)
@@ -1488,7 +1486,6 @@ namespace
                     }
                     if (jsMaterial.extras && jsMaterial.extras->contains("contentflags"))
                     {
-                        hasFlags = true;
                         nlohmann::json flags = jsMaterial.extras->at("contentflags");
 
                         std::vector<std::string> flagArray = utils::StringSplit(flags, ',');
@@ -1501,11 +1498,8 @@ namespace
                                 con::warn("{}: ignoring contentflag: ({}) on material ({})", getWorldTypeName(), material.materialName, flag);
                         }
                     }
-                    if (!hasFlags)
-                    {
-                        material.surfaceFlags = 0;
+                    else
                         material.contentFlags = BSPFlags::contentFlags_NameToFlag.at("solid");
-                    }
 
                     m_curr_bsp_world->materials.emplace_back(material);
                 }
