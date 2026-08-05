@@ -264,8 +264,16 @@ namespace
 
                         currModel->lmapVertexInfo[lodIdx].numLmapVertexColors = vertCount;
                         currModel->lmapVertexInfo[lodIdx].lmapVertexColors = m_memory.Alloc<unsigned int>(vertCount);
-                        uint32_t vertColor = pack32::Vec4PackGfxColor(
-                            vec4_t({bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z, 0.0f}).v);
+
+                        // use the same method as lightmap to generate the colours
+                        vec4_t sunlightModified = {bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z, 0.0f};
+                        sunlightModified.x /= 32.0f;
+                        sunlightModified.x = sqrtf(sunlightModified.x);
+                        sunlightModified.y /= 32.0f;
+                        sunlightModified.y = sqrtf(sunlightModified.y);
+                        sunlightModified.z /= 32.0f;
+                        sunlightModified.z = sqrtf(sunlightModified.z);
+                        uint32_t vertColor = pack32::Vec4PackGfxColor(sunlightModified.v);
                         for (uint16_t vertIdx = 0; vertIdx < vertCount; vertIdx++)
                             currModel->lmapVertexInfo[lodIdx].lmapVertexColors[vertIdx] = vertColor;
                     }
