@@ -94,6 +94,7 @@ private:
         addEmptyFootstepTableAsset("default_ai");
 
         addEmptyRawFileAsset("animtrees/fxanim_props.atr");
+        addEmptyRawFileAsset(bsp->name);
 
         return true;
     }
