@@ -1243,7 +1243,9 @@ namespace
                 }
                 else
                 {
-                    if (node.extras && (node.extras->contains("classname") || node.extras->contains("zone")))
+                    if (node.extras
+                        && (node.extras->contains("classname") || node.extras->contains("spawnpoint") || node.extras->contains("zone")
+                            || node.extras->contains("spawner") || node.extras->contains("xmodel")))
                         scriptNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
                     else if (node.extras && node.extras->contains("model"))
                     {
