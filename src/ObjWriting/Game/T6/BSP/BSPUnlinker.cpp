@@ -776,10 +776,14 @@ namespace
 
     size_t createBspMaterial(BSPData& dumpData, Material* material, GfxSurfaceFlags surfFlags)
     {
+        // these 3 flags are the only relevant flags
+        // GFX_SURFACE_CASTS_SHADOW is actually ignored and all surfaces are forced to have it set to true
+        constexpr int matFlagMask = GFX_SURFACE_CASTS_SUN_SHADOW | GFX_SURFACE_IS_SKY | GFX_SURFACE_NO_DRAW;
+        int surfFlagsSimple = surfFlags & matFlagMask;
         for (size_t matIdx = 0; matIdx < dumpData.gfxWorld.materials.size(); matIdx++)
         {
             auto& mat = dumpData.gfxWorld.materials.at(matIdx);
-            if (!mat.materialName.compare(material->info.name) && (mat.surfaceFlags == surfFlags))
+            if (!mat.materialName.compare(material->info.name) && (mat.surfaceFlags == surfFlagsSimple))
                 return matIdx;
         }
 
@@ -787,8 +791,8 @@ namespace
         bspMaterial.materialName = material->info.name;
         bspMaterial.materialType = MATERIAL_TYPE_TEXTURE;
         bspMaterial.materialColour = whiteColour;
-        bspMaterial.surfaceFlags = surfFlags;
-        bspMaterial.contentFlags = surfFlags;
+        bspMaterial.surfaceFlags = surfFlagsSimple;
+        bspMaterial.contentFlags = surfFlagsSimple;
         size_t matIndex = dumpData.gfxWorld.materials.size();
         dumpData.gfxWorld.materials.emplace_back(bspMaterial);
         return matIndex;
