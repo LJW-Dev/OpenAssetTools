@@ -509,44 +509,93 @@ namespace
             gfxWorld->lightGrid.offset = 0.0f; // default value
 
             // setting all rowDataStart indexes to 0 will always index the first row in rawRowData
-            int rowDataStartSize = gfxWorld->lightGrid.maxs[gfxWorld->lightGrid.rowAxis] - gfxWorld->lightGrid.mins[gfxWorld->lightGrid.rowAxis] + 1;
+            int rowDataStartSize = gfxWorld->lightGrid.maxs[0] - gfxWorld->lightGrid.mins[0] + 1;
             gfxWorld->lightGrid.rowDataStart = m_memory.Alloc<uint16_t>(rowDataStartSize);
 
-            // Adding 0x1FF so the lookup table will be 0x200 bytes in size
-            gfxWorld->lightGrid.rawRowDataSize = static_cast<unsigned int>(sizeof(GfxLightGridRow) + 0x1FF);
-            GfxLightGridRow* row = static_cast<GfxLightGridRow*>(m_memory.AllocRaw(gfxWorld->lightGrid.rawRowDataSize));
-            row->colStart = 0;
-            row->colCount = 0xFFFF;
-            row->zStart = 0;
-            row->zCount = 0xFF; // 0xFF as this seems to be the sweet spot of values
-            row->firstEntry = 0;
-            for (int i = 0; i < 0x200; i++)
-                row->lookupTable[i] = -1; // values in the lookup table are subtracted from the sample pos until it reaches 0, so use 0xFF
-            gfxWorld->lightGrid.rawRowData = reinterpret_cast<aligned_byte_pointer*>(row);
+            
 
-            // entries are looked up based on the lightgrid sample pos (given ingame) and the lightgrid lookup table
-            gfxWorld->lightGrid.entryCount = 60000; // 60000 as it should be enough entries to be indexed by all lightgrid sample positions
-            GfxLightGridEntry* entryArray = m_memory.Alloc<GfxLightGridEntry>(gfxWorld->lightGrid.entryCount);
-            for (unsigned int i = 0; i < gfxWorld->lightGrid.entryCount; i++)
+            std::vector<char> rowVec;
+            std::vector<GfxLightGridEntry> entryVec;
+            std::vector<GfxCompressedLightGridColors> colorVec;
+            for (int i = 0; i < rowDataStartSize; i++)
             {
-                entryArray[i].colorsIndex = 0; // always index first colour
-                entryArray[i].primaryLightIndex = DEFAULT_PRIMARYLIGHT_INDEX;
-                entryArray[i].visibility = 0;
+                assert(rowVec.size() % 4 == 0);
+                gfxWorld->lightGrid.rowDataStart[i] = static_cast<uint16_t>(rowVec.size() / 4);
+
+                size_t yAxisStart = gfxWorld->lightGrid.mins[1];
+                size_t yAxisSize = gfxWorld->lightGrid.maxs[1] - gfxWorld->lightGrid.mins[1];
+                size_t zAxisStart = gfxWorld->lightGrid.mins[2];
+                size_t zAxisSize = gfxWorld->lightGrid.maxs[2] - gfxWorld->lightGrid.mins[2];
+
+                GfxLightGridRow row;
+                row.colStart = yAxisStart;
+                row.colCount = yAxisSize;
+                row.zStart = zAxisStart;
+                row.zCount = zAxisSize;
+                row.firstEntry = static_cast<unsigned int>(entryVec.size());
+
+                size_t yResult = yAxisSize / 0xff;
+                size_t yRemainder = yAxisSize % 0xff;
+                if (yRemainder > 0)
+                    yResult++;
+
+                std::unique_ptr<GfxLightGridRowData[]> dataArr = std::make_unique<GfxLightGridRowData[]>(yResult);
+                size_t unaddedYCount = yAxisSize;
+                for (size_t yIdx = 0; yIdx < yResult; yIdx++)
+                {
+                    char ySize = 0xFF;
+                    if (unaddedYCount < 0xFF)
+                        ySize = static_cast<unsigned char>(unaddedYCount);
+                    else
+                        unaddedYCount -= 0xFF;
+
+                    GfxLightGridRowData* data = &dataArr[yIdx];
+                    data->yAxisCount = ySize;
+
+                    size_t zResult = zAxisSize / 0xff;
+                    size_t zRemainder = zAxisSize % 0xff;
+                    if (zRemainder > 0)
+                        zResult++;
+                    size_t unaddedZCount = zAxisSize;
+                    for (size_t zIdx = 0; zIdx < zResult; zIdx++)
+                    {
+                        char zSize = 0xFF;
+                        if (unaddedZCount < 0xFF)
+                            zSize = static_cast<unsigned char>(unaddedZCount);
+                        else
+                            unaddedZCount -= 0xFF;
+
+                        data->zAxisSize = zSize;
+
+                    }
+                }
+
             }
-            gfxWorld->lightGrid.entries = entryArray;
+
+            gfxWorld->lightGrid.rawRowDataSize = static_cast<unsigned int>(rowVec.size());
+            gfxWorld->lightGrid.rawRowData = m_memory.Alloc<aligned_byte_pointer>(rowVec.size());
+            memcpy(gfxWorld->lightGrid.rawRowData, rowVec.data(), rowVec.size() * sizeof(char));
+
+            gfxWorld->lightGrid.entryCount = static_cast<unsigned int>(entryVec.size());
+            gfxWorld->lightGrid.entries = m_memory.Alloc<GfxLightGridEntry>(entryVec.size());
+            memcpy(gfxWorld->lightGrid.entries, entryVec.data(), entryVec.size() * sizeof(GfxLightGridEntry));
+
+            gfxWorld->lightGrid.colorCount = static_cast<unsigned int>(colorVec.size());
+            gfxWorld->lightGrid.colors = m_memory.Alloc<GfxCompressedLightGridColors>(colorVec.size());
+            memcpy(gfxWorld->lightGrid.colors, colorVec.data(), colorVec.size() * sizeof(GfxCompressedLightGridColors));
 
             // colours are looked up with a lightgrid entries colorsIndex
-            gfxWorld->lightGrid.colorCount = 0x1000; // 0x1000 as it should be enough to hold every index
-            gfxWorld->lightGrid.colors = m_memory.Alloc<GfxCompressedLightGridColors>(gfxWorld->lightGrid.colorCount);
-            for (size_t colIdx = 0; colIdx < gfxWorld->lightGrid.colorCount; colIdx++)
-            {
-                for (size_t row = 0; row < 56; row++)
-                {
-                    gfxWorld->lightGrid.colors[colIdx].rgb[row][0] = compressColorIntoLightmapChar(bsp->sunlight.colour.x);
-                    gfxWorld->lightGrid.colors[colIdx].rgb[row][1] = compressColorIntoLightmapChar(bsp->sunlight.colour.y);
-                    gfxWorld->lightGrid.colors[colIdx].rgb[row][2] = compressColorIntoLightmapChar(bsp->sunlight.colour.z);
-                }
-            }
+            //gfxWorld->lightGrid.colorCount = 0x1000; // 0x1000 as it should be enough to hold every index
+            //gfxWorld->lightGrid.colors = m_memory.Alloc<GfxCompressedLightGridColors>(gfxWorld->lightGrid.colorCount);
+            //for (size_t colIdx = 0; colIdx < gfxWorld->lightGrid.colorCount; colIdx++)
+            //{
+            //    for (size_t row = 0; row < 56; row++)
+            //    {
+            //        gfxWorld->lightGrid.colors[colIdx].rgb[row][0] = compressColorIntoLightmapChar(bsp->sunlight.colour.x);
+            //        gfxWorld->lightGrid.colors[colIdx].rgb[row][1] = compressColorIntoLightmapChar(bsp->sunlight.colour.y);
+            //        gfxWorld->lightGrid.colors[colIdx].rgb[row][2] = compressColorIntoLightmapChar(bsp->sunlight.colour.z);
+            //    }
+            //}
 
             // we use the colours array instead of coeffs array
             gfxWorld->lightGrid.coeffCount = 0;
