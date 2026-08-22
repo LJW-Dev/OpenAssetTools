@@ -484,6 +484,9 @@ namespace
             // w_minX = -131072, w_maxX = 1966048
             // w_minY = -131072, w_maxY = 1966048
             // w_minZ = -131072, w_maxZ = 4063168
+            //
+            // 1 xy lightgrid unit equals 32 xy world units
+            // 1 z lightgrid unit equals 64 z world units
 
             if (gfxWorld->mins.x < -131072.0f || gfxWorld->mins.y < -131072.0f || gfxWorld->mins.z < -131072.0f || gfxWorld->maxs.x > 1966048.0f
                 || gfxWorld->maxs.y > 1966048.0f || gfxWorld->maxs.z > 4063168.0f)
@@ -891,6 +894,27 @@ namespace
             loadSunData(bsp, gfxWorld);
 
             loadDynEntData(gfxWorld); // requires cells and lights
+
+            // surf/xmodel light post porcessing:
+            // any surfaces/xmodels within radius of light, light is assigned to it (check for light conflicts and choose best light)
+            // check if sunlight can reach surface/xmodel, assign sunlight to it
+            // add empty light if sunlight can't reach surf/xmodel
+
+            // lightgrid post processing
+            // break up level into 32x32x64 size chunks
+            // chunks that can be seen by lights have their light calculated from attenuation
+            // chunks that can be seen by sun have the sun light constant set
+            // set chunks with no light data to low level of light (idk how to calc yet)
+
+            // refection probes post processing
+            // somehow load rprobes
+            // use plutonium to create the rprobes (similar to pathing data)
+            // load back in (posibly could hardcode rprobe image names based on how pluto loads them and load like how pathing is done)
+
+            // lightmap post processing
+            // lightmap image is used on surfs only, raw lighting data is used on xmodels
+            // possibly just use colour of light illuminating it as data
+            // generate image from this data
 
             return gfxWorld;
         }
