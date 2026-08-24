@@ -539,8 +539,15 @@ namespace
                 if (yRemainder > 0)
                     yResult++;
 
+                size_t zResult = zAxisSize / 0xff;
+                size_t zRemainder = zAxisSize % 0xff;
+                if (zRemainder > 0)
+                    zResult++;
+
                 std::unique_ptr<GfxLightGridRowData[]> dataArr = std::make_unique<GfxLightGridRowData[]>(yResult);
+
                 size_t unaddedYCount = yAxisSize;
+                
                 for (size_t yIdx = 0; yIdx < yResult; yIdx++)
                 {
                     char ySize = 0xFF;
@@ -549,24 +556,28 @@ namespace
                     else
                         unaddedYCount -= 0xFF;
 
+                    size_t unaddedZCount = zAxisSize;
+                    size_t addedZCount = 0;
+                    char zSize = 0xFF;
+                    if (unaddedZCount < 0xFF)
+                        zSize = static_cast<unsigned char>(unaddedZCount);
+                    else
+                        unaddedZCount -= 0xFF;
+                    addedZCount += zSize;
+
                     GfxLightGridRowData* data = &dataArr[yIdx];
                     data->yAxisCount = ySize;
+                    data->zAxisSize = zSize;
 
-                    size_t zResult = zAxisSize / 0xff;
-                    size_t zRemainder = zAxisSize % 0xff;
-                    if (zRemainder > 0)
-                        zResult++;
-                    size_t unaddedZCount = zAxisSize;
+                    data->zAxisStart = static_cast<unsigned char>(addedZCount / 0x100);
+                    data->zAxisOffset = static_cast<unsigned char>(addedZCount % 0x100);
+
+                    
                     for (size_t zIdx = 0; zIdx < zResult; zIdx++)
                     {
-                        char zSize = 0xFF;
-                        if (unaddedZCount < 0xFF)
-                            zSize = static_cast<unsigned char>(unaddedZCount);
-                        else
-                            unaddedZCount -= 0xFF;
+                        
 
-                        data->zAxisSize = zSize;
-
+                        
                     }
                 }
 
