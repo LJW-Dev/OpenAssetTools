@@ -56,8 +56,15 @@ namespace
             comWorld->name = m_memory.Dup(bsp->bspName.c_str());
             comWorld->isInUse = 1;
 
+            
+
             // first two lights are the empty light and the sun light.
             size_t totalLightCount = bsp->lights.size() + BSP_DEFAULT_LIGHT_COUNT;
+            if (totalLightCount > 254)
+            {
+                con::error("Exceeded 254 lights in a map (count: {})", totalLightCount);
+                return nullptr;
+            }
             comWorld->primaryLightCount = static_cast<unsigned int>(totalLightCount);
             comWorld->primaryLights = m_memory.Alloc<ComPrimaryLight>(totalLightCount);
 
