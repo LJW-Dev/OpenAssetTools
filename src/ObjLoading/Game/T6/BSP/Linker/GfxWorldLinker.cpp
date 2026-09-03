@@ -468,6 +468,19 @@ namespace
             return static_cast<char>(roundf(color));
         }
 
+        void createLGColorArrayFromColor(GfxCompressedLightGridColors* LGArray, vec3_t color)
+        {
+            char cmpR = compressColorIntoLightmapChar(color.x);
+            char cmpG = compressColorIntoLightmapChar(color.y);
+            char cmpB = compressColorIntoLightmapChar(color.z);
+            for (size_t row = 0; row < 56; row++)
+            {
+                LGArray->rgb[row][0] = cmpR;
+                LGArray->rgb[row][1] = cmpG;
+                LGArray->rgb[row][2] = cmpB;
+            }
+        }
+
         bool loadLightGrid(BSPData* bsp, GfxWorld* gfxWorld)
         {
             // world to lightgrid coords conversion:
@@ -508,15 +521,15 @@ namespace
             gfxWorld->lightGrid.sunPrimaryLightIndex = SUN_LIGHT_INDEX;
             gfxWorld->lightGrid.offset = 0.0f; // default value
 
-            // setting all rowDataStart indexes to 0 will always index the first row in rawRowData
             int rowDataStartSize = gfxWorld->lightGrid.maxs[0] - gfxWorld->lightGrid.mins[0] + 1;
             gfxWorld->lightGrid.rowDataStart = m_memory.Alloc<uint16_t>(rowDataStartSize);
-
-            
 
             std::vector<char> rowVec;
             std::vector<GfxLightGridEntry> entryVec;
             std::vector<GfxCompressedLightGridColors> colorVec;
+            colorVec.resize(2);
+            createLGColorArrayFromColor(&colorVec.at(0), vec3_t{0.0f, 0.0f, 0.0f}); // always empty
+            createLGColorArrayFromColor(&colorVec.at(1), vec3_t{bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z}); // default entry
             for (int i = 0; i < rowDataStartSize; i++)
             {
                 assert(rowVec.size() % 4 == 0);
@@ -539,15 +552,9 @@ namespace
                 if (yRemainder > 0)
                     yResult++;
 
-                size_t zResult = zAxisSize / 0xff;
-                size_t zRemainder = zAxisSize % 0xff;
-                if (zRemainder > 0)
-                    zResult++;
-
+                // TODO: account for when GfxLightGridRowData is not max size
                 std::unique_ptr<GfxLightGridRowData[]> dataArr = std::make_unique<GfxLightGridRowData[]>(yResult);
-
                 size_t unaddedYCount = yAxisSize;
-                
                 for (size_t yIdx = 0; yIdx < yResult; yIdx++)
                 {
                     char ySize = 0xFF;
@@ -556,31 +563,34 @@ namespace
                     else
                         unaddedYCount -= 0xFF;
 
-                    size_t unaddedZCount = zAxisSize;
-                    size_t addedZCount = 0;
-                    char zSize = 0xFF;
-                    if (unaddedZCount < 0xFF)
-                        zSize = static_cast<unsigned char>(unaddedZCount);
-                    else
-                        unaddedZCount -= 0xFF;
-                    addedZCount += zSize;
+                    // TODO: find z count and offsets;
+                    unsigned char zSize = 0xFF;
+                    unsigned char zStart = 0;
+                    unsigned char zOffset = 0;
 
                     GfxLightGridRowData* data = &dataArr[yIdx];
                     data->yAxisCount = ySize;
                     data->zAxisSize = zSize;
-
-                    data->zAxisStart = static_cast<unsigned char>(addedZCount / 0x100);
-                    data->zAxisOffset = static_cast<unsigned char>(addedZCount % 0x100);
-
+                    data->zAxisStart = zStart;
+                    data->zAxisOffset = zOffset;
                     
-                    for (size_t zIdx = 0; zIdx < zResult; zIdx++)
+                    for (unsigned char zIdx = 0; zIdx < zSize; zIdx++)
                     {
-                        
-
-                        
+                        GfxLightGridEntry entry;
+                        entry.visibility = 0;
+                        entry.primaryLightIndex = 0 + 2; // TODO
+                        entry.colorsIndex = static_cast<uint16_t>(colorVec.size()); // TODO: bounded by uint16
+                        entryVec.emplace_back(entry);
+                        colorVec.emplace_back();
+                        createLGColorArrayFromColor(&colorVec.at(entry.colorsIndex), vec3_t{0.0f, 0.0f, 0.0f}); // todo: get light colour
                     }
                 }
 
+                size_t rowIndexStart = rowVec.size();
+                rowVec.resize(rowVec.size() + (sizeof(GfxLightGridRow) - 1) + (sizeof(GfxLightGridRowData) * yResult));
+                memcpy(&rowVec.at(rowIndexStart), &row, sizeof(GfxLightGridRow) - 1);
+                memcpy(&rowVec.at(rowIndexStart + (sizeof(GfxLightGridRow) - 1)), dataArr.get(), sizeof(GfxLightGridRowData) * yResult);
+                rowVec.resize((rowVec.size() + 3) & ~3); // resize to 4 byte allignment
             }
 
             gfxWorld->lightGrid.rawRowDataSize = static_cast<unsigned int>(rowVec.size());
@@ -595,22 +605,11 @@ namespace
             gfxWorld->lightGrid.colors = m_memory.Alloc<GfxCompressedLightGridColors>(colorVec.size());
             memcpy(gfxWorld->lightGrid.colors, colorVec.data(), colorVec.size() * sizeof(GfxCompressedLightGridColors));
 
-            // colours are looked up with a lightgrid entries colorsIndex
-            //gfxWorld->lightGrid.colorCount = 0x1000; // 0x1000 as it should be enough to hold every index
-            //gfxWorld->lightGrid.colors = m_memory.Alloc<GfxCompressedLightGridColors>(gfxWorld->lightGrid.colorCount);
-            //for (size_t colIdx = 0; colIdx < gfxWorld->lightGrid.colorCount; colIdx++)
-            //{
-            //    for (size_t row = 0; row < 56; row++)
-            //    {
-            //        gfxWorld->lightGrid.colors[colIdx].rgb[row][0] = compressColorIntoLightmapChar(bsp->sunlight.colour.x);
-            //        gfxWorld->lightGrid.colors[colIdx].rgb[row][1] = compressColorIntoLightmapChar(bsp->sunlight.colour.y);
-            //        gfxWorld->lightGrid.colors[colIdx].rgb[row][2] = compressColorIntoLightmapChar(bsp->sunlight.colour.z);
-            //    }
-            //}
-
             // we use the colours array instead of coeffs array
             gfxWorld->lightGrid.coeffCount = 0;
             gfxWorld->lightGrid.coeffs = nullptr;
+
+            // unused
             gfxWorld->lightGrid.skyGridVolumeCount = 0;
             gfxWorld->lightGrid.skyGridVolumes = nullptr;
 
