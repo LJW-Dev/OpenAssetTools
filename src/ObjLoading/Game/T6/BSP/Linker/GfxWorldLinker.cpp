@@ -142,7 +142,7 @@ namespace
                 gfxSurface->tris.maxs = gfxSurface->bounds[1];
 
                 gfxSurface->flags = bspMaterial.surfaceFlags;
-                gfxSurface->primaryLightIndex = DEFAULT_PRIMARYLIGHT_INDEX;
+                gfxSurface->primaryLightIndex = bspSurface.lightIndex;
                 gfxSurface->lightmapIndex = DEFAULT_LIGHTMAP_INDEX;
                 gfxSurface->reflectionProbeIndex = DEFAULT_RPROBE_INDEX;
             }

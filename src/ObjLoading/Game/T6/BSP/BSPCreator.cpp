@@ -211,7 +211,111 @@ namespace
             return T.matrix();
         }
 
-        unsigned CreateSurface(const AccessorsForVertex& accessorsForVertex,
+        vec3_t calculateTriNormal(vec3_t p1, vec3_t p2, vec3_t p3)
+        {
+            vec3_t v1{};
+            vec3_t v2{};
+            vec3_t normal{};
+
+            v1.x = p2.x - p1.x;
+            v1.y = p2.y - p1.y;
+            v1.z = p2.z - p1.z;
+            v2.x = p3.x - p1.x;
+            v2.y = p3.y - p1.y;
+            v2.z = p3.z - p1.z;
+
+            normal.x = v1.y * v2.z - v1.z * v2.y;
+            normal.y = v1.z * v2.x - v1.x * v2.z;
+            normal.z = v1.x * v2.y - v1.y * v2.x;
+
+            return normal;
+        }
+
+        vec3_t normaliseVec3(vec3_t in)
+        {
+            float length = std::sqrt(in.x * in.x + in.y * in.y + in.z * in.z);
+            vec3_t out{};
+            out.x = in.x / length;
+            out.y = in.y / length;
+            out.z = in.z / length;
+            return out;
+        }
+
+         float dotProductNormals(vec3_t v1, vec3_t v2)
+        {
+            vec3_t out{};
+            out.x = v1.x * v2.x;
+            out.y = v1.y * v2.y;
+            out.z = v1.z * v2.z;
+            return out.x + out.y + out.z;
+        }
+
+        size_t getLightForTri(std::vector<BSPVertex>& vertBuffer, unsigned indices[3])
+        {
+            std::pair<size_t, float> searchData{-1, 100000000000.0f};
+            BSPVertex& vert0 = vertBuffer.at(indices[0]);
+            BSPVertex& vert1 = vertBuffer.at(indices[1]);
+            BSPVertex& vert2 = vertBuffer.at(indices[2]);
+            vec3_t triNormal = normaliseVec3(calculateTriNormal(vert0.pos, vert1.pos, vert2.pos));
+            for (size_t i = 0; i < m_bsp->lights.size(); i++)
+            {
+                BSPLight light = m_bsp->lights.at(i);
+                float v0d = BSPUtil::distBetweenPoints(vert0.pos, light.pos);
+                float v1d = BSPUtil::distBetweenPoints(vert1.pos, light.pos);
+                float v2d = BSPUtil::distBetweenPoints(vert2.pos, light.pos);
+                if (v0d > light.range && v1d > light.range && v2d > light.range)
+                    continue;
+
+                if (light.type == LIGHT_TYPE_DIRECTIONAL)
+                {
+                    if (dotProductNormals(triNormal, light.gltfForwardVector) < -0.1f)
+                        goto FOUND_LIGHT_JUMP;
+                }
+                else if (light.type == LIGHT_TYPE_SPOT)
+                {
+                    if (dotProductNormals(triNormal, light.gltfForwardVector) < -0.1f)
+                    {
+                        // TODO cul from conic section of sphere
+                    }
+                }
+                else // LIGHT_TYPE_POINT
+                {
+                    // TODO: check if tri is facing point light
+                    FOUND_LIGHT_JUMP:
+                    if (v0d < light.range)
+                    {
+                        if (searchData.second > v0d)
+                        {
+                            searchData.first = i;
+                            searchData.second = v0d;
+                        }
+                    }
+                    else if (v1d < light.range)
+                    {
+                        if (searchData.second > v1d)
+                        {
+                            searchData.first = i;
+                            searchData.second = v1d;
+                        }
+                    }
+                    else if (v2d < light.range)
+                    {
+                        if (searchData.second > v2d)
+                        {
+                            searchData.first = i;
+                            searchData.second = v2d;
+                        }
+                    }
+                }
+            }
+
+            if (searchData.first == -1)
+                return SUN_LIGHT_INDEX;
+            else 
+                return searchData.first + BSP_DEFAULT_LIGHT_COUNT;
+        }
+
+        size_t CreateSurface(const AccessorsForVertex& accessorsForVertex,
                                const Eigen::Matrix4f& nodeMatrix,
                                size_t materialIndex,
                                bool convertWorldToLocalPos,
@@ -286,36 +390,8 @@ namespace
             surfaceOrigin.z = transformedPosition.z();
             RhcToLhcCoordinates(surfaceOrigin.v);
 
-            BSPSurface out_surface;
-            out_surface.isLocalCoords = convertWorldToLocalPos;
-            out_surface.origin = surfaceOrigin;
-            out_surface.vertexCount = static_cast<uint16_t>(vertexCount);
-            out_surface.triCount = static_cast<uint16_t>(faceCount);
-            out_surface.indexOfFirstIndex = static_cast<int>(m_curr_bsp_world->indices.size());
-            out_surface.indexOfFirstVertex = static_cast<int>(m_curr_bsp_world->vertices.size());
-            out_surface.materialIndex = materialIndex;
             vec4_t materialColor = m_curr_bsp_world->materials.at(materialIndex).materialColour;
-            m_curr_bsp_world->surfaces.emplace_back(out_surface);
-
-            for (auto faceIndex = 0u; faceIndex < faceCount; faceIndex++)
-            {
-                unsigned indices[3];
-                if (!indexAccessor->GetUnsigned(faceIndex * 3u + 0u, indices[0]) || !indexAccessor->GetUnsigned(faceIndex * 3u + 1u, indices[1])
-                    || !indexAccessor->GetUnsigned(faceIndex * 3u + 2u, indices[2]))
-                {
-                    throw GltfLoadException(std::format("node {}: failed to access indices", nodeName));
-                }
-                if (indices[0] > UINT16_MAX || indices[1] > UINT16_MAX || indices[2] > UINT16_MAX)
-                    throw GltfLoadException(
-                        std::format("node {}: tri index numbers {} {} {} exceeded the UINT16_MAX", nodeName, indices[0], indices[1], indices[2]));
-
-                RhcToLhcIndices(indices);
-                m_curr_bsp_world->indices.emplace_back(static_cast<uint16_t>(indices[0]));
-                m_curr_bsp_world->indices.emplace_back(static_cast<uint16_t>(indices[1]));
-                m_curr_bsp_world->indices.emplace_back(static_cast<uint16_t>(indices[2]));
-            }
-
-            const auto vertexOffset = static_cast<unsigned>(m_curr_bsp_world->vertices.size());
+            std::vector<BSPVertex> vertexBuffer;
             for (auto vertexIndex = 0u; vertexIndex < vertexCount; vertexIndex++)
             {
                 BSPVertex vertex{};
@@ -371,26 +447,67 @@ namespace
                     vertex.pos.z -= surfaceOrigin.z;
                 }
 
-                m_curr_bsp_world->vertices.emplace_back(vertex);
+                vertexBuffer.emplace_back(vertex);
             }
 
+            std::map<size_t, std::vector<uint16_t>> triToLightMap;
+            for (auto faceIndex = 0u; faceIndex < faceCount; faceIndex++)
+            {
+                unsigned indices[3];
+                if (!indexAccessor->GetUnsigned(faceIndex * 3u + 0u, indices[0]) || !indexAccessor->GetUnsigned(faceIndex * 3u + 1u, indices[1])
+                    || !indexAccessor->GetUnsigned(faceIndex * 3u + 2u, indices[2]))
+                {
+                    throw GltfLoadException(std::format("node {}: failed to access indices", nodeName));
+                }
+                if (indices[0] > UINT16_MAX || indices[1] > UINT16_MAX || indices[2] > UINT16_MAX)
+                    throw GltfLoadException(
+                        std::format("node {}: tri index numbers {} {} {} exceeded the UINT16_MAX", nodeName, indices[0], indices[1], indices[2]));
+
+                size_t lightIdx = getLightForTri(vertexBuffer, indices);
+
+                RhcToLhcIndices(indices);
+                triToLightMap[lightIdx].emplace_back(static_cast<uint16_t>(indices[0]));
+                triToLightMap[lightIdx].emplace_back(static_cast<uint16_t>(indices[1]));
+                triToLightMap[lightIdx].emplace_back(static_cast<uint16_t>(indices[2]));
+            }
+
+            size_t vertexStartindex = m_bsp->gfxWorld.vertices.size();
+            m_bsp->gfxWorld.vertices.insert(m_bsp->gfxWorld.vertices.end(), vertexBuffer.begin(), vertexBuffer.end());
+            size_t indexOfFirstIndex = m_bsp->gfxWorld.indices.size();
+
+            for (const auto& lightToTri : triToLightMap)
+            {
+                BSPSurface out_surface;
+                out_surface.isLocalCoords = convertWorldToLocalPos;
+                out_surface.origin = surfaceOrigin;
+                out_surface.vertexCount = static_cast<uint16_t>(vertexCount);
+                out_surface.triCount = static_cast<uint16_t>(faceCount);
+                out_surface.indexOfFirstIndex = static_cast<int>(m_curr_bsp_world->indices.size());
+                out_surface.indexOfFirstVertex = static_cast<int>(vertexStartindex);
+                out_surface.materialIndex = materialIndex;
+                out_surface.lightIndex = lightToTri.first; // default light is the sun light
+                m_curr_bsp_world->surfaces.emplace_back(out_surface);
+
+                m_bsp->gfxWorld.indices.insert(m_bsp->gfxWorld.indices.end(), lightToTri.second.begin(), lightToTri.second.end());
+            }
+            
             // generate tangent and binormal vectors
             tangent_space::VertexData vertexData{
-                &m_curr_bsp_world->vertices[out_surface.indexOfFirstVertex].pos,
+                &m_curr_bsp_world->vertices[vertexStartindex].pos,
                 sizeof(BSPVertex),
-                &m_curr_bsp_world->vertices[out_surface.indexOfFirstVertex].normal,
+                &m_curr_bsp_world->vertices[vertexStartindex].normal,
+                sizeof(BSPVertex),          
+                &m_curr_bsp_world->vertices[vertexStartindex].texCoord,
+                sizeof(BSPVertex),          
+                &m_curr_bsp_world->vertices[vertexStartindex].tangent,
+                sizeof(BSPVertex),          
+                &m_curr_bsp_world->vertices[vertexStartindex].binormal,
                 sizeof(BSPVertex),
-                &m_curr_bsp_world->vertices[out_surface.indexOfFirstVertex].texCoord,
-                sizeof(BSPVertex),
-                &m_curr_bsp_world->vertices[out_surface.indexOfFirstVertex].tangent,
-                sizeof(BSPVertex),
-                &m_curr_bsp_world->vertices[out_surface.indexOfFirstVertex].binormal,
-                sizeof(BSPVertex),
-                &m_curr_bsp_world->indices[out_surface.indexOfFirstIndex],
+                &m_curr_bsp_world->indices[indexOfFirstIndex],
             };
             tangent_space::CalculateTangentSpace(vertexData, faceCount, vertexCount);
 
-            return vertexOffset;
+            return triToLightMap.size();
         }
 
         bool addLightNode(const JsonRoot& jRoot, const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix, bool isEntityLight)
@@ -455,6 +572,15 @@ namespace
             vec3_t eulerAngles = {eigenEulerAngles.x(), eigenEulerAngles.y(), eigenEulerAngles.z()};
             RhcToLhcCoordinates(eulerAngles.v);
             light.rollAngle = eulerAngles.z;
+
+            // GLTF default direction is +Y up
+            Eigen::Vector3f gltfDefaultDirection(0.0f, 0.0f, -1.0f);
+            Eigen::Vector3f gltfOutputDirection = rotationMatrix * gltfDefaultDirection;
+            gltfOutputDirection.normalize();
+            light.gltfForwardVector.x = gltfOutputDirection.x();
+            light.gltfForwardVector.y = gltfOutputDirection.y();
+            light.gltfForwardVector.z = gltfOutputDirection.z();
+            RhcToLhcCoordinates(light.gltfForwardVector.v);
 
             bool isSunlight = false;
             if (node.extras && node.extras->contains("sunlight"))
@@ -1032,6 +1158,13 @@ namespace
                 entry.value = std::format("{}", m_bsp->lights.size() + 2); // +2 as empty and sunlight are already in the lights array when linking
                 entity.entries.emplace_back(entry);
                 addLightNode(jRoot, node, nodeMatrix, true);
+
+                if (node.extras->contains("model"))
+                {
+                    std::string modelStr = node.extras->at("model");
+                    if (!modelStr.compare("*"))
+                        throw GltfLoadException(std::format("Light {} cannot have a script model", node.name.value_or("unnamed node")));
+                }
             }
 
             if (!node.extras->contains("model"))
@@ -1184,8 +1317,9 @@ namespace
                 nodeQueue.emplace_back(s_nodes{rootNode, Eigen::Matrix4f::Identity()});
 
             // a few rules for the bsp that require this traversal:
+            // - lights must load first so lighting can be calculated as surfaces are loaded
             // - static surfaces must start at index 0, then script surfaces must come after
-            // - surface types are stored as contiguous indices rather then unsorted
+            // - surfaces are stored as contiguous indices rather then unsorted
             // - we don't want to add entity model children nodes as they are parsed later on
             std::vector<s_nodes> colStaticNodes;
             std::vector<s_nodes> colStaticBrushNodes;
@@ -1194,6 +1328,7 @@ namespace
             std::vector<s_nodes> gfxEmissiveOpaqueNodes;
             std::vector<s_nodes> gfxEmissiveTransparentnodes;
             std::vector<s_nodes> scriptNodes;
+            std::vector<s_nodes> lightNodes;
             while (!nodeQueue.empty())
             {
                 size_t nodeIndex = nodeQueue.front().nodeIndex;
@@ -1218,7 +1353,9 @@ namespace
                         nodeQueue.emplace_back(s_nodes{childIndex, transformedNodeMatrix});
                 }
 
-                if (m_is_world_gfx)
+                if (node.extensions && node.extensions->KHR_lights_punctual)
+                    lightNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
+                else if (m_is_world_gfx)
                 {
                     if (node.extras && (node.extras->contains("classname")))
                         scriptNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
@@ -1260,6 +1397,12 @@ namespace
                     else
                         colStaticNodes.emplace_back(s_nodes{nodeIndex, transformedNodeMatrix});
                 }
+            }
+
+            for (const auto& node : lightNodes)
+            {
+                if (!addNodeToBSP(jRoot, jRoot.nodes->at(node.nodeIndex), node.parentNodeMatrix))
+                    con::debug("({}) Ignoring node: {}", getWorldTypeName(), jRoot.nodes->at(node.nodeIndex).name.value_or("unnamed node"));
             }
 
             if (m_is_world_gfx)

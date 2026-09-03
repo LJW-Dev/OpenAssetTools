@@ -48,6 +48,8 @@ namespace T6
             size_t triCount;
             size_t indexOfFirstVertex;
             size_t indexOfFirstIndex;
+
+            size_t lightIndex;
         };
 
         struct BSPXModel
@@ -87,10 +89,12 @@ namespace T6
             vec3_t colour;
             float range;
             float intensity;
-
+            
             vec3_t pos;
             vec3_t forwardVector;
             float rollAngle; // radians
+
+            vec3_t gltfForwardVector; // only used by linker as b02 uses weird rotation for lights
 
             // angle is in radians. only used on spot lights
             float innerConeAngle;
