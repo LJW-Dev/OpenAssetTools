@@ -257,6 +257,7 @@ namespace
             BSPVertex& vert1 = vertBuffer.at(indices[1]);
             BSPVertex& vert2 = vertBuffer.at(indices[2]);
             vec3_t triNormal = normaliseVec3(calculateTriNormal(vert0.pos, vert1.pos, vert2.pos));
+            
             for (size_t i = 0; i < m_bsp->lights.size(); i++)
             {
                 BSPLight light = m_bsp->lights.at(i);
@@ -266,22 +267,66 @@ namespace
                 if (v0d > light.range && v1d > light.range && v2d > light.range)
                     continue;
 
+                bool matchesLight = false;
                 if (light.type == LIGHT_TYPE_DIRECTIONAL)
                 {
                     if (dotProductNormals(triNormal, light.gltfForwardVector) < -0.1f)
-                        goto FOUND_LIGHT_JUMP;
+                        matchesLight = true;
                 }
                 else if (light.type == LIGHT_TYPE_SPOT)
                 {
-                    if (dotProductNormals(triNormal, light.gltfForwardVector) < -0.1f)
+                    vec3_t lightToTriDirV0{};
+                    vec3_t lightToTriDirV1{};
+                    vec3_t lightToTriDirV2{};
+                    lightToTriDirV0.x = vert0.pos.x - light.pos.x;
+                    lightToTriDirV0.y = vert0.pos.y - light.pos.z;
+                    lightToTriDirV0.z = vert0.pos.z - light.pos.z;
+                    lightToTriDirV1.x = vert1.pos.x - light.pos.x;
+                    lightToTriDirV1.y = vert1.pos.y - light.pos.z;
+                    lightToTriDirV1.z = vert1.pos.z - light.pos.z;
+                    lightToTriDirV2.x = vert2.pos.x - light.pos.x;
+                    lightToTriDirV2.y = vert2.pos.y - light.pos.z;
+                    lightToTriDirV2.z = vert2.pos.z - light.pos.z;
+                    vec3_t v0Dir = normaliseVec3(lightToTriDirV0);
+                    vec3_t v1Dir = normaliseVec3(lightToTriDirV1);
+                    vec3_t v2Dir = normaliseVec3(lightToTriDirV2);
+                    float v0AngleDiff = acosf(dotProductNormals(v0Dir, light.gltfForwardVector));
+                    float v1AngleDiff = acosf(dotProductNormals(v1Dir, light.gltfForwardVector));
+                    float v2AngleDiff = acosf(dotProductNormals(v2Dir, light.gltfForwardVector));
+                   
+                    if ((v0AngleDiff < light.outerConeAngle || v1AngleDiff < light.outerConeAngle || v2AngleDiff < light.outerConeAngle)
+                        && dotProductNormals(triNormal, light.gltfForwardVector) < -0.1f)
                     {
-                        // TODO cul from conic section of sphere
+                        matchesLight = true;
                     }
                 }
                 else // LIGHT_TYPE_POINT
                 {
-                    // TODO: check if tri is facing point light
-                    FOUND_LIGHT_JUMP:
+                    vec3_t lightToTriDirV0{};
+                    vec3_t lightToTriDirV1{};
+                    vec3_t lightToTriDirV2{};
+                    lightToTriDirV0.x = vert0.pos.x - light.pos.x;
+                    lightToTriDirV0.y = vert0.pos.y - light.pos.z;
+                    lightToTriDirV0.z = vert0.pos.z - light.pos.z;
+                    lightToTriDirV1.x = vert1.pos.x - light.pos.x;
+                    lightToTriDirV1.y = vert1.pos.y - light.pos.z;
+                    lightToTriDirV1.z = vert1.pos.z - light.pos.z;
+                    lightToTriDirV2.x = vert2.pos.x - light.pos.x;
+                    lightToTriDirV2.y = vert2.pos.y - light.pos.z;
+                    lightToTriDirV2.z = vert2.pos.z - light.pos.z;
+                    vec3_t v0Dir = normaliseVec3(lightToTriDirV0);
+                    vec3_t v1Dir = normaliseVec3(lightToTriDirV1);
+                    vec3_t v2Dir = normaliseVec3(lightToTriDirV2);
+
+                     if (dotProductNormals(v0Dir, light.gltfForwardVector) < -0.1f || 
+                         dotProductNormals(v1Dir, light.gltfForwardVector) < -0.1f || 
+                         dotProductNormals(v2Dir, light.gltfForwardVector) < -0.1f)
+                        matchesLight = true;
+
+                }
+                if (matchesLight)
+                {
+                    // TODO: improve this heuristic
                     if (v0d < light.range)
                     {
                         if (searchData.second > v0d)
@@ -290,7 +335,7 @@ namespace
                             searchData.second = v0d;
                         }
                     }
-                    else if (v1d < light.range)
+                    if (v1d < light.range)
                     {
                         if (searchData.second > v1d)
                         {
@@ -298,7 +343,7 @@ namespace
                             searchData.second = v1d;
                         }
                     }
-                    else if (v2d < light.range)
+                    if (v2d < light.range)
                     {
                         if (searchData.second > v2d)
                         {
