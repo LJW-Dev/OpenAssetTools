@@ -481,18 +481,54 @@ namespace
             }
         }
 
+        struct vec3i_t
+        {
+            uint16_t x;
+            uint16_t y;
+            uint16_t z;
+        };
+
+        vec3i_t worldToLightGridCoords(vec3_t coords)
+        {
+            vec3i_t result;
+            result.x = static_cast<uint16_t>((static_cast<int>(coords.x) + 0x20000) >> 5);
+            result.y = static_cast<uint16_t>((static_cast<int>(coords.y) + 0x20000) >> 5);
+            result.z = static_cast<uint16_t>((static_cast<int>(coords.z) + 0x20000) >> 6);
+            return result;
+        }
+
+        vec3_t lghtGridtoWorldCoords(vec3i_t coords) 
+        {
+            vec3_t result;
+            result.x = (float)coords.x * 32.0f - 131072.0f;
+            result.y = (float)coords.y * 32.0f - 131072.0f;
+            result.z = (float)coords.z * 64.0f - 131072.0f;
+            return result;
+        }
+
+        struct LGCell
+        {
+            size_t lightIndex;
+            uint16_t closestLightDistance;
+        };
+
+        using LightgridMap = std::map<uint16_t, std::map<uint16_t, std::map<uint16_t, LGCell>>>;
+
+        void createLightGridMap(BSPData* bsp, LightgridMap& result)
+        {
+            LightgridMap map;
+
+            for (size_t lightIdx = 0; lightIdx < bsp->lights.size(); lightIdx++)
+            {
+                BSPLight& light = bsp->lights.at(lightIdx);
+
+                vec3i_t lightCoord = worldToLightGridCoords(light.pos);
+                map[coord.x][coord.y][coord.z] = LGCell({lightIdx, 0});
+            }
+        }
+
         bool loadLightGrid(BSPData* bsp, GfxWorld* gfxWorld)
         {
-            // world to lightgrid coords conversion:
-            // l_x = (w_x + 131072.0f) / 32.0f;
-            // l_y = (w_y + 131072.0f) / 32.0f;
-            // l_z = (w_z + 131072.0f) / 64.0f;
-            //
-            // lightgrid to world coords conversion:
-            // w_x = (double)l_x * 32.0f - 131072.0f;
-            // w_y = (double)l_y * 32.0f - 131072.0f;
-            // w_z = (double)l_z * 64.0f - 131072.0f;
-            //
             // Lightrid coords are bounded by the uint16 limits:
             // w_minX = -131072, w_maxX = 1966048
             // w_minY = -131072, w_maxY = 1966048
@@ -500,6 +536,10 @@ namespace
             //
             // 1 xy lightgrid unit equals 32 xy world units
             // 1 z lightgrid unit equals 64 z world units
+            // 
+            // the lightgrid is designed to only have 255 cells for the Z axis which sucks,
+            //  so the lightgrid only works for z axis chunks of world coord size 16320.
+            //  Tall maps can't be fully lit :(
 
             if (gfxWorld->mins.x < -131072.0f || gfxWorld->mins.y < -131072.0f || gfxWorld->mins.z < -131072.0f || gfxWorld->maxs.x > 1966048.0f
                 || gfxWorld->maxs.y > 1966048.0f || gfxWorld->maxs.z > 4063168.0f)
@@ -515,81 +555,138 @@ namespace
             gfxWorld->lightGrid.maxs[0] = static_cast<uint16_t>((static_cast<int>(gfxWorld->maxs.x) + 0x20000) >> 5);
             gfxWorld->lightGrid.maxs[1] = static_cast<uint16_t>((static_cast<int>(gfxWorld->maxs.y) + 0x20000) >> 5);
             gfxWorld->lightGrid.maxs[2] = static_cast<uint16_t>((static_cast<int>(gfxWorld->maxs.z) + 0x20000) >> 6);
+            size_t xAxisStart = gfxWorld->lightGrid.mins[0];
+            size_t xAxisSize = gfxWorld->lightGrid.maxs[0] - gfxWorld->lightGrid.mins[0] + 1;
+
+            LightgridMap XAxisMap;
+            createLightGridMap(bsp, XAxisMap);
 
             gfxWorld->lightGrid.rowAxis = 0; // default value
             gfxWorld->lightGrid.colAxis = 1; // default value
             gfxWorld->lightGrid.sunPrimaryLightIndex = SUN_LIGHT_INDEX;
             gfxWorld->lightGrid.offset = 0.0f; // default value
 
-            int rowDataStartSize = gfxWorld->lightGrid.maxs[0] - gfxWorld->lightGrid.mins[0] + 1;
+            int rowDataStartSize = xAxisSize;
             gfxWorld->lightGrid.rowDataStart = m_memory.Alloc<uint16_t>(rowDataStartSize);
 
             std::vector<char> rowVec;
             std::vector<GfxLightGridEntry> entryVec;
             std::vector<GfxCompressedLightGridColors> colorVec;
             colorVec.resize(2);
-            createLGColorArrayFromColor(&colorVec.at(0), vec3_t{0.0f, 0.0f, 0.0f}); // always empty
+            createLGColorArrayFromColor(&colorVec.at(0), vec3_t{bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z}); // default entry
             createLGColorArrayFromColor(&colorVec.at(1), vec3_t{bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z}); // default entry
-            for (int i = 0; i < rowDataStartSize; i++)
+            for (int xIdx = 0; xIdx < rowDataStartSize; xIdx++)
             {
                 assert(rowVec.size() % 4 == 0);
-                gfxWorld->lightGrid.rowDataStart[i] = static_cast<uint16_t>(rowVec.size() / 4);
+                gfxWorld->lightGrid.rowDataStart[xIdx] = static_cast<uint16_t>(rowVec.size() / 4);
 
-                size_t yAxisStart = gfxWorld->lightGrid.mins[1];
-                size_t yAxisSize = gfxWorld->lightGrid.maxs[1] - gfxWorld->lightGrid.mins[1];
-                size_t zAxisStart = gfxWorld->lightGrid.mins[2];
-                size_t zAxisSize = gfxWorld->lightGrid.maxs[2] - gfxWorld->lightGrid.mins[2];
+                uint16_t trueXValue = xAxisStart + xIdx;
 
-                GfxLightGridRow row;
-                row.colStart = yAxisStart;
-                row.colCount = yAxisSize;
-                row.zStart = zAxisStart;
-                row.zCount = zAxisSize;
+                GfxLightGridRow row{};
                 row.firstEntry = static_cast<unsigned int>(entryVec.size());
 
-                size_t yResult = yAxisSize / 0xff;
-                size_t yRemainder = yAxisSize % 0xff;
-                if (yRemainder > 0)
-                    yResult++;
-
-                // TODO: account for when GfxLightGridRowData is not max size
-                std::unique_ptr<GfxLightGridRowData[]> dataArr = std::make_unique<GfxLightGridRowData[]>(yResult);
-                size_t unaddedYCount = yAxisSize;
-                for (size_t yIdx = 0; yIdx < yResult; yIdx++)
+                if (XAxisMap.contains(trueXValue))
                 {
-                    char ySize = 0xFF;
-                    if (unaddedYCount < 0xFF)
-                        ySize = static_cast<unsigned char>(unaddedYCount);
-                    else
-                        unaddedYCount -= 0xFF;
+                    std::map<uint16_t, std::map<uint16_t, LGCell>>& YAxisMap = XAxisMap.at(trueXValue);
 
-                    // TODO: find z count and offsets;
-                    unsigned char zSize = 0xFF;
-                    unsigned char zStart = 0;
-                    unsigned char zOffset = 0;
+                    uint16_t yAxisStart = YAxisMap.begin()->first;
+                    uint16_t yAxisEnd = YAxisMap.rbegin()->first;
+                    uint16_t yAxisSize = yAxisEnd - yAxisStart + 1;
 
-                    GfxLightGridRowData* data = &dataArr[yIdx];
-                    data->yAxisCount = ySize;
-                    data->zAxisSize = zSize;
-                    data->zAxisStart = zStart;
-                    data->zAxisOffset = zOffset;
-                    
-                    for (unsigned char zIdx = 0; zIdx < zSize; zIdx++)
+                    row.colStart = yAxisStart;
+                    row.colCount = yAxisSize;
+                    row.zStart = 0;
+                    row.zCount = 0xffff;
+
+                    std::vector<char> dataArr;
+                    for (uint16_t yIdx = 0; yIdx < yAxisSize; yIdx++)
                     {
-                        GfxLightGridEntry entry;
-                        entry.visibility = 0;
-                        entry.primaryLightIndex = 0 + 2; // TODO
-                        entry.colorsIndex = static_cast<uint16_t>(colorVec.size()); // TODO: bounded by uint16
-                        entryVec.emplace_back(entry);
-                        colorVec.emplace_back();
-                        createLGColorArrayFromColor(&colorVec.at(entry.colorsIndex), vec3_t{0.0f, 0.0f, 0.0f}); // todo: get light colour
-                    }
-                }
+                        uint16_t trueYValue = yAxisStart + yIdx;
+                        if (YAxisMap.contains(trueYValue))
+                        {
+                            std::map<uint16_t, LGCell>& ZAxisMap = YAxisMap.at(trueYValue);
 
-                size_t rowIndexStart = rowVec.size();
-                rowVec.resize(rowVec.size() + (sizeof(GfxLightGridRow) - 1) + (sizeof(GfxLightGridRowData) * yResult));
-                memcpy(&rowVec.at(rowIndexStart), &row, sizeof(GfxLightGridRow) - 1);
-                memcpy(&rowVec.at(rowIndexStart + (sizeof(GfxLightGridRow) - 1)), dataArr.get(), sizeof(GfxLightGridRowData) * yResult);
+                            uint16_t zAxisStart = ZAxisMap.begin()->first;
+                            uint16_t zAxisEnd = ZAxisMap.rbegin()->first;
+                            uint16_t zAxisSize = zAxisEnd - zAxisStart + 1;
+
+                            if (zAxisSize > 0xff)
+                            {
+                                con::error("z size > 0xff");
+                                assert(false);
+                            }
+                            unsigned char zSize = static_cast<unsigned char>(zAxisSize);
+                            unsigned char zOffset = zAxisStart / 0x100;
+                            unsigned char zStart = zAxisStart % 0x100;
+
+                            GfxLightGridRowData data{};
+                            data.yAxisCount = 1;
+                            data.zAxisSize = zSize;
+                            data.zAxisStart = zStart;
+                            data.zAxisOffset = zOffset;
+                            size_t rowStartIndex = dataArr.size();
+                            dataArr.resize(dataArr.size() + sizeof(GfxLightGridRowData));
+                            memcpy(&dataArr.at(rowStartIndex), &data, sizeof(GfxLightGridRowData));
+
+                            for (unsigned char zIdx = 0; zIdx < zSize; zIdx++)
+                            {
+                                if (ZAxisMap.contains(zIdx))
+                                {
+                                    LGCell& cell = ZAxisMap.at(zIdx);
+                                    GfxLightGridEntry entry{};
+                                    entry.visibility = 0xff;
+                                    entry.primaryLightIndex = cell.lightIndex + 2;
+                                    entry.colorsIndex = static_cast<uint16_t>(colorVec.size()); // TODO: bounded by uint16
+                                    entryVec.emplace_back(entry);
+
+                                    if (colorVec.size() > 0xffff)
+                                    {
+                                        con::error("colorVec.size() > 0xffff");
+                                        assert(false);
+                                    }
+
+                                    colorVec.emplace_back();
+                                    createLGColorArrayFromColor(&colorVec.at(entry.colorsIndex), bsp->lights.at(lightIdx).colour);
+                                }
+                                else
+                                {
+                                    GfxLightGridEntry entry{};
+                                    entry.visibility = 0xff;
+                                    entry.primaryLightIndex = SUN_LIGHT_INDEX;
+                                    entry.colorsIndex = 0; // default colour
+                                    entryVec.emplace_back(entry);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            GfxLightGridRowData data{};
+                            data.yAxisCount = 1;
+                            data.zAxisSize = 0;
+                            size_t rowStartIndex = dataArr.size();
+                            dataArr.resize(dataArr.size() + offsetof(GfxLightGridRowData, zAxisStart));
+                            memcpy(&dataArr.at(rowStartIndex), &data, offsetof(GfxLightGridRowData, zAxisStart));
+                        }
+                    }
+
+                    size_t LGRSize = offsetof(GfxLightGridRow, rowData);
+                    size_t rowIndexStart = rowVec.size();
+                    rowVec.resize(rowVec.size() + LGRSize + dataArr.size());
+                    memcpy(&rowVec.at(rowIndexStart), &row, LGRSize);
+                    memcpy(&rowVec.at(rowIndexStart + LGRSize), dataArr.data(), dataArr.size());
+                }
+                else
+                {
+                    row.colStart = 0;
+                    row.colCount = 0;
+                    row.zStart = 0;
+                    row.zCount = 0;
+
+                    size_t LGRSize = offsetof(GfxLightGridRow, rowData);
+                    size_t rowIndexStart = rowVec.size();
+                    rowVec.resize(rowVec.size() + LGRSize);
+                    memcpy(&rowVec.at(rowIndexStart), &row, LGRSize);
+                }
                 rowVec.resize((rowVec.size() + 3) & ~3); // resize to 4 byte allignment
             }
 
