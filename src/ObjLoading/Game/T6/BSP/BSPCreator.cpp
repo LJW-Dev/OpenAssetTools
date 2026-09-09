@@ -1711,7 +1711,7 @@ namespace
     public:
         bool addGLTFDataToBSP(Input& gltfInput, bool isGfxWorld)
         {
-            con::info("- Parsing {} BSP GLTF data", getWorldTypeName());
+            con::info("- Parsing {} BSP GLTF data", isGfxWorld ? "gfx" : "col");
 
             JsonRoot jRoot;
             try
