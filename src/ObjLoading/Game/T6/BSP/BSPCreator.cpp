@@ -250,6 +250,114 @@ namespace
             return out.x + out.y + out.z;
         }
 
+        //size_t getLightForBounds(vec3_t mins, vec3_t maxs)
+        //{
+        //    std::pair<size_t, float> searchData{-1, 100000000000.0f};
+        //    BSPVertex& vert0 = vertBuffer.at(indices[0]);
+        //    BSPVertex& vert1 = vertBuffer.at(indices[1]);
+        //    BSPVertex& vert2 = vertBuffer.at(indices[2]);
+        //    vec3_t triNormal = normaliseVec3(calculateTriNormal(vert0.pos, vert1.pos, vert2.pos));
+
+        //    for (size_t i = 0; i < m_bsp->lights.size(); i++)
+        //    {
+        //        BSPLight light = m_bsp->lights.at(i);
+        //        float v0d = BSPUtil::distBetweenPoints(vert0.pos, light.pos);
+        //        float v1d = BSPUtil::distBetweenPoints(vert1.pos, light.pos);
+        //        float v2d = BSPUtil::distBetweenPoints(vert2.pos, light.pos);
+        //        if (v0d > light.range && v1d > light.range && v2d > light.range)
+        //            continue;
+
+        //        bool matchesLight = false;
+        //        if (light.type == LIGHT_TYPE_DIRECTIONAL)
+        //        {
+        //            if (dotProductNormals(triNormal, light.gltfForwardVector) < -0.1f)
+        //                matchesLight = true;
+        //        }
+        //        else if (light.type == LIGHT_TYPE_SPOT)
+        //        {
+        //            vec3_t lightToTriDirV0{};
+        //            vec3_t lightToTriDirV1{};
+        //            vec3_t lightToTriDirV2{};
+        //            lightToTriDirV0.x = vert0.pos.x - light.pos.x;
+        //            lightToTriDirV0.y = vert0.pos.y - light.pos.z;
+        //            lightToTriDirV0.z = vert0.pos.z - light.pos.z;
+        //            lightToTriDirV1.x = vert1.pos.x - light.pos.x;
+        //            lightToTriDirV1.y = vert1.pos.y - light.pos.z;
+        //            lightToTriDirV1.z = vert1.pos.z - light.pos.z;
+        //            lightToTriDirV2.x = vert2.pos.x - light.pos.x;
+        //            lightToTriDirV2.y = vert2.pos.y - light.pos.z;
+        //            lightToTriDirV2.z = vert2.pos.z - light.pos.z;
+        //            vec3_t v0Dir = normaliseVec3(lightToTriDirV0);
+        //            vec3_t v1Dir = normaliseVec3(lightToTriDirV1);
+        //            vec3_t v2Dir = normaliseVec3(lightToTriDirV2);
+        //            float v0AngleDiff = acosf(dotProductNormals(v0Dir, light.gltfForwardVector));
+        //            float v1AngleDiff = acosf(dotProductNormals(v1Dir, light.gltfForwardVector));
+        //            float v2AngleDiff = acosf(dotProductNormals(v2Dir, light.gltfForwardVector));
+
+        //            if ((v0AngleDiff < light.outerConeAngle || v1AngleDiff < light.outerConeAngle || v2AngleDiff < light.outerConeAngle)
+        //                && dotProductNormals(triNormal, light.gltfForwardVector) < -0.1f)
+        //            {
+        //                matchesLight = true;
+        //            }
+        //        }
+        //        else // LIGHT_TYPE_POINT
+        //        {
+        //            vec3_t lightToTriDirV0{};
+        //            vec3_t lightToTriDirV1{};
+        //            vec3_t lightToTriDirV2{};
+        //            lightToTriDirV0.x = vert0.pos.x - light.pos.x;
+        //            lightToTriDirV0.y = vert0.pos.y - light.pos.z;
+        //            lightToTriDirV0.z = vert0.pos.z - light.pos.z;
+        //            lightToTriDirV1.x = vert1.pos.x - light.pos.x;
+        //            lightToTriDirV1.y = vert1.pos.y - light.pos.z;
+        //            lightToTriDirV1.z = vert1.pos.z - light.pos.z;
+        //            lightToTriDirV2.x = vert2.pos.x - light.pos.x;
+        //            lightToTriDirV2.y = vert2.pos.y - light.pos.z;
+        //            lightToTriDirV2.z = vert2.pos.z - light.pos.z;
+        //            vec3_t v0Dir = normaliseVec3(lightToTriDirV0);
+        //            vec3_t v1Dir = normaliseVec3(lightToTriDirV1);
+        //            vec3_t v2Dir = normaliseVec3(lightToTriDirV2);
+
+        //            if (dotProductNormals(v0Dir, light.gltfForwardVector) < -0.1f || dotProductNormals(v1Dir, light.gltfForwardVector) < -0.1f
+        //                || dotProductNormals(v2Dir, light.gltfForwardVector) < -0.1f)
+        //                matchesLight = true;
+        //        }
+        //        if (matchesLight)
+        //        {
+        //            // TODO: improve this heuristic
+        //            if (v0d < light.range)
+        //            {
+        //                if (searchData.second > v0d)
+        //                {
+        //                    searchData.first = i;
+        //                    searchData.second = v0d;
+        //                }
+        //            }
+        //            if (v1d < light.range)
+        //            {
+        //                if (searchData.second > v1d)
+        //                {
+        //                    searchData.first = i;
+        //                    searchData.second = v1d;
+        //                }
+        //            }
+        //            if (v2d < light.range)
+        //            {
+        //                if (searchData.second > v2d)
+        //                {
+        //                    searchData.first = i;
+        //                    searchData.second = v2d;
+        //                }
+        //            }
+        //        }
+        //    }
+
+        //    if (searchData.first == -1)
+        //        return SUN_LIGHT_INDEX;
+        //    else
+        //        return searchData.first + BSP_DEFAULT_LIGHT_COUNT;
+        //}
+
         size_t getLightForTri(std::vector<BSPVertex>& vertBuffer, unsigned indices[3])
         {
             std::pair<size_t, float> searchData{-1, 100000000000.0f};
@@ -279,13 +387,13 @@ namespace
                     vec3_t lightToTriDirV1{};
                     vec3_t lightToTriDirV2{};
                     lightToTriDirV0.x = vert0.pos.x - light.pos.x;
-                    lightToTriDirV0.y = vert0.pos.y - light.pos.z;
+                    lightToTriDirV0.y = vert0.pos.y - light.pos.y;
                     lightToTriDirV0.z = vert0.pos.z - light.pos.z;
                     lightToTriDirV1.x = vert1.pos.x - light.pos.x;
-                    lightToTriDirV1.y = vert1.pos.y - light.pos.z;
+                    lightToTriDirV1.y = vert1.pos.y - light.pos.y;
                     lightToTriDirV1.z = vert1.pos.z - light.pos.z;
                     lightToTriDirV2.x = vert2.pos.x - light.pos.x;
-                    lightToTriDirV2.y = vert2.pos.y - light.pos.z;
+                    lightToTriDirV2.y = vert2.pos.y - light.pos.y;
                     lightToTriDirV2.z = vert2.pos.z - light.pos.z;
                     vec3_t v0Dir = normaliseVec3(lightToTriDirV0);
                     vec3_t v1Dir = normaliseVec3(lightToTriDirV1);
@@ -360,7 +468,7 @@ namespace
                 return searchData.first + BSP_DEFAULT_LIGHT_COUNT;
         }
 
-        size_t CreateSurface(const AccessorsForVertex& accessorsForVertex,
+        void CreateSurface(const AccessorsForVertex& accessorsForVertex,
                                const Eigen::Matrix4f& nodeMatrix,
                                size_t materialIndex,
                                bool convertWorldToLocalPos,
@@ -495,34 +603,51 @@ namespace
                 vertexBuffer.emplace_back(vertex);
             }
 
-            std::map<size_t, std::vector<uint16_t>> triToLightMap;
-            for (auto faceIndex = 0u; faceIndex < faceCount; faceIndex++)
+            size_t vertexStartindex = m_curr_bsp_world->vertices.size();
+            size_t indexOfFirstIndex = m_curr_bsp_world->indices.size();
+            m_curr_bsp_world->vertices.insert(m_curr_bsp_world->vertices.end(), vertexBuffer.begin(), vertexBuffer.end());
+            if (m_is_world_gfx)
             {
-                unsigned indices[3];
-                if (!indexAccessor->GetUnsigned(faceIndex * 3u + 0u, indices[0]) || !indexAccessor->GetUnsigned(faceIndex * 3u + 1u, indices[1])
-                    || !indexAccessor->GetUnsigned(faceIndex * 3u + 2u, indices[2]))
+                std::map<size_t, std::vector<uint16_t>> triToLightMap;
+                for (auto faceIndex = 0u; faceIndex < faceCount; faceIndex++)
                 {
-                    throw GltfLoadException(std::format("node {}: failed to access indices", nodeName));
+                    unsigned indices[3];
+                    if (!indexAccessor->GetUnsigned(faceIndex * 3u + 0u, indices[0]) || !indexAccessor->GetUnsigned(faceIndex * 3u + 1u, indices[1])
+                        || !indexAccessor->GetUnsigned(faceIndex * 3u + 2u, indices[2]))
+                    {
+                        throw GltfLoadException(std::format("node {}: failed to access indices", nodeName));
+                    }
+                    if (indices[0] > UINT16_MAX || indices[1] > UINT16_MAX || indices[2] > UINT16_MAX)
+                        throw GltfLoadException(
+                            std::format("node {}: tri index numbers {} {} {} exceeded the UINT16_MAX", nodeName, indices[0], indices[1], indices[2]));
+
+                    RhcToLhcIndices(indices);
+                    size_t lightIdx = getLightForTri(vertexBuffer, indices);
+                    triToLightMap[lightIdx].emplace_back(static_cast<uint16_t>(indices[0]));
+                    triToLightMap[lightIdx].emplace_back(static_cast<uint16_t>(indices[1]));
+                    triToLightMap[lightIdx].emplace_back(static_cast<uint16_t>(indices[2]));
                 }
-                if (indices[0] > UINT16_MAX || indices[1] > UINT16_MAX || indices[2] > UINT16_MAX)
-                    throw GltfLoadException(
-                        std::format("node {}: tri index numbers {} {} {} exceeded the UINT16_MAX", nodeName, indices[0], indices[1], indices[2]));
 
-                size_t lightIdx = getLightForTri(vertexBuffer, indices);
+                for (const auto& lightToTri : triToLightMap)
+                {
+                    assert(lightToTri.second.size() % 3 == 0);
+                    BSPSurface out_surface{};
+                    out_surface.isLocalCoords = convertWorldToLocalPos;
+                    out_surface.origin = surfaceOrigin;
+                    out_surface.vertexCount = static_cast<uint16_t>(vertexCount);
+                    out_surface.triCount = static_cast<uint16_t>(lightToTri.second.size() / 3);
+                    out_surface.indexOfFirstIndex = static_cast<int>(m_curr_bsp_world->indices.size());
+                    out_surface.indexOfFirstVertex = static_cast<int>(vertexStartindex);
+                    out_surface.materialIndex = materialIndex;
+                    out_surface.lightIndex = lightToTri.first;
+                    m_curr_bsp_world->surfaces.emplace_back(out_surface);
 
-                RhcToLhcIndices(indices);
-                triToLightMap[lightIdx].emplace_back(static_cast<uint16_t>(indices[0]));
-                triToLightMap[lightIdx].emplace_back(static_cast<uint16_t>(indices[1]));
-                triToLightMap[lightIdx].emplace_back(static_cast<uint16_t>(indices[2]));
+                    m_bsp->gfxWorld.indices.insert(m_bsp->gfxWorld.indices.end(), lightToTri.second.begin(), lightToTri.second.end());
+                }
             }
-
-            size_t vertexStartindex = m_bsp->gfxWorld.vertices.size();
-            m_bsp->gfxWorld.vertices.insert(m_bsp->gfxWorld.vertices.end(), vertexBuffer.begin(), vertexBuffer.end());
-            size_t indexOfFirstIndex = m_bsp->gfxWorld.indices.size();
-
-            for (const auto& lightToTri : triToLightMap)
+            else
             {
-                BSPSurface out_surface;
+                BSPSurface out_surface{};
                 out_surface.isLocalCoords = convertWorldToLocalPos;
                 out_surface.origin = surfaceOrigin;
                 out_surface.vertexCount = static_cast<uint16_t>(vertexCount);
@@ -530,10 +655,25 @@ namespace
                 out_surface.indexOfFirstIndex = static_cast<int>(m_curr_bsp_world->indices.size());
                 out_surface.indexOfFirstVertex = static_cast<int>(vertexStartindex);
                 out_surface.materialIndex = materialIndex;
-                out_surface.lightIndex = lightToTri.first; // default light is the sun light
                 m_curr_bsp_world->surfaces.emplace_back(out_surface);
 
-                m_bsp->gfxWorld.indices.insert(m_bsp->gfxWorld.indices.end(), lightToTri.second.begin(), lightToTri.second.end());
+                for (auto faceIndex = 0u; faceIndex < faceCount; faceIndex++)
+                {
+                    unsigned indices[3];
+                    if (!indexAccessor->GetUnsigned(faceIndex * 3u + 0u, indices[0]) || !indexAccessor->GetUnsigned(faceIndex * 3u + 1u, indices[1])
+                        || !indexAccessor->GetUnsigned(faceIndex * 3u + 2u, indices[2]))
+                    {
+                        throw GltfLoadException(std::format("node {}: failed to access indices", nodeName));
+                    }
+                    if (indices[0] > UINT16_MAX || indices[1] > UINT16_MAX || indices[2] > UINT16_MAX)
+                        throw GltfLoadException(
+                            std::format("node {}: tri index numbers {} {} {} exceeded the UINT16_MAX", nodeName, indices[0], indices[1], indices[2]));
+
+                    RhcToLhcIndices(indices);
+                    m_bsp->colWorld.indices.emplace_back(static_cast<uint16_t>(indices[0]));
+                    m_bsp->colWorld.indices.emplace_back(static_cast<uint16_t>(indices[1]));
+                    m_bsp->colWorld.indices.emplace_back(static_cast<uint16_t>(indices[2]));
+                }
             }
             
             // generate tangent and binormal vectors
@@ -551,8 +691,6 @@ namespace
                 &m_curr_bsp_world->indices[indexOfFirstIndex],
             };
             tangent_space::CalculateTangentSpace(vertexData, faceCount, vertexCount);
-
-            return triToLightMap.size();
         }
 
         bool addLightNode(const JsonRoot& jRoot, const gltf::JsonNode& node, const Eigen::Matrix4f& nodeMatrix, bool isEntityLight)
@@ -618,7 +756,7 @@ namespace
             RhcToLhcCoordinates(eulerAngles.v);
             light.rollAngle = eulerAngles.z;
 
-            // GLTF default direction is +Y up
+            // GLTF default light direction is -Z down
             Eigen::Vector3f gltfDefaultDirection(0.0f, 0.0f, -1.0f);
             Eigen::Vector3f gltfOutputDirection = rotationMatrix * gltfDefaultDirection;
             gltfOutputDirection.normalize();

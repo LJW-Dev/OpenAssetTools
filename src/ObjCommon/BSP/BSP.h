@@ -60,6 +60,8 @@ namespace T6
             vec4_t rotationQuaternion;
             vec3_t scale;
 
+            size_t lightIndex;
+
             bool areBoundsValid;
             vec3_t mins;
             vec3_t maxs;
@@ -94,7 +96,7 @@ namespace T6
             vec3_t forwardVector;
             float rollAngle; // radians
 
-            vec3_t gltfForwardVector; // only used by linker as b02 uses weird rotation for lights
+           vec3_t gltfForwardVector; // only used by linker as b02 uses weird rotation for lights
 
             // angle is in radians. only used on spot lights
             float innerConeAngle;
