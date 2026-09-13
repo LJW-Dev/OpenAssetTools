@@ -506,6 +506,7 @@ namespace
                 con::error("colorVec.size() > 0xffff, using sunlight data as fallback");
                 return 0;
             }
+            uint16_t colVecSize = static_cast<uint16_t>(colorVec.size());
 
             float r = color.x * multiplier;
             float g = color.y * multiplier;
@@ -515,14 +516,14 @@ namespace
             char cmpG = compressColorIntoLightmapChar(g + sunCol.y);
             char cmpB = compressColorIntoLightmapChar(b + sunCol.z);
 
-            for (size_t index = 0; index < colorVec.size(); index++)
+            for (uint16_t index = 0; index < colVecSize; index++)
             {
                 GfxCompressedLightGridColors& color = colorVec.at(index);
                 if (color.rgb[0][0] == cmpR && color.rgb[0][1] == cmpG && color.rgb[0][2] == cmpB)
                     return index;
             }
             
-            size_t index = colorVec.size();
+            uint16_t index = colVecSize;
             colorVec.emplace_back();
             GfxCompressedLightGridColors* LGArray = &colorVec.at(index); 
             for (size_t row = 0; row < 56; row++)
