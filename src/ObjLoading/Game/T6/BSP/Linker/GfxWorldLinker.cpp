@@ -226,6 +226,7 @@ namespace
                     currModel->flags |= STATIC_MODEL_FLAG_NO_SHADOW;
 
                 currModel->primaryLightIndex = static_cast<char>(bspModel.lightIndex) + BSP_DEFAULT_LIGHT_COUNT;
+                vec4_t lightColor{};
                 if (currModel->primaryLightIndex == SUN_LIGHT_INDEX)
                 {
                     currModelInst->lightingOrigin = bspModel.origin;
@@ -233,11 +234,16 @@ namespace
                     currModelInst->lightingOrigin.x += -lightDir.x * 100.0f;
                     currModelInst->lightingOrigin.y += -lightDir.y * 100.0f;
                     currModelInst->lightingOrigin.z += -lightDir.z * 100.0f;
+                    lightColor = {bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z, 0.0f};
                 }
                 else if (currModel->primaryLightIndex == EMPTY_LIGHT_INDEX)
                     currModelInst->lightingOrigin = bspModel.origin;
                 else
-                    currModelInst->lightingOrigin = bsp->lights.at(bspModel.lightIndex).pos;
+                {
+                    BSPLight& bspLight = bsp->lights.at(bspModel.lightIndex);
+                    currModelInst->lightingOrigin = bspLight.pos;
+                    lightColor = {bspLight.colour.x, bspLight.colour.y, bspLight.colour.z, 0.0f};
+                }
                 
 
                 currModel->smid = static_cast<unsigned int>(modelIdx);
@@ -286,14 +292,14 @@ namespace
                         currModel->lmapVertexInfo[lodIdx].lmapVertexColors = m_memory.Alloc<unsigned int>(vertCount);
 
                         // use the same method as lightmap to generate the colours
-                        vec4_t sunlightModified = {bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z, 0.0f};
-                        sunlightModified.x /= 32.0f;
-                        sunlightModified.x = sqrtf(sunlightModified.x);
-                        sunlightModified.y /= 32.0f;
-                        sunlightModified.y = sqrtf(sunlightModified.y);
-                        sunlightModified.z /= 32.0f;
-                        sunlightModified.z = sqrtf(sunlightModified.z);
-                        uint32_t vertColor = pack32::Vec4PackGfxColor(sunlightModified.v);
+                        vec4_t lightModified = lightColor;
+                        lightModified.x /= 32.0f;
+                        lightModified.x = sqrtf(lightColor.x);
+                        lightModified.y /= 32.0f;
+                        lightModified.y = sqrtf(lightColor.y);
+                        lightModified.z /= 32.0f;
+                        lightModified.z = sqrtf(lightColor.z);
+                        uint32_t vertColor = pack32::Vec4PackGfxColor(lightModified.v);
                         for (uint16_t vertIdx = 0; vertIdx < vertCount; vertIdx++)
                             currModel->lmapVertexInfo[lodIdx].lmapVertexColors[vertIdx] = vertColor;
                     }
@@ -486,24 +492,11 @@ namespace
             return static_cast<char>(roundf(color));
         }
 
-        void createLGColorArrayFromColor(GfxCompressedLightGridColors* LGArray, vec3_t color, float multiplier)
-        {
-            char cmpR = compressColorIntoLightmapChar(color.x * multiplier);
-            char cmpG = compressColorIntoLightmapChar(color.y * multiplier);
-            char cmpB = compressColorIntoLightmapChar(color.z * multiplier);
-            for (size_t row = 0; row < 56; row++)
-            {
-                LGArray->rgb[row][0] = cmpR;
-                LGArray->rgb[row][1] = cmpG;
-                LGArray->rgb[row][2] = cmpB;
-            }
-        }
-
         uint16_t addToLGColorArrayFromColor(BSPData* bsp, std::vector<GfxCompressedLightGridColors>& colorVec, vec3_t color, float multiplier)
         {
-            if (colorVec.size() > 0xffff)
+            if (colorVec.size() > 0xfffe)
             {
-                con::error("colorVec.size() > 0xffff, using sunlight data as fallback");
+                con::error("colorVec.size() > 0xfffe, using sunlight data as fallback");
                 return 0;
             }
             uint16_t colVecSize = static_cast<uint16_t>(colorVec.size());
@@ -691,9 +684,8 @@ namespace
             std::vector<char> rowVec;
             std::vector<GfxLightGridEntry> entryVec;
             std::vector<GfxCompressedLightGridColors> colorVec;
-            colorVec.resize(2);
-            createLGColorArrayFromColor(&colorVec.at(0), vec3_t{bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z}, 1.0f); // default entry
-            createLGColorArrayFromColor(&colorVec.at(1), vec3_t{bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z}, 1.0f); // default entry
+            addToLGColorArrayFromColor(bsp, colorVec, vec3_t{bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z}, 1.0f);  // default entry
+            addToLGColorArrayFromColor(bsp, colorVec, vec3_t{bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z}, 1.0f); // default entry
             for (uint16_t xIdx = 0; xIdx < xAxisSize; xIdx++)
             {
                 assert(rowVec.size() % 4 == 0);
@@ -768,7 +760,7 @@ namespace
                                     }
 
                                     GfxLightGridEntry entry{};
-                                    entry.visibility = -1;
+                                    entry.visibility = 0;
                                     entry.primaryLightIndex = static_cast<char>(cell.lightIndex + BSP_DEFAULT_LIGHT_COUNT);
                                     entry.colorsIndex = addToLGColorArrayFromColor(bsp, colorVec, light.colour, result);
                                     entryVec.emplace_back(entry);
@@ -776,7 +768,7 @@ namespace
                                 else
                                 {
                                     GfxLightGridEntry entry{};
-                                    entry.visibility = -1;
+                                    entry.visibility = 0;
                                     entry.primaryLightIndex = SUN_LIGHT_INDEX;
                                     entry.colorsIndex = 0; // default colour
                                     entryVec.emplace_back(entry);
@@ -1176,16 +1168,8 @@ namespace
 
             loadDynEntData(gfxWorld); // requires cells and lights
 
-            // surf/xmodel light post porcessing:
-            // any surfaces/xmodels within radius of light, light is assigned to it (check for light conflicts and choose best light)
-            // check if sunlight can reach surface/xmodel, assign sunlight to it
-            // add empty light if sunlight can't reach surf/xmodel
-
-            // lightgrid post processing
-            // break up level into 32x32x64 size chunks
-            // chunks that can be seen by lights have their light calculated from attenuation
-            // chunks that can be seen by sun have the sun light constant set
-            // set chunks with no light data to low level of light (idk how to calc yet)
+            // dynent load data
+            // hero light load data
 
             // refection probes post processing
             // somehow load rprobes
