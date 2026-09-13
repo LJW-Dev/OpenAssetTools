@@ -250,128 +250,77 @@ namespace
             return out.x + out.y + out.z;
         }
 
-        //size_t getLightForBounds(vec3_t mins, vec3_t maxs)
-        //{
-        //    std::pair<size_t, float> searchData{-1, 100000000000.0f};
-        //    BSPVertex& vert0 = vertBuffer.at(indices[0]);
-        //    BSPVertex& vert1 = vertBuffer.at(indices[1]);
-        //    BSPVertex& vert2 = vertBuffer.at(indices[2]);
-        //    vec3_t triNormal = normaliseVec3(calculateTriNormal(vert0.pos, vert1.pos, vert2.pos));
-
-        //    for (size_t i = 0; i < m_bsp->lights.size(); i++)
-        //    {
-        //        BSPLight light = m_bsp->lights.at(i);
-        //        float v0d = BSPUtil::distBetweenPoints(vert0.pos, light.pos);
-        //        float v1d = BSPUtil::distBetweenPoints(vert1.pos, light.pos);
-        //        float v2d = BSPUtil::distBetweenPoints(vert2.pos, light.pos);
-        //        if (v0d > light.range && v1d > light.range && v2d > light.range)
-        //            continue;
-
-        //        bool matchesLight = false;
-        //        if (light.type == LIGHT_TYPE_DIRECTIONAL)
-        //        {
-        //            if (dotProductNormals(triNormal, light.gltfForwardVector) < -0.1f)
-        //                matchesLight = true;
-        //        }
-        //        else if (light.type == LIGHT_TYPE_SPOT)
-        //        {
-        //            vec3_t lightToTriDirV0{};
-        //            vec3_t lightToTriDirV1{};
-        //            vec3_t lightToTriDirV2{};
-        //            lightToTriDirV0.x = vert0.pos.x - light.pos.x;
-        //            lightToTriDirV0.y = vert0.pos.y - light.pos.z;
-        //            lightToTriDirV0.z = vert0.pos.z - light.pos.z;
-        //            lightToTriDirV1.x = vert1.pos.x - light.pos.x;
-        //            lightToTriDirV1.y = vert1.pos.y - light.pos.z;
-        //            lightToTriDirV1.z = vert1.pos.z - light.pos.z;
-        //            lightToTriDirV2.x = vert2.pos.x - light.pos.x;
-        //            lightToTriDirV2.y = vert2.pos.y - light.pos.z;
-        //            lightToTriDirV2.z = vert2.pos.z - light.pos.z;
-        //            vec3_t v0Dir = normaliseVec3(lightToTriDirV0);
-        //            vec3_t v1Dir = normaliseVec3(lightToTriDirV1);
-        //            vec3_t v2Dir = normaliseVec3(lightToTriDirV2);
-        //            float v0AngleDiff = acosf(dotProductNormals(v0Dir, light.gltfForwardVector));
-        //            float v1AngleDiff = acosf(dotProductNormals(v1Dir, light.gltfForwardVector));
-        //            float v2AngleDiff = acosf(dotProductNormals(v2Dir, light.gltfForwardVector));
-
-        //            if ((v0AngleDiff < light.outerConeAngle || v1AngleDiff < light.outerConeAngle || v2AngleDiff < light.outerConeAngle)
-        //                && dotProductNormals(triNormal, light.gltfForwardVector) < -0.1f)
-        //            {
-        //                matchesLight = true;
-        //            }
-        //        }
-        //        else // LIGHT_TYPE_POINT
-        //        {
-        //            vec3_t lightToTriDirV0{};
-        //            vec3_t lightToTriDirV1{};
-        //            vec3_t lightToTriDirV2{};
-        //            lightToTriDirV0.x = vert0.pos.x - light.pos.x;
-        //            lightToTriDirV0.y = vert0.pos.y - light.pos.z;
-        //            lightToTriDirV0.z = vert0.pos.z - light.pos.z;
-        //            lightToTriDirV1.x = vert1.pos.x - light.pos.x;
-        //            lightToTriDirV1.y = vert1.pos.y - light.pos.z;
-        //            lightToTriDirV1.z = vert1.pos.z - light.pos.z;
-        //            lightToTriDirV2.x = vert2.pos.x - light.pos.x;
-        //            lightToTriDirV2.y = vert2.pos.y - light.pos.z;
-        //            lightToTriDirV2.z = vert2.pos.z - light.pos.z;
-        //            vec3_t v0Dir = normaliseVec3(lightToTriDirV0);
-        //            vec3_t v1Dir = normaliseVec3(lightToTriDirV1);
-        //            vec3_t v2Dir = normaliseVec3(lightToTriDirV2);
-
-        //            if (dotProductNormals(v0Dir, light.gltfForwardVector) < -0.1f || dotProductNormals(v1Dir, light.gltfForwardVector) < -0.1f
-        //                || dotProductNormals(v2Dir, light.gltfForwardVector) < -0.1f)
-        //                matchesLight = true;
-        //        }
-        //        if (matchesLight)
-        //        {
-        //            // TODO: improve this heuristic
-        //            if (v0d < light.range)
-        //            {
-        //                if (searchData.second > v0d)
-        //                {
-        //                    searchData.first = i;
-        //                    searchData.second = v0d;
-        //                }
-        //            }
-        //            if (v1d < light.range)
-        //            {
-        //                if (searchData.second > v1d)
-        //                {
-        //                    searchData.first = i;
-        //                    searchData.second = v1d;
-        //                }
-        //            }
-        //            if (v2d < light.range)
-        //            {
-        //                if (searchData.second > v2d)
-        //                {
-        //                    searchData.first = i;
-        //                    searchData.second = v2d;
-        //                }
-        //            }
-        //        }
-        //    }
-
-        //    if (searchData.first == -1)
-        //        return SUN_LIGHT_INDEX;
-        //    else
-        //        return searchData.first + BSP_DEFAULT_LIGHT_COUNT;
-        //}
-
-        size_t getLightForTri(std::vector<BSPVertex>& vertBuffer, unsigned indices[3])
+        size_t getLightForPoint(vec3_t& point)
         {
             std::pair<size_t, float> searchData{-1, 100000000000.0f};
-            BSPVertex& vert0 = vertBuffer.at(indices[0]);
-            BSPVertex& vert1 = vertBuffer.at(indices[1]);
-            BSPVertex& vert2 = vertBuffer.at(indices[2]);
-            vec3_t triNormal = normaliseVec3(calculateTriNormal(vert0.pos, vert1.pos, vert2.pos));
             
             for (size_t i = 0; i < m_bsp->lights.size(); i++)
             {
                 BSPLight light = m_bsp->lights.at(i);
-                float v0d = BSPUtil::distBetweenPoints(vert0.pos, light.pos);
-                float v1d = BSPUtil::distBetweenPoints(vert1.pos, light.pos);
-                float v2d = BSPUtil::distBetweenPoints(vert2.pos, light.pos);
+                float pd = BSPUtil::distBetweenPoints(point, light.pos);
+                if (pd > light.range)
+                    continue;
+
+                vec3_t lightToTriDir{};
+                lightToTriDir.x = point.x - light.pos.x;
+                lightToTriDir.y = point.y - light.pos.y;
+                lightToTriDir.z = point.z - light.pos.z;
+                vec3_t pDir = normaliseVec3(lightToTriDir);
+
+                bool matchesLight = false;
+                if (light.type == LIGHT_TYPE_DIRECTIONAL)
+                {
+                    if (dotProductNormals(pDir, light.gltfForwardVector) > 0.1f)
+                        matchesLight = true;
+                }
+                else if (light.type == LIGHT_TYPE_SPOT)
+                {
+                    float angleDiff = acosf(dotProductNormals(pDir, light.gltfForwardVector));
+                    if (angleDiff < light.outerConeAngle)
+                        matchesLight = true;
+                }
+                else // LIGHT_TYPE_POINT
+                    matchesLight = true;
+                if (matchesLight)
+                {
+                    // TODO: improve this heuristic
+                    if (searchData.second > pd)
+                    {
+                        searchData.first = i;
+                        searchData.second = pd;
+                    }
+                }
+            }
+
+             return searchData.first;
+        }
+
+        size_t getLightForTri(std::vector<BSPVertex>& vertBuffer, unsigned indices[3], std::optional<vec3_t> worldCoordinates)
+        {
+            std::pair<size_t, float> searchData{-1, 100000000000.0f};
+            vec3_t vert0pos = vertBuffer.at(indices[0]).pos;
+            vec3_t vert1pos = vertBuffer.at(indices[1]).pos;
+            vec3_t vert2pos = vertBuffer.at(indices[2]).pos;
+            if (worldCoordinates)
+            {
+                vert0pos.x += worldCoordinates->x;
+                vert0pos.y += worldCoordinates->y;
+                vert0pos.z += worldCoordinates->z;
+                vert1pos.x += worldCoordinates->x;
+                vert1pos.y += worldCoordinates->y;
+                vert1pos.z += worldCoordinates->z;
+                vert2pos.x += worldCoordinates->x;
+                vert2pos.y += worldCoordinates->y;
+                vert2pos.z += worldCoordinates->z;
+            }
+            vec3_t triNormal = normaliseVec3(calculateTriNormal(vert0pos, vert1pos, vert2pos));
+            
+            for (size_t i = 0; i < m_bsp->lights.size(); i++)
+            {
+                BSPLight light = m_bsp->lights.at(i);
+                float v0d = BSPUtil::distBetweenPoints(vert0pos, light.pos);
+                float v1d = BSPUtil::distBetweenPoints(vert1pos, light.pos);
+                float v2d = BSPUtil::distBetweenPoints(vert2pos, light.pos);
                 if (v0d > light.range && v1d > light.range && v2d > light.range)
                     continue;
 
@@ -386,15 +335,15 @@ namespace
                     vec3_t lightToTriDirV0{};
                     vec3_t lightToTriDirV1{};
                     vec3_t lightToTriDirV2{};
-                    lightToTriDirV0.x = vert0.pos.x - light.pos.x;
-                    lightToTriDirV0.y = vert0.pos.y - light.pos.y;
-                    lightToTriDirV0.z = vert0.pos.z - light.pos.z;
-                    lightToTriDirV1.x = vert1.pos.x - light.pos.x;
-                    lightToTriDirV1.y = vert1.pos.y - light.pos.y;
-                    lightToTriDirV1.z = vert1.pos.z - light.pos.z;
-                    lightToTriDirV2.x = vert2.pos.x - light.pos.x;
-                    lightToTriDirV2.y = vert2.pos.y - light.pos.y;
-                    lightToTriDirV2.z = vert2.pos.z - light.pos.z;
+                    lightToTriDirV0.x = vert0pos.x - light.pos.x;
+                    lightToTriDirV0.y = vert0pos.y - light.pos.y;
+                    lightToTriDirV0.z = vert0pos.z - light.pos.z;
+                    lightToTriDirV1.x = vert1pos.x - light.pos.x;
+                    lightToTriDirV1.y = vert1pos.y - light.pos.y;
+                    lightToTriDirV1.z = vert1pos.z - light.pos.z;
+                    lightToTriDirV2.x = vert2pos.x - light.pos.x;
+                    lightToTriDirV2.y = vert2pos.y - light.pos.y;
+                    lightToTriDirV2.z = vert2pos.z - light.pos.z;
                     vec3_t v0Dir = normaliseVec3(lightToTriDirV0);
                     vec3_t v1Dir = normaliseVec3(lightToTriDirV1);
                     vec3_t v2Dir = normaliseVec3(lightToTriDirV2);
@@ -413,15 +362,15 @@ namespace
                     vec3_t lightToTriDirV0{};
                     vec3_t lightToTriDirV1{};
                     vec3_t lightToTriDirV2{};
-                    lightToTriDirV0.x = vert0.pos.x - light.pos.x;
-                    lightToTriDirV0.y = vert0.pos.y - light.pos.z;
-                    lightToTriDirV0.z = vert0.pos.z - light.pos.z;
-                    lightToTriDirV1.x = vert1.pos.x - light.pos.x;
-                    lightToTriDirV1.y = vert1.pos.y - light.pos.z;
-                    lightToTriDirV1.z = vert1.pos.z - light.pos.z;
-                    lightToTriDirV2.x = vert2.pos.x - light.pos.x;
-                    lightToTriDirV2.y = vert2.pos.y - light.pos.z;
-                    lightToTriDirV2.z = vert2.pos.z - light.pos.z;
+                    lightToTriDirV0.x = vert0pos.x - light.pos.x;
+                    lightToTriDirV0.y = vert0pos.y - light.pos.y;
+                    lightToTriDirV0.z = vert0pos.z - light.pos.z;
+                    lightToTriDirV1.x = vert1pos.x - light.pos.x;
+                    lightToTriDirV1.y = vert1pos.y - light.pos.y;
+                    lightToTriDirV1.z = vert1pos.z - light.pos.z;
+                    lightToTriDirV2.x = vert2pos.x - light.pos.x;
+                    lightToTriDirV2.y = vert2pos.y - light.pos.y;
+                    lightToTriDirV2.z = vert2pos.z - light.pos.z;
                     vec3_t v0Dir = normaliseVec3(lightToTriDirV0);
                     vec3_t v1Dir = normaliseVec3(lightToTriDirV1);
                     vec3_t v2Dir = normaliseVec3(lightToTriDirV2);
@@ -462,10 +411,7 @@ namespace
                 }
             }
 
-            if (searchData.first == -1)
-                return SUN_LIGHT_INDEX;
-            else 
-                return searchData.first + BSP_DEFAULT_LIGHT_COUNT;
+            return searchData.first;
         }
 
         void CreateSurface(const AccessorsForVertex& accessorsForVertex,
@@ -622,7 +568,11 @@ namespace
                             std::format("node {}: tri index numbers {} {} {} exceeded the UINT16_MAX", nodeName, indices[0], indices[1], indices[2]));
 
                     RhcToLhcIndices(indices);
-                    size_t lightIdx = getLightForTri(vertexBuffer, indices);
+                    size_t lightIdx;
+                    if (convertWorldToLocalPos)
+                        lightIdx = getLightForTri(vertexBuffer, indices, surfaceOrigin);
+                    else
+                        lightIdx = getLightForTri(vertexBuffer, indices, std::nullopt);
                     triToLightMap[lightIdx].emplace_back(static_cast<uint16_t>(indices[0]));
                     triToLightMap[lightIdx].emplace_back(static_cast<uint16_t>(indices[1]));
                     triToLightMap[lightIdx].emplace_back(static_cast<uint16_t>(indices[2]));
@@ -1046,6 +996,8 @@ namespace
             xmodel.origin.y = transformedPosition.y();
             xmodel.origin.z = transformedPosition.z();
             RhcToLhcCoordinates(xmodel.origin.v);
+
+            xmodel.lightIndex = getLightForPoint(xmodel.origin);
 
             Eigen::Affine3f affineTransform(nodeMatrix);
             Eigen::Quaternionf rotationQuat(affineTransform.rotation());
