@@ -13,7 +13,7 @@ namespace
     constexpr char DEFAULT_PRIMARYLIGHT_INDEX = 1; // max 254
     constexpr char DEFAULT_LIGHTMAP_INDEX = 0;     // max 30
     constexpr char DEFAULT_RPROBE_INDEX = 0;       // max 254
-    constexpr float XMODEL_CULL_DIST = 10000.0f;
+    constexpr float DEFAULT_XMODEL_CULL_DIST = 10000.0f;
     constexpr char DEFAULT_LIGHTGRID_COLOUR = 32;
 
     unsigned int packLmapCoord(float X, float Y)
@@ -142,7 +142,7 @@ namespace
                 gfxSurface->tris.maxs = gfxSurface->bounds[1];
 
                 gfxSurface->flags = bspMaterial.surfaceFlags;
-                gfxSurface->primaryLightIndex = DEFAULT_PRIMARYLIGHT_INDEX;
+                gfxSurface->primaryLightIndex = static_cast<char>(bspSurface.lightIndex) + BSP_DEFAULT_LIGHT_COUNT;
                 gfxSurface->lightmapIndex = DEFAULT_LIGHTMAP_INDEX;
                 gfxSurface->reflectionProbeIndex = DEFAULT_RPROBE_INDEX;
             }
@@ -225,15 +225,41 @@ namespace
                 if (!bspModel.doesCastShadow)
                     currModel->flags |= STATIC_MODEL_FLAG_NO_SHADOW;
 
-                currModel->cullDist = XMODEL_CULL_DIST;
-                currModel->primaryLightIndex = DEFAULT_PRIMARYLIGHT_INDEX;
-                currModel->reflectionProbeIndex = DEFAULT_RPROBE_INDEX;
-                currModel->smid = static_cast<unsigned int>(modelIdx);
+                currModel->primaryLightIndex = static_cast<char>(bspModel.lightIndex) + BSP_DEFAULT_LIGHT_COUNT;
+                vec4_t lightColor{};
+                if (currModel->primaryLightIndex == SUN_LIGHT_INDEX)
+                {
+                    currModelInst->lightingOrigin = bspModel.origin;
+                    vec3_t lightDir = bsp->sunlight.gltfForwardVector;
+                    currModelInst->lightingOrigin.x += -lightDir.x * 100.0f;
+                    currModelInst->lightingOrigin.y += -lightDir.y * 100.0f;
+                    currModelInst->lightingOrigin.z += -lightDir.z * 100.0f;
+                    lightColor = {bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z, 0.0f};
+                }
+                else if (currModel->primaryLightIndex == EMPTY_LIGHT_INDEX)
+                    currModelInst->lightingOrigin = bspModel.origin;
+                else
+                {
+                    BSPLight& bspLight = bsp->lights.at(bspModel.lightIndex);
+                    currModelInst->lightingOrigin = bspLight.pos;
+                    lightColor = {bspLight.colour.x, bspLight.colour.y, bspLight.colour.z, 0.0f};
+                }
+                
 
-                currModelInst->lightingOrigin = bspModel.origin;
+                currModel->smid = static_cast<unsigned int>(modelIdx);
+                currModel->reflectionProbeIndex = DEFAULT_RPROBE_INDEX;
 
                 if (!xModelAsset->IsReference())
                 {
+                    float cullDist = 0.0f;
+                    for (char i = 0; i < currModel->model->numLods; i++)
+                    {
+                        if (currModel->model->lodInfo[i].dist > cullDist)
+                            cullDist = currModel->model->lodInfo[i].dist;
+
+                    }
+                    currModel->cullDist = cullDist;
+
                     vec3_t scaledAxis[3];
                     scaledAxis[0].x = currModel->placement.axis[0].x * currModel->placement.scale;
                     scaledAxis[0].y = currModel->placement.axis[0].y * currModel->placement.scale;
@@ -266,20 +292,22 @@ namespace
                         currModel->lmapVertexInfo[lodIdx].lmapVertexColors = m_memory.Alloc<unsigned int>(vertCount);
 
                         // use the same method as lightmap to generate the colours
-                        vec4_t sunlightModified = {bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z, 0.0f};
-                        sunlightModified.x /= 32.0f;
-                        sunlightModified.x = sqrtf(sunlightModified.x);
-                        sunlightModified.y /= 32.0f;
-                        sunlightModified.y = sqrtf(sunlightModified.y);
-                        sunlightModified.z /= 32.0f;
-                        sunlightModified.z = sqrtf(sunlightModified.z);
-                        uint32_t vertColor = pack32::Vec4PackGfxColor(sunlightModified.v);
+                        vec4_t lightModified = lightColor;
+                        lightModified.x /= 32.0f;
+                        lightModified.x = sqrtf(lightColor.x);
+                        lightModified.y /= 32.0f;
+                        lightModified.y = sqrtf(lightColor.y);
+                        lightModified.z /= 32.0f;
+                        lightModified.z = sqrtf(lightColor.z);
+                        uint32_t vertColor = pack32::Vec4PackGfxColor(lightModified.v);
                         for (uint16_t vertIdx = 0; vertIdx < vertCount; vertIdx++)
                             currModel->lmapVertexInfo[lodIdx].lmapVertexColors[vertIdx] = vertColor;
                     }
                 }
                 else
                 {
+                    currModel->cullDist = DEFAULT_XMODEL_CULL_DIST;
+
                     if (bspModel.areBoundsValid)
                     {
                         currModelInst->mins = bspModel.mins;
@@ -377,10 +405,6 @@ namespace
             gfxWorld->streamInfo.leafRefCount = 0;
             gfxWorld->streamInfo.leafRefs = nullptr;
 
-            // remove sun data
-            memset(&gfxWorld->sun, 0, sizeof(sunflare_t));
-            gfxWorld->sun.hasValidData = false;
-
             // Remove Water
             gfxWorld->waterDirection = 0.0f;
             gfxWorld->waterBuffers[0].bufferSize = 0;
@@ -468,22 +492,167 @@ namespace
             return static_cast<char>(roundf(color));
         }
 
+        uint16_t addToLGColorArrayFromColor(BSPData* bsp, std::vector<GfxCompressedLightGridColors>& colorVec, vec3_t color, float multiplier)
+        {
+            if (colorVec.size() > 0xfffe)
+            {
+                con::error("colorVec.size() > 0xfffe, using sunlight data as fallback");
+                return 0;
+            }
+            uint16_t colVecSize = static_cast<uint16_t>(colorVec.size());
+
+            float r = color.x * multiplier;
+            float g = color.y * multiplier;
+            float b = color.z * multiplier;
+            vec3_t sunCol = bsp->sunlight.colour;
+            char cmpR = compressColorIntoLightmapChar(r + sunCol.x);
+            char cmpG = compressColorIntoLightmapChar(g + sunCol.y);
+            char cmpB = compressColorIntoLightmapChar(b + sunCol.z);
+
+            for (uint16_t index = 0; index < colVecSize; index++)
+            {
+                GfxCompressedLightGridColors& color = colorVec.at(index);
+                if (color.rgb[0][0] == cmpR && color.rgb[0][1] == cmpG && color.rgb[0][2] == cmpB)
+                    return index;
+            }
+            
+            uint16_t index = colVecSize;
+            colorVec.emplace_back();
+            GfxCompressedLightGridColors* LGArray = &colorVec.at(index); 
+            for (size_t row = 0; row < 56; row++)
+            {
+                LGArray->rgb[row][0] = cmpR;
+                LGArray->rgb[row][1] = cmpG;
+                LGArray->rgb[row][2] = cmpB;
+            }
+            return index;
+        }
+
+        struct vec3i_t
+        {
+            int x;
+            int y;
+            int z;
+        };
+
+        struct vec3s_t
+        {
+            uint16_t x;
+            uint16_t y;
+            uint16_t z;
+        };
+
+        vec3s_t worldToLightGridCoords(vec3_t coords)
+        {
+            vec3s_t result;
+            result.x = static_cast<uint16_t>((static_cast<int>(coords.x) + 0x20000) >> 5);
+            result.y = static_cast<uint16_t>((static_cast<int>(coords.y) + 0x20000) >> 5);
+            result.z = static_cast<uint16_t>((static_cast<int>(coords.z) + 0x20000) >> 6);
+            return result;
+        }
+
+        vec3_t lghtGridtoWorldCoords(vec3s_t coords) 
+        {
+            vec3_t result;
+            result.x = (float)coords.x * 32.0f - 131072.0f;
+            result.y = (float)coords.y * 32.0f - 131072.0f;
+            result.z = (float)coords.z * 64.0f - 131072.0f;
+            return result;
+        }
+
+        struct LGCell
+        {
+            size_t lightIndex;
+            float closestLightDistance;
+        };
+
+        using LightgridMap = std::map<uint16_t, std::map<uint16_t, std::map<uint16_t, LGCell>>>;
+
+        void addCoordToLightMap(LightgridMap& map, vec3s_t coord, vec3s_t lightCoord, size_t lightIndex)
+        {
+            vec3i_t coordS{};
+            vec3i_t lightCoordS{};
+            coordS.x = coord.x;
+            coordS.y = coord.y;
+            coordS.z = coord.z;
+            lightCoordS.x = lightCoord.x;
+            lightCoordS.y = lightCoord.y;
+            lightCoordS.z = lightCoord.z;
+            float dist = 
+                sqrtf(static_cast<float>((coordS.x - lightCoordS.x) * (coordS.x - lightCoordS.x) 
+                + (coordS.y - lightCoordS.y) * (coordS.y - lightCoordS.y)
+                + (coordS.z - lightCoordS.z) * (coordS.z - lightCoordS.z)));
+
+            std::map<uint16_t, LGCell>& ZAxisMap = map[coord.x][coord.y];
+
+            if (ZAxisMap.contains(coord.z))
+            {
+                if (dist >= ZAxisMap[coord.z].closestLightDistance)
+                    return;
+            }
+
+            if (!ZAxisMap.empty())
+            {
+                uint16_t zAxisSize = ZAxisMap.rbegin()->first - ZAxisMap.begin()->first + 1;
+                if (zAxisSize > 0xff)
+                {
+                    con::error("addCoordToLightMap: z size > 0xff (trying to insert {} when {} to {} exists)",
+                               coord.z,
+                               ZAxisMap.begin()->first,
+                               ZAxisMap.rbegin()->first);
+                    return;
+                }
+            }
+
+            ZAxisMap[coord.z] = LGCell({lightIndex, dist});
+        }
+
+        void createLightGridMap(BSPData* bsp, LightgridMap& result)
+        {
+            for (size_t lightIdx = 0; lightIdx < bsp->lights.size(); lightIdx++)
+            {
+                BSPLight& light = bsp->lights.at(lightIdx);
+
+                vec3_t lightMins = light.pos;
+                vec3_t lightMaxs = light.pos;
+                lightMins.x -= static_cast<float>(light.range);
+                lightMins.y -= static_cast<float>(light.range);
+                lightMins.z -= static_cast<float>(light.range);
+                lightMaxs.x += static_cast<float>(light.range);
+                lightMaxs.y += static_cast<float>(light.range);
+                lightMaxs.z += static_cast<float>(light.range);
+                vec3s_t lightMinsLG = worldToLightGridCoords(lightMins);
+                vec3s_t lightMaxsLG = worldToLightGridCoords(lightMaxs);
+                vec3s_t lightCoordLG = worldToLightGridCoords(light.pos);
+                for (uint16_t x = lightMinsLG.x; x < lightMaxsLG.x + 1; x++)
+                {
+                    for (uint16_t y = lightMinsLG.y; y < lightMaxsLG.y + 1; y++)
+                    {
+                        for (uint16_t z = lightMinsLG.z; z < lightMaxsLG.z + 1; z++)
+                        {
+                            addCoordToLightMap(result, vec3s_t({x, y, z}), lightCoordLG, lightIdx);
+                        }
+                    }
+                }
+
+            }
+
+            // TODO: models and vertices
+        }
+
         bool loadLightGrid(BSPData* bsp, GfxWorld* gfxWorld)
         {
-            // world to lightgrid coords conversion:
-            // l_x = (w_x + 131072.0f) / 32.0f;
-            // l_y = (w_y + 131072.0f) / 32.0f;
-            // l_z = (w_z + 131072.0f) / 64.0f;
-            //
-            // lightgrid to world coords conversion:
-            // w_x = (double)l_x * 32.0f - 131072.0f;
-            // w_y = (double)l_y * 32.0f - 131072.0f;
-            // w_z = (double)l_z * 64.0f - 131072.0f;
-            //
             // Lightrid coords are bounded by the uint16 limits:
             // w_minX = -131072, w_maxX = 1966048
             // w_minY = -131072, w_maxY = 1966048
             // w_minZ = -131072, w_maxZ = 4063168
+            //
+            // 1 xy lightgrid unit equals 32 xy world units
+            // 1 z lightgrid unit equals 64 z world units
+            // 
+            // the lightgrid is designed to only have 255 cells for the Z axis which sucks,
+            //  so the lightgrid only works for one z axis chunk of world coord size 16320.
+            //  Tall maps can't be fully lit :(
 
             if (gfxWorld->mins.x < -131072.0f || gfxWorld->mins.y < -131072.0f || gfxWorld->mins.z < -131072.0f || gfxWorld->maxs.x > 1966048.0f
                 || gfxWorld->maxs.y > 1966048.0f || gfxWorld->maxs.z > 4063168.0f)
@@ -499,55 +668,162 @@ namespace
             gfxWorld->lightGrid.maxs[0] = static_cast<uint16_t>((static_cast<int>(gfxWorld->maxs.x) + 0x20000) >> 5);
             gfxWorld->lightGrid.maxs[1] = static_cast<uint16_t>((static_cast<int>(gfxWorld->maxs.y) + 0x20000) >> 5);
             gfxWorld->lightGrid.maxs[2] = static_cast<uint16_t>((static_cast<int>(gfxWorld->maxs.z) + 0x20000) >> 6);
+            uint16_t xAxisStart = gfxWorld->lightGrid.mins[0];
+            uint16_t xAxisSize = gfxWorld->lightGrid.maxs[0] - gfxWorld->lightGrid.mins[0] + 1;
+
+            LightgridMap XAxisMap;
+            createLightGridMap(bsp, XAxisMap);
 
             gfxWorld->lightGrid.rowAxis = 0; // default value
             gfxWorld->lightGrid.colAxis = 1; // default value
             gfxWorld->lightGrid.sunPrimaryLightIndex = SUN_LIGHT_INDEX;
             gfxWorld->lightGrid.offset = 0.0f; // default value
 
-            // setting all rowDataStart indexes to 0 will always index the first row in rawRowData
-            int rowDataStartSize = gfxWorld->lightGrid.maxs[gfxWorld->lightGrid.rowAxis] - gfxWorld->lightGrid.mins[gfxWorld->lightGrid.rowAxis] + 1;
-            gfxWorld->lightGrid.rowDataStart = m_memory.Alloc<uint16_t>(rowDataStartSize);
+            gfxWorld->lightGrid.rowDataStart = m_memory.Alloc<uint16_t>(xAxisSize);
 
-            // Adding 0x1FF so the lookup table will be 0x200 bytes in size
-            gfxWorld->lightGrid.rawRowDataSize = static_cast<unsigned int>(sizeof(GfxLightGridRow) + 0x1FF);
-            GfxLightGridRow* row = static_cast<GfxLightGridRow*>(m_memory.AllocRaw(gfxWorld->lightGrid.rawRowDataSize));
-            row->colStart = 0;
-            row->colCount = 0xFFFF;
-            row->zStart = 0;
-            row->zCount = 0xFF; // 0xFF as this seems to be the sweet spot of values
-            row->firstEntry = 0;
-            for (int i = 0; i < 0x200; i++)
-                row->lookupTable[i] = -1; // values in the lookup table are subtracted from the sample pos until it reaches 0, so use 0xFF
-            gfxWorld->lightGrid.rawRowData = reinterpret_cast<aligned_byte_pointer*>(row);
-
-            // entries are looked up based on the lightgrid sample pos (given ingame) and the lightgrid lookup table
-            gfxWorld->lightGrid.entryCount = 60000; // 60000 as it should be enough entries to be indexed by all lightgrid sample positions
-            GfxLightGridEntry* entryArray = m_memory.Alloc<GfxLightGridEntry>(gfxWorld->lightGrid.entryCount);
-            for (unsigned int i = 0; i < gfxWorld->lightGrid.entryCount; i++)
+            std::vector<char> rowVec;
+            std::vector<GfxLightGridEntry> entryVec;
+            std::vector<GfxCompressedLightGridColors> colorVec;
+            addToLGColorArrayFromColor(bsp, colorVec, vec3_t{bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z}, 1.0f);  // default entry
+            addToLGColorArrayFromColor(bsp, colorVec, vec3_t{bsp->sunlight.colour.x, bsp->sunlight.colour.y, bsp->sunlight.colour.z}, 1.0f); // default entry
+            for (uint16_t xIdx = 0; xIdx < xAxisSize; xIdx++)
             {
-                entryArray[i].colorsIndex = 0; // always index first colour
-                entryArray[i].primaryLightIndex = DEFAULT_PRIMARYLIGHT_INDEX;
-                entryArray[i].visibility = 0;
-            }
-            gfxWorld->lightGrid.entries = entryArray;
+                assert(rowVec.size() % 4 == 0);
+                gfxWorld->lightGrid.rowDataStart[xIdx] = static_cast<uint16_t>(rowVec.size() / 4);
 
-            // colours are looked up with a lightgrid entries colorsIndex
-            gfxWorld->lightGrid.colorCount = 0x1000; // 0x1000 as it should be enough to hold every index
-            gfxWorld->lightGrid.colors = m_memory.Alloc<GfxCompressedLightGridColors>(gfxWorld->lightGrid.colorCount);
-            for (size_t colIdx = 0; colIdx < gfxWorld->lightGrid.colorCount; colIdx++)
-            {
-                for (size_t row = 0; row < 56; row++)
+                uint16_t trueXValue = xAxisStart + xIdx;
+
+                GfxLightGridRow row{};
+                row.firstEntry = static_cast<unsigned int>(entryVec.size());
+
+                if (XAxisMap.contains(trueXValue))
                 {
-                    gfxWorld->lightGrid.colors[colIdx].rgb[row][0] = compressColorIntoLightmapChar(bsp->sunlight.colour.x);
-                    gfxWorld->lightGrid.colors[colIdx].rgb[row][1] = compressColorIntoLightmapChar(bsp->sunlight.colour.y);
-                    gfxWorld->lightGrid.colors[colIdx].rgb[row][2] = compressColorIntoLightmapChar(bsp->sunlight.colour.z);
+                    std::map<uint16_t, std::map<uint16_t, LGCell>>& YAxisMap = XAxisMap.at(trueXValue);
+
+                    uint16_t yAxisStart = YAxisMap.begin()->first;
+                    uint16_t yAxisEnd = YAxisMap.rbegin()->first;
+                    uint16_t yAxisSize = yAxisEnd - yAxisStart + 1;
+
+                    row.colStart = yAxisStart;
+                    row.colCount = yAxisSize;
+                    row.zStart = 0;
+                    row.zCount = 0xffff;
+
+                    std::vector<char> dataArr;
+                    for (uint16_t yIdx = 0; yIdx < yAxisSize; yIdx++)
+                    {
+                        uint16_t trueYValue = yAxisStart + yIdx;
+                        if (YAxisMap.contains(trueYValue))
+                        {
+                            std::map<uint16_t, LGCell>& ZAxisMap = YAxisMap.at(trueYValue);
+
+                            uint16_t zAxisStart = ZAxisMap.begin()->first;
+                            uint16_t zAxisEnd = ZAxisMap.rbegin()->first;
+                            uint16_t zAxisSize = zAxisEnd - zAxisStart + 1;
+
+                            if (zAxisSize > 0xff)
+                            {
+                                con::error("loadLightGrid: z size > 0xff");
+                                return false;
+                            }
+                            unsigned char zSize = static_cast<unsigned char>(zAxisSize);
+                            unsigned char zOffset = zAxisStart / 0x100;
+                            unsigned char zStart = zAxisStart % 0x100;
+
+                            GfxLightGridRowData data{};
+                            data.yAxisCount = 1;
+                            data.zAxisSize = zSize;
+                            data.zAxisStart = zStart;
+                            data.zAxisOffset = zOffset;
+                            size_t rowStartIndex = dataArr.size();
+                            dataArr.resize(dataArr.size() + sizeof(GfxLightGridRowData));
+                            memcpy(&dataArr.at(rowStartIndex), &data, sizeof(GfxLightGridRowData));
+
+                            for (unsigned char zIdx = 0; zIdx < zSize; zIdx++)
+                            {
+                                uint16_t trueZValue = zAxisStart + zIdx;
+                                if (ZAxisMap.contains(trueZValue))
+                                {
+                                    LGCell& cell = ZAxisMap.at(trueZValue);
+
+                                    BSPLight& light = bsp->sunlight;
+                                    float result = 1.0f;
+                                    if (cell.lightIndex != -1)
+                                    {
+                                        light = bsp->lights.at(cell.lightIndex);
+                                        vec3_t worldCoords = lghtGridtoWorldCoords(vec3s_t({trueXValue, trueYValue, trueZValue}));
+                                        vec3_t lightCoord = light.pos;
+                                        float range = light.range;
+                                        float dist = BSPUtil::distBetweenPoints(lightCoord, worldCoords);
+                                        if (dist < range && range > 0.0f)
+                                            result = (range - dist) / range;
+                                    }
+
+                                    GfxLightGridEntry entry{};
+                                    entry.visibility = 0;
+                                    entry.primaryLightIndex = static_cast<char>(cell.lightIndex + BSP_DEFAULT_LIGHT_COUNT);
+                                    entry.colorsIndex = addToLGColorArrayFromColor(bsp, colorVec, light.colour, result);
+                                    entryVec.emplace_back(entry);
+                                }
+                                else
+                                {
+                                    GfxLightGridEntry entry{};
+                                    entry.visibility = 0;
+                                    entry.primaryLightIndex = SUN_LIGHT_INDEX;
+                                    entry.colorsIndex = 0; // default colour
+                                    entryVec.emplace_back(entry);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            GfxLightGridRowData data{};
+                            data.yAxisCount = 1;
+                            data.zAxisSize = 0;
+                            size_t rowStartIndex = dataArr.size();
+                            dataArr.resize(dataArr.size() + offsetof(GfxLightGridRowData, zAxisStart));
+                            memcpy(&dataArr.at(rowStartIndex), &data, offsetof(GfxLightGridRowData, zAxisStart));
+                        }
+                    }
+
+                    size_t LGRSize = offsetof(GfxLightGridRow, rowData);
+                    size_t rowIndexStart = rowVec.size();
+                    rowVec.resize(rowVec.size() + LGRSize + dataArr.size());
+                    memcpy(&rowVec.at(rowIndexStart), &row, LGRSize);
+                    memcpy(&rowVec.at(rowIndexStart + LGRSize), dataArr.data(), dataArr.size());
                 }
+                else
+                {
+                    row.colStart = 0;
+                    row.colCount = 0;
+                    row.zStart = 0;
+                    row.zCount = 0;
+
+                    size_t LGRSize = offsetof(GfxLightGridRow, rowData);
+                    size_t rowIndexStart = rowVec.size();
+                    rowVec.resize(rowVec.size() + LGRSize);
+                    memcpy(&rowVec.at(rowIndexStart), &row, LGRSize);
+                }
+                rowVec.resize((rowVec.size() + 3) & ~3); // resize to 4 byte allignment
             }
+
+            gfxWorld->lightGrid.rawRowDataSize = static_cast<unsigned int>(rowVec.size());
+            gfxWorld->lightGrid.rawRowData = m_memory.Alloc<aligned_byte_pointer>(rowVec.size());
+            memcpy(gfxWorld->lightGrid.rawRowData, rowVec.data(), rowVec.size() * sizeof(char));
+
+            gfxWorld->lightGrid.entryCount = static_cast<unsigned int>(entryVec.size());
+            gfxWorld->lightGrid.entries = m_memory.Alloc<GfxLightGridEntry>(entryVec.size());
+            memcpy(gfxWorld->lightGrid.entries, entryVec.data(), entryVec.size() * sizeof(GfxLightGridEntry));
+
+            gfxWorld->lightGrid.colorCount = static_cast<unsigned int>(colorVec.size());
+            gfxWorld->lightGrid.colors = m_memory.Alloc<GfxCompressedLightGridColors>(colorVec.size());
+            memcpy(gfxWorld->lightGrid.colors, colorVec.data(), colorVec.size() * sizeof(GfxCompressedLightGridColors));
 
             // we use the colours array instead of coeffs array
             gfxWorld->lightGrid.coeffCount = 0;
             gfxWorld->lightGrid.coeffs = nullptr;
+
+            // unused
             gfxWorld->lightGrid.skyGridVolumeCount = 0;
             gfxWorld->lightGrid.skyGridVolumes = nullptr;
 
@@ -891,6 +1167,19 @@ namespace
             loadSunData(bsp, gfxWorld);
 
             loadDynEntData(gfxWorld); // requires cells and lights
+
+            // dynent load data
+            // hero light load data
+
+            // refection probes post processing
+            // somehow load rprobes
+            // use plutonium to create the rprobes (similar to pathing data)
+            // load back in (posibly could hardcode rprobe image names based on how pluto loads them and load like how pathing is done)
+
+            // lightmap post processing
+            // lightmap image is used on surfs only, raw lighting data is used on xmodels
+            // possibly just use colour of light illuminating it as data
+            // generate image from this data
 
             return gfxWorld;
         }

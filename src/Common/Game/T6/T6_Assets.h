@@ -1255,6 +1255,16 @@ namespace T6
 
     typedef tdef_align32(4) char aligned_byte_pointer;
     typedef tdef_align32(4) GfxCompressedLightGridCoeffs GfxCompressedLightGridCoeffs_align4;
+    
+    struct GfxLightGridRowData
+    {
+        unsigned char yAxisCount;        //| | |   
+        unsigned char zAxisSize;         //| | |   // size if zAxisSize == 0
+        unsigned char zAxisStart;        //| |
+        unsigned char zAxisOffset;       //| |
+        unsigned char zAxisLargeStart;   //| | // size if zAxisSize != 0 && row->zCount <= 0xff
+        unsigned char zAxisLargeOffset;  //| // size if zAxisSize != 0 && row->zCount > 0xff
+    };
 
     struct GfxLightGridRow
     {
@@ -1263,7 +1273,7 @@ namespace T6
         uint16_t zStart;
         uint16_t zCount;
         unsigned int firstEntry;
-        char lookupTable[1]; // The lookup table has a variable length
+        char rowData[1]; // GfxLightGridRowData - struct has a variable length, and variable size based on value of zCount
     };
 
     struct GfxLightGrid

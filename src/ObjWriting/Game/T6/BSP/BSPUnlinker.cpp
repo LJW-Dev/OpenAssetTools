@@ -1037,6 +1037,7 @@ namespace
 
     void dumpGfxWorldSun(BSPData& dumpData, const GfxWorld* gfxWorld)
     {
+        dumpData.sunlight = {};
         dumpData.sunlight.type = LIGHT_TYPE_DIRECTIONAL;
         dumpData.sunlight.colour.x = gfxWorld->sunParse.initWorldSun->sunCd.x;
         dumpData.sunlight.colour.y = gfxWorld->sunParse.initWorldSun->sunCd.y;
@@ -1044,6 +1045,7 @@ namespace
         dumpData.sunlight.intensity = gfxWorld->sunParse.initWorldSun->sunCd.w;
         vec3_t angles = gfxWorld->sunParse.initWorldSun->angles;
         dumpData.sunlight.forwardVector = BSPUtil::convertAnglesToForward(angles);
+        LhcToRhcCoordinates(dumpData.sunlight.forwardVector.v);
         dumpData.sunlight.rollAngle = 0.0f;
     }
 
