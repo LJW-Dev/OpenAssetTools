@@ -1061,6 +1061,25 @@ namespace T6
         cLeaf_s leaf;
     };
 
+    enum DynEntityCollType
+    {
+        DYNENT_COLL_CLIENT_FIRST = 0x0,
+        DYNENT_COLL_CLIENT_MODEL = 0x0,
+        DYNENT_COLL_CLIENT_BRUSH = 0x1,
+        DYNENT_COLL_SERVER_FIRST = 0x2,
+        DYNENT_COLL_SERVER_MODEL = 0x2,
+        DYNENT_COLL_SERVER_BRUSH = 0x3,
+        DYNENT_COLL_COUNT = 0x4,
+    };
+
+    enum DynEntityDrawType
+    {
+        DYNENT_DRAW_MODEL = 0x0,
+        DYNENT_DRAW_BRUSH = 0x1,
+        DYNENT_DRAW_COUNT = 0x2,
+    };
+
+
     struct clipMap_t
     {
         const char* name;
@@ -1092,12 +1111,12 @@ namespace T6
         cbrush_t* box_brush;
         cmodel_t box_model;
         uint16_t originalDynEntCount;
-        uint16_t dynEntCount[4];
-        DynEntityDef* dynEntDefList[2];
-        DynEntityPose* dynEntPoseList[2];
-        DynEntityClient* dynEntClientList[2];
-        DynEntityServer* dynEntServerList[2];
-        DynEntityColl* dynEntCollList[4];
+        uint16_t dynEntCount[DYNENT_COLL_COUNT];
+        DynEntityDef* dynEntDefList[DYNENT_DRAW_COUNT];
+        DynEntityPose* dynEntPoseList[DYNENT_DRAW_COUNT];
+        DynEntityClient* dynEntClientList[DYNENT_DRAW_COUNT];
+        DynEntityServer* dynEntServerList[DYNENT_DRAW_COUNT];
+        DynEntityColl* dynEntCollList[DYNENT_COLL_COUNT];
         int num_constraints;
         PhysConstraint* constraints;
         int max_ropes;

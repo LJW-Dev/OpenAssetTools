@@ -549,6 +549,59 @@ namespace
         // con::info("bad: {} total: {}", ii, clipmap->numStaticModels);
     }
 
+    void dumpClipmapRopes(BSPData& dumpData, const clipMap_t* clipMap)
+    {
+        for (size_t ropeIdx = 0; ropeIdx < clipMap->num_constraints; ropeIdx++)
+        {
+            PhysConstraint* constraint = &clipMap->constraints[ropeIdx];
+            if (constraint->type != CONSTRAINT_ROPE || constraint->attach_point_type1 != ATTACH_POINT_WORLD
+                || constraint->attach_point_type2 != ATTACH_POINT_WORLD)
+                continue;
+
+            BSPRope rope{};
+            rope.material = constraint->material->info.name;
+            rope.startPoint = constraint->pos;
+            LhcToRhcCoordinates(rope.startPoint.v);
+            rope.endPoint = constraint->pos2;
+            LhcToRhcCoordinates(rope.endPoint.v);
+            rope.length = constraint->distance;
+            rope.width = constraint->minAngle;
+            rope.scale = constraint->scale.x == 0.0f ? 1.0f : constraint->scale.x;
+            dumpData.ropes.emplace_back(rope);
+        }
+    }
+
+    void dumpClipmapPhysModels(BSPData& dumpData, const clipMap_t* clipMap)
+    {
+        if (clipMap->dynEntCount[DYNENT_COLL_CLIENT_BRUSH] != 0 || clipMap->dynEntCount[DYNENT_COLL_SERVER_BRUSH] != 0)
+            con::warn("(unimplemented) Ignoring some phys models that use brushes instead of xmodels");
+
+        for (size_t physIdx = 0; physIdx < clipMap->originalDynEntCount; physIdx++)
+        {
+            DynEntityDef* dynDef = &clipMap->dynEntDefList[DYNENT_DRAW_MODEL][physIdx];
+
+            if (dynDef->type == DYNENT_TYPE_INVALID)
+            {
+                con::warn("Ignoring invalid physmodel");
+                continue;
+            }
+
+            // TODO: extra contents because its a destroy type
+            // physconstrains need to be checked, not 511 == used for constraints somehow
+            BSPPhysModel model{};
+            model.type = dynDef->type;
+            model.origin = dynDef->pose.origin;
+            LhcToRhcCoordinates(model.origin.v);
+            model.rotationQuat = dynDef->pose.quat;
+            LhcToRhcQuaternion(model.rotationQuat.v);
+            model.contentFlags = dynDef->contents;
+            model.flags = dynDef->flags;
+            model.physPreset = dynDef->physPreset->name;
+            model.xmodel = dynDef->xModel->name;
+            dumpData.physModels.emplace_back(model);
+        }
+    }
+
     void dumpClipmap(BSPData& dumpData, const clipMap_t* clipmap)
     {
         for (unsigned int i = 0; i < clipmap->info.numMaterials; i++)
@@ -564,6 +617,10 @@ namespace
         }
 
         dumpClipmapXModels(dumpData, clipmap);
+
+        dumpClipmapRopes(dumpData, clipmap);
+
+        dumpClipmapPhysModels(dumpData, clipmap);
 
         std::vector<PartitionData> partitionList;
         std::vector<size_t> brushList;
@@ -1049,11 +1106,75 @@ namespace
         dumpData.sunlight.rollAngle = 0.0f;
     }
 
+    void dumpGfxWorldHeroLights(BSPData& dumpData, const GfxWorld* gfxWorld)
+    {
+        for (size_t lightIdx = 0; lightIdx < gfxWorld->heroLightCount; lightIdx++)
+        {
+            auto heroLight = &gfxWorld->heroLights[lightIdx];
+            BSPLight outLight{};
+
+            outLight.range = heroLight->radius;
+            outLight.forwardVector = heroLight->dir;
+            LhcToRhcCoordinates(outLight.forwardVector.v);
+            outLight.pos = heroLight->origin;
+            LhcToRhcCoordinates(outLight.pos.v);
+
+            if (heroLight->type == GFX_LIGHT_TYPE_OMNI)
+                outLight.type = LIGHT_TYPE_POINT;
+            else if (heroLight->type == GFX_LIGHT_TYPE_DIR)
+                outLight.type = LIGHT_TYPE_DIRECTIONAL;
+            else if (heroLight->type == GFX_LIGHT_TYPE_SPOT || heroLight->type == GFX_LIGHT_TYPE_SPOT_SQUARE || heroLight->type == GFX_LIGHT_TYPE_SPOT_ROUND)
+            {
+                outLight.type = LIGHT_TYPE_SPOT;
+                outLight.innerConeAngle = heroLight->cosHalfFovInner;
+                outLight.outerConeAngle = heroLight->cosHalfFovOuter;
+            }
+            else
+            {
+                con::warn("skipping hero light with invalid type {}", heroLight->type);
+                continue;
+            }
+
+            float colorScale = lengthOfVector(heroLight->color.x, heroLight->color.y, heroLight->color.z);
+            if (colorScale <= 0.0f)
+            {
+                outLight.colour = {};
+                outLight.intensity = 0.0f;
+            }
+            else
+            {
+                outLight.colour.x = heroLight->color.x / colorScale;
+                outLight.colour.y = heroLight->color.y / colorScale;
+                outLight.colour.z = heroLight->color.z / colorScale;
+                outLight.intensity = colorScale;
+            }
+            
+            dumpData.heroLights.emplace_back(outLight);
+        }
+    }
+
+    void dumpGfxWorldRProbes(BSPData& dumpData, const GfxWorld* gfxWorld)
+    {
+        for (size_t probeIdx = 0; probeIdx < gfxWorld->draw.reflectionProbeCount; probeIdx++)
+        {
+            auto probe = &gfxWorld->draw.reflectionProbes[probeIdx];
+            BSPRPRobe outProbe{};
+
+            outProbe.origin = probe->origin;
+            LhcToRhcCoordinates(outProbe.origin.v);
+            outProbe.image = probe->reflectionImage->name;
+
+            dumpData.rProbes.emplace_back(outProbe);
+        }
+    }
+
     void dumpGfxWorld(BSPData& dumpData, const GfxWorld* gfxWorld)
     {
         dumpGfxWorldSun(dumpData, gfxWorld);
         dumpGfxWorldSurfaces(dumpData, gfxWorld);
         dumpGfxWorldXModels(dumpData, gfxWorld);
+        dumpGfxWorldHeroLights(dumpData, gfxWorld);
+        dumpGfxWorldRProbes(dumpData, gfxWorld);
     }
 
     void dumpComWorld(BSPData& dumpData, const ComWorld* comWorld, std::vector<GfxLightDef*>& lightDefs)

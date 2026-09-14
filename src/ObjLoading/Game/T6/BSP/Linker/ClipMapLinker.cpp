@@ -104,31 +104,64 @@ namespace
         ISearchPath& m_search_path;
         AssetCreationContext& m_context;
 
-        void loadDynEnts(clipMap_t* clipMap)
+        bool loadDynEnts(clipMap_t* clipMap, BSPData* bsp)
         {
-            int dynEntCount = 0;
+            if (bsp->physModels.size() + 256 > 4095)
+            {
+                con::error("exceeded {} phys models. count: {}", 4095 - 256, bsp->physModels.size());
+                return false;
+            }
+
+            uint16_t dynEntCount = static_cast<uint16_t>(bsp->physModels.size());
             clipMap->originalDynEntCount = dynEntCount;
-            clipMap->dynEntCount[0] = clipMap->originalDynEntCount + 256; // the game allocs 256 empty dynents, as they may be used ingame
-            clipMap->dynEntCount[1] = 0;
-            clipMap->dynEntCount[2] = 0;
-            clipMap->dynEntCount[3] = 0;
+            clipMap->dynEntCount[DYNENT_COLL_CLIENT_MODEL] = dynEntCount + 256; // the game allocs 256 empty dynents, as they may be used ingame
+            clipMap->dynEntCount[DYNENT_COLL_CLIENT_BRUSH] = 0;
+            clipMap->dynEntCount[DYNENT_COLL_SERVER_MODEL] = dynEntCount;
+            clipMap->dynEntCount[DYNENT_COLL_SERVER_BRUSH] = 0;
 
-            clipMap->dynEntClientList[0] = m_memory.Alloc<DynEntityClient>(clipMap->dynEntCount[0]);
-            clipMap->dynEntClientList[1] = nullptr;
+            clipMap->dynEntDefList[DYNENT_DRAW_MODEL] = m_memory.Alloc<DynEntityDef>(clipMap->dynEntCount[DYNENT_COLL_CLIENT_MODEL]);
+            clipMap->dynEntDefList[DYNENT_DRAW_BRUSH] = nullptr;
+            for (size_t physIdx = 0; physIdx < dynEntCount; physIdx++)
+            {
+                DynEntityDef* dynDef = &clipMap->dynEntDefList[DYNENT_DRAW_MODEL][physIdx];
+                BSPPhysModel& BSPPhysModel = bsp->physModels.at(physIdx);
 
-            clipMap->dynEntServerList[0] = nullptr;
-            clipMap->dynEntServerList[1] = nullptr;
+                dynDef->contents = BSPPhysModel.contentFlags;
+                dynDef->flags = BSPPhysModel.flags;
+                dynDef->pose.origin = BSPPhysModel.origin;
+                dynDef->pose.quat = BSPPhysModel.rotationQuat;
+                dynDef->type = BSPPhysModel.type;
 
-            clipMap->dynEntCollList[0] = m_memory.Alloc<DynEntityColl>(clipMap->dynEntCount[0]);
-            clipMap->dynEntCollList[1] = nullptr;
-            clipMap->dynEntCollList[2] = nullptr;
-            clipMap->dynEntCollList[3] = nullptr;
+                const auto& physPresetAsset = m_context.LoadDependency<AssetPhysPreset>(BSPPhysModel.physPreset);
+                if (physPresetAsset == nullptr)
+                    return false;
+                dynDef->physPreset = physPresetAsset->Asset();
 
-            clipMap->dynEntPoseList[0] = m_memory.Alloc<DynEntityPose>(clipMap->dynEntCount[0]);
-            clipMap->dynEntPoseList[1] = nullptr;
+                const auto& xmodelAsset = m_context.LoadDependency<AssetXModel>(BSPPhysModel.xmodel);
+                if (xmodelAsset == nullptr)
+                    return false;
+                dynDef->xModel = xmodelAsset->Asset();
+            }
 
-            clipMap->dynEntDefList[0] = m_memory.Alloc<DynEntityDef>(clipMap->dynEntCount[0]);
-            clipMap->dynEntDefList[1] = nullptr;
+            // always empty
+            clipMap->dynEntClientList[DYNENT_DRAW_MODEL] = m_memory.Alloc<DynEntityClient>(clipMap->dynEntCount[DYNENT_COLL_CLIENT_MODEL]);
+            clipMap->dynEntClientList[DYNENT_DRAW_BRUSH] = nullptr;
+
+            // always empty
+            clipMap->dynEntServerList[DYNENT_DRAW_MODEL] = m_memory.Alloc<DynEntityServer>(clipMap->dynEntCount[DYNENT_COLL_SERVER_MODEL]);
+            clipMap->dynEntServerList[DYNENT_DRAW_BRUSH] = nullptr;
+
+            // always empty
+            clipMap->dynEntCollList[DYNENT_COLL_CLIENT_MODEL] = m_memory.Alloc<DynEntityColl>(clipMap->dynEntCount[DYNENT_COLL_CLIENT_MODEL]);
+            clipMap->dynEntCollList[DYNENT_COLL_CLIENT_BRUSH] = nullptr;
+            clipMap->dynEntCollList[DYNENT_COLL_SERVER_MODEL] = m_memory.Alloc<DynEntityColl>(clipMap->dynEntCount[DYNENT_COLL_SERVER_MODEL]);
+            clipMap->dynEntCollList[DYNENT_COLL_SERVER_BRUSH] = nullptr;
+
+            // always empty
+            clipMap->dynEntPoseList[DYNENT_DRAW_MODEL] = m_memory.Alloc<DynEntityPose>(clipMap->dynEntCount[DYNENT_COLL_CLIENT_MODEL]);
+            clipMap->dynEntPoseList[DYNENT_DRAW_BRUSH] = nullptr;
+
+            return true;
         }
 
         void loadVisibility(clipMap_t* clipMap)
@@ -205,14 +238,39 @@ namespace
             clipMap->box_brush->verts = nullptr;
         }
 
-        void loadRopesAndConstraints(clipMap_t* clipMap)
+        bool loadRopesAndConstraints(clipMap_t* clipMap, BSPData* bsp)
         {
-            clipMap->num_constraints = 0; // max 511
-            clipMap->constraints = nullptr;
+            if (bsp->ropes.size() > 511)
+            {
+                con::error("exceeded {} ropes. count: {}", 511, bsp->ropes.size());
+                return false;
+            }
 
-            // The game allocates 32 empty ropes
-            clipMap->max_ropes = 32; // max 300
+            clipMap->num_constraints = static_cast<int>(bsp->ropes.size());
+            clipMap->constraints = m_memory.Alloc<PhysConstraint>(bsp->ropes.size());
+            for (size_t ropeIdx = 0; ropeIdx < bsp->ropes.size(); ropeIdx++)
+            {
+                PhysConstraint* constraint = &clipMap->constraints[ropeIdx];
+                BSPRope& rope = bsp->ropes.at(ropeIdx);
+                constraint->type = CONSTRAINT_ROPE;
+                constraint->pos = rope.startPoint;
+                constraint->pos2 = rope.endPoint;
+                constraint->distance = rope.length;
+                constraint->minAngle = rope.width;
+                constraint->scale.x = rope.scale;
+                if (constraint->scale.x <= 0.0f)
+                    constraint->scale.x = 1.0f;
+                const auto& matAsset = m_context.LoadDependency<AssetMaterial>(rope.material);
+                if (matAsset == nullptr)
+                    return false;
+                constraint->material = matAsset->Asset();
+            }
+
+            // ropes are initialised using constraints ingame
+            clipMap->max_ropes = static_cast<int>(bsp->ropes.size() + 32);  // max 300, The game allocates 32 empty ropes
             clipMap->ropes = m_memory.Alloc<rope_t>(clipMap->max_ropes);
+
+            return true;
         }
 
         bool loadXModelCollision(clipMap_t* clipMap, BSPData* bsp)
@@ -1343,9 +1401,11 @@ namespace
 
             loadVisibility(clipMap);
 
-            loadRopesAndConstraints(clipMap);
+            if (!loadRopesAndConstraints(clipMap, bsp))
+                return nullptr;
 
-            loadDynEnts(clipMap);
+             if (!loadDynEnts(clipMap, bsp))
+                return nullptr;
 
             if (!loadXModelCollision(clipMap, bsp))
                 return nullptr;
@@ -1367,6 +1427,10 @@ namespace
                 con::error("Unimplemented dev error hit, try reducing the number of brushes in complex areas of your map");
                 return nullptr;
             }
+
+            // todo:
+            // dynents load/write to gltf
+            // ropes load/write to gltf
 
             return clipMap;
         }

@@ -217,6 +217,36 @@ namespace T6
             std::vector<BSPEntityEntry> entries;
         };
 
+        struct BSPRope
+        {
+            std::string material;
+            vec3_t startPoint;
+            vec3_t endPoint;
+            float length;
+            float width;
+            float scale;
+        };
+
+        struct BSPPhysModel
+        {
+            DynEntityType type;
+
+            vec3_t origin;
+            vec4_t rotationQuat;
+
+            int contentFlags;
+            int flags;
+            
+            std::string physPreset;
+            std::string xmodel;
+        };
+
+        struct BSPRPRobe
+        {
+            vec3_t origin;
+            std::string image;
+        };
+
         struct BSPData
         {
             std::string name;
@@ -258,6 +288,11 @@ namespace T6
             BSPEntity worldspawn;
 
             std::vector<BSPModel> models;
+
+            std::vector<BSPLight> heroLights;
+            std::vector<BSPRPRobe> rProbes;
+            std::vector<BSPRope> ropes;
+            std::vector<BSPPhysModel> physModels;
         };
 
         enum BSPDefaultLights

@@ -363,12 +363,6 @@ namespace
             gfxWorld->exposureVolumePlaneCount = 0;
             gfxWorld->exposureVolumePlanes = nullptr;
 
-            // Remove hero lights
-            gfxWorld->heroLightCount = 0;
-            gfxWorld->heroLights = nullptr;
-            gfxWorld->heroLightTreeCount = 0;
-            gfxWorld->heroLightTree = nullptr;
-
             // remove LUT data
             gfxWorld->lutVolumeCount = 0;
             gfxWorld->lutVolumes = nullptr;
@@ -992,31 +986,35 @@ namespace
             gfxWorld->sunParse.initWorldFog->sunFogYaw = 254.0f;
         }
 
-        bool loadReflectionProbeData(GfxWorld* gfxWorld)
+        bool loadReflectionProbeData(BSPData* bsp, GfxWorld* gfxWorld)
         {
-            gfxWorld->draw.reflectionProbeCount = 1;
-
-            gfxWorld->draw.reflectionProbeTextures = m_memory.Alloc<GfxTexture>(gfxWorld->draw.reflectionProbeCount);
-
-            // default values taken from mp_dig
-            gfxWorld->draw.reflectionProbes = m_memory.Alloc<GfxReflectionProbe>(gfxWorld->draw.reflectionProbeCount);
-            gfxWorld->draw.reflectionProbes[0].mipLodBias = -8.0; // always -8.0f
-            gfxWorld->draw.reflectionProbes[0].origin = {};
-            gfxWorld->draw.reflectionProbes[0].lightingSH.V0 = {};
-            gfxWorld->draw.reflectionProbes[0].lightingSH.V1 = {};
-            gfxWorld->draw.reflectionProbes[0].lightingSH.V2 = {};
-
-            gfxWorld->draw.reflectionProbes[0].probeVolumeCount = 0;
-            gfxWorld->draw.reflectionProbes[0].probeVolumes = nullptr;
-
-            std::string probeImageName = ",$black";
-            auto probeImageAsset = m_context.LoadDependency<AssetImage>(probeImageName);
-            if (probeImageAsset == nullptr)
+            if (bsp->rProbes.size() > 0xff)
             {
-                con::error("ERROR! unable to find reflection probe image {}!", probeImageName);
+                con::error("Exceeded 255 reflection probes, count {}", bsp->rProbes.size());
                 return false;
             }
-            gfxWorld->draw.reflectionProbes[0].reflectionImage = probeImageAsset->Asset();
+            gfxWorld->draw.reflectionProbeCount = static_cast<unsigned int>(bsp->rProbes.size());
+            gfxWorld->draw.reflectionProbes = m_memory.Alloc<GfxReflectionProbe>(bsp->rProbes.size());
+
+            for (size_t probeIdx = 0; probeIdx < bsp->rProbes.size(); probeIdx++)
+            {
+                BSPRPRobe& inProbe = bsp->rProbes.at(probeIdx);
+                auto outProbe = &gfxWorld->draw.reflectionProbes[probeIdx];
+
+                outProbe->origin = inProbe.origin;
+                outProbe->mipLodBias = -8.0; // always -8.0f
+
+                auto probeImageAsset = m_context.LoadDependency<AssetImage>(inProbe.image);
+                if (probeImageAsset == nullptr)
+                {
+                    con::error("ERROR! unable to find reflection probe image {}!", inProbe.image);
+                    return false;
+                }
+                outProbe->reflectionImage = probeImageAsset->Asset();
+            }
+
+            // empty
+            gfxWorld->draw.reflectionProbeTextures = m_memory.Alloc<GfxTexture>(bsp->rProbes.size());
 
             return true;
         }
@@ -1042,12 +1040,12 @@ namespace
             return true;
         }
 
-        void loadSkyBox(BSPData* projInfo, GfxWorld* gfxWorld)
+        void loadSkyBox(BSPData* bsp, GfxWorld* gfxWorld)
         {
-            gfxWorld->skyBoxModel = m_memory.Dup(projInfo->skyboxName.c_str());
-            if (m_context.LoadDependency<AssetXModel>(projInfo->skyboxName) == nullptr)
+            gfxWorld->skyBoxModel = m_memory.Dup(bsp->skyboxName.c_str());
+            if (m_context.LoadDependency<AssetXModel>(bsp->skyboxName) == nullptr)
             {
-                con::warn("Unable to load the skybox xmodel {}!", projInfo->skyboxName);
+                con::warn("Unable to load the skybox xmodel {}!", bsp->skyboxName);
             }
 
             // always 0 and 1
@@ -1057,36 +1055,44 @@ namespace
             gfxWorld->skyDynIntensity.factor1 = 1.0f;
         }
 
-        void loadDynEntData(GfxWorld* gfxWorld)
+        bool loadDynEntData(BSPData* bsp, GfxWorld* gfxWorld)
         {
-            int dynEntCount = 0;
-            gfxWorld->dpvsDyn.dynEntClientCount[0] = dynEntCount + 256; // the game allocs 256 empty dynents, as they may be used ingame
-            gfxWorld->dpvsDyn.dynEntClientCount[1] = 0;
+            if (bsp->physModels.size() + 256 > 4095)
+            {
+                con::error("exceeded {} phys models. count: {}", 4095 - 256, bsp->physModels.size());
+                return false;
+            }
+
+            unsigned int dynEntCount = static_cast<unsigned int>(bsp->physModels.size()) + 256; // the game allocs 256 empty dynents, as they may be used ingame
+            gfxWorld->dpvsDyn.dynEntClientCount[DYNENT_DRAW_MODEL] = dynEntCount; 
+            gfxWorld->dpvsDyn.dynEntClientCount[DYNENT_DRAW_BRUSH] = 0;
 
             // +100: there is a crash that happens when ragdolls are created, and dynEntClientWordCount[0] is the issue.
             // Making the value much larger than required fixes it, but unsure what the root cause is
-            gfxWorld->dpvsDyn.dynEntClientWordCount[0] = ((gfxWorld->dpvsDyn.dynEntClientCount[0] + 31) >> 5) + 100;
-            gfxWorld->dpvsDyn.dynEntClientWordCount[1] = 0;
+            gfxWorld->dpvsDyn.dynEntClientWordCount[DYNENT_DRAW_MODEL] = ((dynEntCount + 31) >> 5) + 100;
+            gfxWorld->dpvsDyn.dynEntClientWordCount[DYNENT_DRAW_BRUSH] = 0;
             gfxWorld->dpvsDyn.usageCount = 0;
 
             int dynEntCellBitsSize = gfxWorld->dpvsDyn.dynEntClientWordCount[0] * gfxWorld->dpvsPlanes.cellCount;
-            gfxWorld->dpvsDyn.dynEntCellBits[0] = m_memory.Alloc<unsigned int>(dynEntCellBitsSize);
-            gfxWorld->dpvsDyn.dynEntCellBits[1] = nullptr;
+            gfxWorld->dpvsDyn.dynEntCellBits[DYNENT_DRAW_MODEL] = m_memory.Alloc<unsigned int>(dynEntCellBitsSize);
+            gfxWorld->dpvsDyn.dynEntCellBits[DYNENT_DRAW_BRUSH] = nullptr;
 
             int dynEntVisData0Size = gfxWorld->dpvsDyn.dynEntClientWordCount[0] * 32;
-            gfxWorld->dpvsDyn.dynEntVisData[0][0] = m_memory.Alloc<char>(dynEntVisData0Size);
-            gfxWorld->dpvsDyn.dynEntVisData[0][1] = m_memory.Alloc<char>(dynEntVisData0Size);
-            gfxWorld->dpvsDyn.dynEntVisData[0][2] = m_memory.Alloc<char>(dynEntVisData0Size);
-            gfxWorld->dpvsDyn.dynEntVisData[1][0] = nullptr;
-            gfxWorld->dpvsDyn.dynEntVisData[1][1] = nullptr;
-            gfxWorld->dpvsDyn.dynEntVisData[1][2] = nullptr;
+            gfxWorld->dpvsDyn.dynEntVisData[DYNENT_DRAW_MODEL][0] = m_memory.Alloc<char>(dynEntVisData0Size);
+            gfxWorld->dpvsDyn.dynEntVisData[DYNENT_DRAW_MODEL][1] = m_memory.Alloc<char>(dynEntVisData0Size);
+            gfxWorld->dpvsDyn.dynEntVisData[DYNENT_DRAW_MODEL][2] = m_memory.Alloc<char>(dynEntVisData0Size);
+            gfxWorld->dpvsDyn.dynEntVisData[DYNENT_DRAW_BRUSH][0] = nullptr;
+            gfxWorld->dpvsDyn.dynEntVisData[DYNENT_DRAW_BRUSH][1] = nullptr;
+            gfxWorld->dpvsDyn.dynEntVisData[DYNENT_DRAW_BRUSH][2] = nullptr;
 
-            unsigned int dynEntShadowVisCount = gfxWorld->dpvsDyn.dynEntClientCount[0] * (gfxWorld->primaryLightCount - gfxWorld->sunPrimaryLightIndex - 1);
-            gfxWorld->primaryLightDynEntShadowVis[0] = m_memory.Alloc<unsigned int>(dynEntShadowVisCount);
-            gfxWorld->primaryLightDynEntShadowVis[1] = nullptr;
+            unsigned int dynEntShadowVisCount = dynEntCount * (gfxWorld->primaryLightCount - gfxWorld->sunPrimaryLightIndex - 1);
+            gfxWorld->primaryLightDynEntShadowVis[DYNENT_DRAW_MODEL] = m_memory.Alloc<unsigned int>(dynEntShadowVisCount);
+            gfxWorld->primaryLightDynEntShadowVis[DYNENT_DRAW_BRUSH] = nullptr;
 
-            gfxWorld->sceneDynModel = m_memory.Alloc<GfxSceneDynModel>(gfxWorld->dpvsDyn.dynEntClientCount[0]);
+            gfxWorld->sceneDynModel = m_memory.Alloc<GfxSceneDynModel>(dynEntCount);
             gfxWorld->sceneDynBrush = nullptr;
+
+            return true;
         }
 
         bool loadOutdoors(GfxWorld* gfxWorld)
@@ -1122,6 +1128,120 @@ namespace
             return true;
         }
 
+        int createHeroLightTree(BSPData* bsp, std::vector<GfxHeroLightTree>& treeArr, vec3_t mins, vec3_t maxs, char cutAxis, size_t depth)
+        {
+            size_t lightCount = 0;
+            size_t foundLightIdx = 0;
+            for (size_t lightIdx = 0; lightIdx < bsp->heroLights.size(); lightIdx++)
+            {
+                BSPLight& inLight = bsp->heroLights.at(lightIdx);
+                if (inLight.pos.x >= mins.x && inLight.pos.x <= maxs.x
+                    && inLight.pos.y >= mins.y && inLight.pos.y <= maxs.y
+                    && inLight.pos.z >= mins.z)
+                {
+                    lightCount++;
+                    if (lightCount == 2)
+                        break;
+                    foundLightIdx = lightIdx;
+                }
+            }
+
+            if (depth >= 32) // max depth
+            {
+                con::error("Maximum hero light tree depth reached, ignoring {} hero lights.", lightCount);
+                return 0;
+            }
+
+            if (lightCount == 0)
+                return 0;
+            if (lightCount == 1)
+                return -1 - static_cast<int>(foundLightIdx);
+
+            size_t parentNodeIdx = treeArr.size();
+            GfxHeroLightTree tree{};
+            tree.mins = mins;
+            tree.maxs = maxs;
+            treeArr.emplace_back(tree);
+
+            constexpr float MAX_AABB_SIZE = 100.0f;
+
+            vec3_t newMins = mins;
+            vec3_t newMaxs = maxs;
+            if (cutAxis == 0)
+            {
+                float middleX = ((maxs.x - mins.x) / 2) + mins.x;
+                newMins.x = middleX;
+                newMaxs.x = middleX;
+            }
+            else if (cutAxis == 1)
+            {
+                float middleY = ((maxs.y - mins.y) / 2) + mins.y;
+                newMins.y = middleY;
+                newMaxs.y = middleY;
+            }
+            else if (cutAxis == 2)
+            {
+                float middleZ = ((maxs.z - mins.z) / 2) + mins.z;
+                newMins.z = middleZ;
+                newMaxs.z = middleZ;
+            }
+            else
+                assert(false);
+
+            treeArr.at(parentNodeIdx).leftNode = createHeroLightTree(bsp, treeArr, newMins, maxs, 1, depth + 1);
+            treeArr.at(parentNodeIdx).rightNode = createHeroLightTree(bsp, treeArr, mins, newMaxs, 1, depth + 1);
+
+            return static_cast<int>(parentNodeIdx);
+        }
+
+        bool loadHeroLights(BSPData* bsp, GfxWorld* gfxWorld)
+        {
+            gfxWorld->heroLightCount = static_cast<unsigned int>(bsp->heroLights.size());
+            gfxWorld->heroLights = m_memory.Alloc<GfxHeroLight>(bsp->heroLights.size());
+            for (size_t lightIdx = 0; lightIdx < bsp->heroLights.size(); lightIdx++)
+            {
+                BSPLight& inLight = bsp->heroLights.at(lightIdx);
+                auto heroLight = &gfxWorld->heroLights[lightIdx];
+                
+                heroLight->color = inLight.colour;
+                float multiplier = inLight.intensity / 1000.0f;
+                heroLight->color.x *= multiplier;
+                heroLight->color.y *= multiplier;
+                heroLight->color.z *= multiplier;
+
+                heroLight->radius = inLight.range;
+                heroLight->dir = inLight.forwardVector;
+                heroLight->origin = inLight.pos;
+
+                if (inLight.type == LIGHT_TYPE_POINT)
+                    heroLight->type = GFX_LIGHT_TYPE_OMNI;
+                else if (inLight.type == LIGHT_TYPE_SPOT)
+                {
+                    heroLight->type = GFX_LIGHT_TYPE_SPOT;
+                    heroLight->cosHalfFovInner = inLight.innerConeAngle;
+                    heroLight->cosHalfFovOuter = inLight.outerConeAngle;
+                }
+                else // LIGHT_TYPE_DIRECTIONAL
+                    heroLight->type = GFX_LIGHT_TYPE_DIR;
+            }
+
+            if (bsp->heroLights.size() <= 1)
+            {
+                gfxWorld->heroLightTreeCount = 0;
+                gfxWorld->heroLightTree = nullptr;
+            }
+            else
+            {
+                std::vector<GfxHeroLightTree> treeArr;
+                createHeroLightTree(bsp, treeArr, gfxWorld->mins, gfxWorld->maxs, 0, 0);
+                gfxWorld->heroLightTreeCount = static_cast<unsigned int>(treeArr.size());
+                gfxWorld->heroLightTree = m_memory.Alloc<GfxHeroLightTree>(treeArr.size());
+                memcpy(gfxWorld->heroLightTree, treeArr.data(), treeArr.size() * sizeof(GfxHeroLightTree));
+            }
+
+            return true;
+        }
+
         GfxWorld* linkGfxWorld(BSPData* bsp) override
         {
             GfxWorld* gfxWorld = m_memory.Alloc<GfxWorld>();
@@ -1145,7 +1265,7 @@ namespace
 
             loadSkyBox(bsp, gfxWorld);
 
-            if (!loadReflectionProbeData(gfxWorld))
+            if (!loadReflectionProbeData(bsp, gfxWorld))
                 return nullptr;
 
             // world bounds are based on loaded surface mins/maxs and xmodels
@@ -1162,17 +1282,19 @@ namespace
             if (!loadGfxLights(bsp, gfxWorld)) // requires xmodels and surfaces
                 return nullptr;
 
+            if (!loadHeroLights(bsp, gfxWorld))
+                return nullptr;
+
             loadModels(bsp, gfxWorld); // requires surfaces
 
             loadSunData(bsp, gfxWorld);
 
-            loadDynEntData(gfxWorld); // requires cells and lights
+            loadDynEntData(bsp, gfxWorld); // requires cells and lights
 
-            // dynent load data
-            // hero light load data
+            // hero light gltf load/store
 
             // refection probes post processing
-            // somehow load rprobes
+            // probe gltf load/store
             // use plutonium to create the rprobes (similar to pathing data)
             // load back in (posibly could hardcode rprobe image names based on how pluto loads them and load like how pathing is done)
 

@@ -556,6 +556,24 @@ namespace
 
         for (const auto& xmodel : dumpData.gfxWorld.xmodels)
             addXmodelToJson(root, dumpData, xmodel, xmodelNodeIdx, true);
+
+        JsonNode probeParent;
+        probeParent.name = "Reflection Probes";
+        probeParent.children.emplace();
+        size_t probeNodeIdx = addNodeToGltf(root, probeParent, ROOT_NODE_IDX);
+        size_t probeidx = 0;
+        for (const auto& probe : dumpData.rProbes)
+        {
+            nlohmann::json probeJs;
+            JsonNode probeNode{};
+            probeNode.name = std::format("rprobe_{}", probeidx++);
+            std::array<float, 3> posArr({probe.origin.x, probe.origin.y, probe.origin.z});
+            probeNode.translation = posArr;
+            probeJs["rprobe"] = probe.image;
+            probeNode.extras = probeJs;
+            addNodeToGltf(root, probeNode, probeNodeIdx);
+        }
+        
     }
 
     void createColWorld(JsonRoot& root, BSPData& dumpData, bool isGfxWorld)
@@ -575,11 +593,88 @@ namespace
         for (const auto& xmodel : dumpData.colWorld.xmodels)
             addXmodelToJson(root, dumpData, xmodel, xmodelNodeIdx, false);
 
+        JsonNode ropeRoot;
+        ropeRoot.name = "Ropes";
+        ropeRoot.children.emplace();
+        size_t ropeRootIdx = addNodeToGltf(root, ropeRoot, ROOT_NODE_IDX);
+        size_t ropeIdx = 0;
+        for (const auto& rope : dumpData.ropes)
+        {
+            vec3_t middle{};
+            middle.x = (rope.endPoint.x - rope.startPoint.x) / 2.0f + rope.startPoint.x;
+            middle.y = (rope.endPoint.y - rope.startPoint.y) / 2.0f + rope.startPoint.y;
+            middle.z = (rope.endPoint.z - rope.startPoint.z) / 2.0f + rope.startPoint.z;
+
+            JsonNode ropeParent{};
+            ropeParent.name = std::format("rope_{}", ropeIdx++);
+            ropeParent.children.emplace();
+            ropeParent.translation.emplace();
+            (*ropeParent.translation)[0] = middle.x;
+            (*ropeParent.translation)[1] = middle.y;
+            (*ropeParent.translation)[2] = middle.z;
+            nlohmann::json rpJs;
+            rpJs["rope"] = rope.material;
+            rpJs["length"] = rope.length;
+            rpJs["width"] = rope.width;
+            rpJs["scale"] = rope.scale;
+            ropeParent.extras = rpJs;
+            size_t ropeParentIdx = addNodeToGltf(root, ropeParent, ropeRootIdx);
+
+            JsonNode ropeChild{};
+            nlohmann::json rJs;
+            ropeChild.translation.emplace();
+            (*ropeChild.translation)[0] = rope.startPoint.x - middle.x;
+            (*ropeChild.translation)[1] = rope.startPoint.y - middle.y;
+            (*ropeChild.translation)[2] = rope.startPoint.z - middle.z;
+            rJs["rope"] = "start";
+            ropeChild.extras = rJs;
+            addNodeToGltf(root, ropeChild, ropeParentIdx);
+
+            (*ropeChild.translation)[0] = rope.endPoint.x - middle.x;
+            (*ropeChild.translation)[1] = rope.endPoint.y - middle.y;
+            (*ropeChild.translation)[2] = rope.endPoint.z - middle.z;
+            rJs["rope"] = "end";
+            ropeChild.extras = rJs;
+            addNodeToGltf(root, ropeChild, ropeParentIdx);
+        }
+
+        JsonNode pNodePar;
+        pNodePar.name = "Physmodels";
+        pNodePar.children.emplace();
+        size_t physNodeIdx = addNodeToGltf(root, pNodePar, ROOT_NODE_IDX);
+        for (const auto& BSPPhysModel : dumpData.physModels)
+        {
+            JsonNode pNode;
+            pNode.name = "phys_" + BSPPhysModel.xmodel;
+            pNode.translation.emplace();
+            pNode.rotation.emplace();
+            (*pNode.translation)[0] = BSPPhysModel.origin.x;
+            (*pNode.translation)[1] = BSPPhysModel.origin.y;
+            (*pNode.translation)[2] = BSPPhysModel.origin.z;
+            (*pNode.rotation)[0] = BSPPhysModel.rotationQuat.x;
+            (*pNode.rotation)[1] = BSPPhysModel.rotationQuat.y;
+            (*pNode.rotation)[2] = BSPPhysModel.rotationQuat.z;
+            (*pNode.rotation)[3] = BSPPhysModel.rotationQuat.w;
+            nlohmann::json pJs;
+            pJs["physmodel"] = BSPPhysModel.xmodel;
+            pJs["physpreset"] = BSPPhysModel.physPreset;
+            pJs["type"] = BSPPhysModel.type == DYNENT_TYPE_CLUTTER ? "clutter" : "destruct";
+            pJs["flags"] = BSPPhysModel.flags;
+            std::string contentFlags;
+            for (const auto& flagToStr : BSPFlags::contentFlags_FlagToName)
+            {
+                if (BSPUtil::flagsMatchExact(flagToStr.first, BSPPhysModel.contentFlags))
+                    contentFlags.append(std::format("{}, ", flagToStr.second));
+            }
+            pJs["contentflags"] = contentFlags.substr(0, contentFlags.empty() ? 0 : contentFlags.size() - 2);
+            pNode.extras = pJs;
+            addNodeToGltf(root, pNode, physNodeIdx);
+        }
+
         JsonNode bNode;
         bNode.name = "Brushes";
         bNode.children.emplace();
         size_t brushNodeIdx = addNodeToGltf(root, bNode, ROOT_NODE_IDX);
-
         bNode.name = "solid";
         size_t solidBrushNodeIdx = addNodeToGltf(root, bNode, brushNodeIdx);
         bNode.name = "nonsolid";
@@ -614,6 +709,45 @@ namespace
         }
     }
 
+    void addLightToGltf(BSPLight* inLight, JsonPunctualLight& outLight, bool isSunlight)
+    {
+        std::array<float, 3> colourArr({inLight->colour.x, inLight->colour.y, inLight->colour.z});
+        outLight.color = colourArr;
+
+        if (inLight->type == LIGHT_TYPE_DIRECTIONAL)
+            outLight.type = JsonPunctualLightType::DIRECTIONAL;
+        else if (inLight->type == LIGHT_TYPE_POINT)
+            outLight.type = JsonPunctualLightType::POINT;
+        else if (inLight->type == LIGHT_TYPE_SPOT)
+        {
+            outLight.type = JsonPunctualLightType::SPOT;
+            JsonPunctualSpotLightProperties properties;
+            properties.innerConeAngle = inLight->innerConeAngle;
+            properties.outerConeAngle = inLight->outerConeAngle;
+            outLight.spot = properties;
+        }
+        else
+            assert(false);
+
+        nlohmann::json extras;
+        if (!isSunlight)
+        {
+            outLight.intensity = inLight->intensity;
+            std::array<float, 4> superEllipseArr({inLight->superEllipse.x, inLight->superEllipse.y, inLight->superEllipse.z, inLight->superEllipse.w});
+            extras["superellipse"] = superEllipseArr;
+            extras["culldistance"] = inLight->cullDistance;
+            extras["roundness"] = inLight->roundness;
+            extras["image"] = inLight->image;
+            extras["range"] = inLight->range;
+        }
+        else
+        {
+            outLight.intensity = inLight->intensity * 1000.0f;
+            extras["intensity"] = inLight->intensity;
+        }
+        outLight.extras = extras;
+    }
+
     void createComWorld(JsonRoot& root, BSPData& dumpData, bool isGfxWorld)
     {
         if (!isGfxWorld)
@@ -630,40 +764,15 @@ namespace
                 inLight = &dumpData.sunlight;
             else
                 inLight = &dumpData.lights.at(lightIdx);
-
-            std::array<float, 3> colourArr({inLight->colour.x, inLight->colour.y, inLight->colour.z});
-            outLight.color = colourArr;
-
-            if (inLight->type == LIGHT_TYPE_DIRECTIONAL)
-                outLight.type = JsonPunctualLightType::DIRECTIONAL;
-            else if (inLight->type == LIGHT_TYPE_POINT)
-                outLight.type = JsonPunctualLightType::POINT;
-            else if (inLight->type == LIGHT_TYPE_SPOT)
-            {
-                outLight.type = JsonPunctualLightType::SPOT;
-                JsonPunctualSpotLightProperties properties;
-                properties.innerConeAngle = inLight->innerConeAngle;
-                properties.outerConeAngle = inLight->outerConeAngle;
-                outLight.spot = properties;
-            }
-            else
-                assert(false);
-            
-            nlohmann::json extras;
-            if (lightIdx != dumpData.lights.size())
-            {
-                outLight.intensity = inLight->intensity;
-                std::array<float, 4> superEllipseArr({inLight->superEllipse.x, inLight->superEllipse.y, inLight->superEllipse.z, inLight->superEllipse.w});
-                extras["superellipse"] = superEllipseArr;
-                extras["culldistance"] = inLight->cullDistance;
-                extras["roundness"] = inLight->roundness;
-                extras["image"] = inLight->image;
-                extras["range"] = inLight->range;
-            }
-            else
-                extras["intensity"] = inLight->intensity; 
-            outLight.extras = extras;
-
+            addLightToGltf(inLight, outLight, lightIdx == dumpData.lights.size());
+            punctualLightsExtension.lights->emplace_back(outLight);
+        }
+        size_t heroLightStartIdx = punctualLightsExtension.lights->size();
+        for (size_t lightIdx = 0; lightIdx < dumpData.heroLights.size(); lightIdx++)
+        {
+            JsonPunctualLight outLight{};
+            BSPLight* inLight = &dumpData.heroLights.at(lightIdx);
+            addLightToGltf(inLight, outLight, true);
             punctualLightsExtension.lights->emplace_back(outLight);
         }
         extension.KHR_lights_punctual = punctualLightsExtension;
@@ -675,7 +784,7 @@ namespace
         size_t lightNodeIdx = addNodeToGltf(root, lightNode, ROOT_NODE_IDX);
         for (size_t lightIdx = 0; lightIdx < dumpData.lights.size() + 1; lightIdx++)
         {
-            JsonNode node;
+            JsonNode node{};
             BSPLight* inLight;
             if (lightIdx == dumpData.lights.size())
             {
@@ -709,6 +818,37 @@ namespace
             Eigen::Quaternionf quat = forwardQuat * rollAxis;
             node.rotation = {quat.x(), quat.y(), quat.z(), quat.w()};
             addNodeToGltf(root, node, lightNodeIdx);
+        }
+
+        JsonNode hlightNode;
+        hlightNode.name = "Hero Lights";
+        hlightNode.children.emplace();
+        size_t hlightNodeIdx = addNodeToGltf(root, hlightNode, ROOT_NODE_IDX);
+        for (size_t lightIdx = 0; lightIdx < dumpData.heroLights.size(); lightIdx++)
+        {
+            JsonNode node{};
+            BSPLight* inLight = &dumpData.heroLights.at(lightIdx);
+        
+            node.name = std::format("herolight_{}", lightIdx);
+        
+            nlohmann::json extras;
+            extras["herolight"] = true;
+            node.extras = extras;
+        
+            JsonPunctualLightIndex jsLightIndex{};
+            jsLightIndex.light = static_cast<int>(lightIdx + heroLightStartIdx);
+            JsonNodeExtension extension{};
+            extension.KHR_lights_punctual = jsLightIndex;
+            node.extensions = extension;
+        
+            std::array<float, 3> posArr({inLight->pos.x, inLight->pos.y, inLight->pos.z});
+            node.translation = posArr;
+        
+            Eigen::Vector3f defaultDirection(0.0f, 0.0f, 1.0f);
+            Eigen::Vector3f lightDirection(inLight->forwardVector.x, inLight->forwardVector.y, inLight->forwardVector.z);
+            Eigen::Quaternionf quat = Eigen::Quaternionf::FromTwoVectors(defaultDirection, lightDirection);
+            node.rotation = {quat.x(), quat.y(), quat.z(), quat.w()};
+            addNodeToGltf(root, node, hlightNodeIdx);
         }
     }
 
