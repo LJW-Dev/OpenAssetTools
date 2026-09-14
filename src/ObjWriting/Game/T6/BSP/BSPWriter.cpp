@@ -506,6 +506,9 @@ namespace
         (*node.scale)[1] = xmodel.scale.y;
         (*node.scale)[2] = xmodel.scale.z;
 
+        if (xmodel.surfaceCount != 0)
+            node.mesh = addMeshFromSurface(root, dumpData, xmodel.surfaceStart, xmodel.surfaceCount, isGfxWorld);
+
         nlohmann::json extrasJs;
         extrasJs["xmodel"] = xmodel.name;
         if (xmodel.doesCastShadow && isGfxWorld)

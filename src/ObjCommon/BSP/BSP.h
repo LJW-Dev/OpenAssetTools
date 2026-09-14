@@ -67,6 +67,10 @@ namespace T6
             vec3_t maxs;
 
             bool doesCastShadow;
+
+            // unlinker only
+            size_t surfaceStart;
+            size_t surfaceCount;
         };
 
         struct BSPWorld

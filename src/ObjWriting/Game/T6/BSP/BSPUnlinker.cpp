@@ -433,6 +433,102 @@ namespace
         }
     }
 
+    size_t createColMaterial(BSPData& dumpData, Material* material)
+    {
+        for (size_t matIdx = 0; matIdx < dumpData.colWorld.materials.size(); matIdx++)
+        {
+            auto& mat = dumpData.colWorld.materials.at(matIdx);
+            if (!mat.materialName.compare(material->info.name))
+                return matIdx;
+        }
+
+        BSPMaterial bspMaterial{};
+        bspMaterial.materialName = material->info.name;
+        bspMaterial.materialType = MATERIAL_TYPE_TEXTURE;
+        bspMaterial.materialColour = whiteColour;
+        size_t matIndex = dumpData.colWorld.materials.size();
+        dumpData.colWorld.materials.emplace_back(bspMaterial);
+        return matIndex;
+    }
+
+    size_t createBspMaterial(BSPData& dumpData, Material* material, GfxSurfaceFlags surfFlags)
+    {
+        // these 3 flags are the only relevant flags
+        // GFX_SURFACE_CASTS_SHADOW is actually ignored and all surfaces are forced to have it set to true
+        constexpr int matFlagMask = GFX_SURFACE_CASTS_SUN_SHADOW | GFX_SURFACE_IS_SKY | GFX_SURFACE_NO_DRAW;
+        int surfFlagsSimple = surfFlags & matFlagMask;
+        for (size_t matIdx = 0; matIdx < dumpData.gfxWorld.materials.size(); matIdx++)
+        {
+            auto& mat = dumpData.gfxWorld.materials.at(matIdx);
+            if (!mat.materialName.compare(material->info.name) && (mat.surfaceFlags == surfFlagsSimple))
+                return matIdx;
+        }
+
+        BSPMaterial bspMaterial;
+        bspMaterial.materialName = material->info.name;
+        bspMaterial.materialType = MATERIAL_TYPE_TEXTURE;
+        bspMaterial.materialColour = whiteColour;
+        bspMaterial.surfaceFlags = surfFlagsSimple;
+        bspMaterial.contentFlags = surfFlagsSimple;
+        size_t matIndex = dumpData.gfxWorld.materials.size();
+        dumpData.gfxWorld.materials.emplace_back(bspMaterial);
+        return matIndex;
+    }
+
+    std::map<std::string, std::pair<size_t, size_t>> xmodelToSurfMapGfx;
+    std::map<std::string, std::pair<size_t, size_t>> xmodelToSurfMapCol;
+
+    void addXmodelSurfaces(BSPData& dumpData, XModel* xmodel, bool isGfx)
+    {
+        BSPWorld* world = &dumpData.colWorld;
+        if (isGfx)
+            world = &dumpData.gfxWorld;
+
+        size_t vertexStart = world->vertices.size();
+        uint16_t lodIdx = xmodel->numLods - 1;
+        for (auto surfaceIndex = 0u; surfaceIndex < xmodel->lodInfo[lodIdx].numsurfs; surfaceIndex++)
+        {
+            size_t realSurfIndex = surfaceIndex + xmodel->lodInfo[lodIdx].surfIndex;
+            const auto& surface = xmodel->surfs[realSurfIndex];
+
+            if (!surface.verts0)
+                continue;
+
+            BSPSurface outSurface{};
+            if (isGfx)
+                outSurface.materialIndex = createBspMaterial(dumpData, xmodel->materialHandles[realSurfIndex], (GfxSurfaceFlags)0);
+            else
+                outSurface.materialIndex = createColMaterial(dumpData, xmodel->materialHandles[realSurfIndex]);
+            outSurface.triCount = surface.triCount;
+            outSurface.vertexCount = surface.vertCount;
+            outSurface.indexOfFirstVertex = world->vertices.size();
+            outSurface.indexOfFirstIndex = world->indices.size();
+            world->surfaces.emplace_back(outSurface);
+
+            for (auto vertIndex = 0u; vertIndex < surface.vertCount; vertIndex++)
+            {
+                const auto* vertex = &surface.verts0[vertIndex];
+                BSPVertex outVertex{};
+                outVertex.pos = vertex->xyz;
+                LhcToRhcCoordinates(outVertex.pos.v);
+                Common::Vec3UnpackUnitVec(vertex->normal, outVertex.normal.v);
+                LhcToRhcCoordinates(outVertex.normal.v);
+                Common::Vec2UnpackTexCoords(vertex->texCoord, outVertex.texCoord.v);
+                Common::Vec4UnpackGfxColor(vertex->color, outVertex.color.v);
+                world->vertices.emplace_back(outVertex);
+            }
+
+            for (auto triIndex = 0u; triIndex < surface.triCount; triIndex++)
+            {
+                XSurfaceTri16 tri = surface.triIndices[triIndex];
+                LhcToRhcIndices(tri.i);
+                world->indices.emplace_back(tri.i[0]);
+                world->indices.emplace_back(tri.i[1]);
+                world->indices.emplace_back(tri.i[2]);
+            }
+        }
+    }
+
     float lengthOfVector(float x, float y, float z)
     {
         return sqrtf(x * x + y * y + z * z);
@@ -475,14 +571,35 @@ namespace
             origAxis[2].y = outOrig[2].y * forcedScale3;
             origAxis[2].z = outOrig[2].z * forcedScale3;
 
+            bool isReference = colModel->xmodel->name[0] == ',';
+
             BSPXModel model{};
             assert(colModel->xmodel != nullptr);
-            model.name = colModel->xmodel->name[0] == ',' ? &colModel->xmodel->name[1] : colModel->xmodel->name;
+            model.name = isReference ? &colModel->xmodel->name[1] : colModel->xmodel->name;
             model.origin = colModel->origin;
             LhcToRhcCoordinates(model.origin.v);
             model.rotationQuaternion = BSPUtil::convertAxisToQuat(origAxis);
             LhcToRhcQuaternion(model.rotationQuaternion.v);
             model.scale = {forcedScale1, forcedScale2, forcedScale3};
+
+            if (!isReference)
+            {
+                if (xmodelToSurfMapCol.contains(model.name))
+                {
+                    model.surfaceStart = xmodelToSurfMapCol.at(model.name).first;
+                    model.surfaceCount = xmodelToSurfMapCol.at(model.name).second;
+                }
+                else
+                {
+                    model.surfaceStart = dumpData.colWorld.surfaces.size();
+                    addXmodelSurfaces(dumpData, colModel->xmodel, false);
+                    model.surfaceCount = dumpData.colWorld.surfaces.size() - model.surfaceStart;
+
+                    std::pair<size_t, size_t> pair(model.surfaceStart, model.surfaceCount);
+                    xmodelToSurfMapCol[model.name] = pair;
+                }
+            }
+
             dumpData.colWorld.xmodels.emplace_back(model);
 
             /*
@@ -831,30 +948,6 @@ namespace
         }
     }
 
-    size_t createBspMaterial(BSPData& dumpData, Material* material, GfxSurfaceFlags surfFlags)
-    {
-        // these 3 flags are the only relevant flags
-        // GFX_SURFACE_CASTS_SHADOW is actually ignored and all surfaces are forced to have it set to true
-        constexpr int matFlagMask = GFX_SURFACE_CASTS_SUN_SHADOW | GFX_SURFACE_IS_SKY | GFX_SURFACE_NO_DRAW;
-        int surfFlagsSimple = surfFlags & matFlagMask;
-        for (size_t matIdx = 0; matIdx < dumpData.gfxWorld.materials.size(); matIdx++)
-        {
-            auto& mat = dumpData.gfxWorld.materials.at(matIdx);
-            if (!mat.materialName.compare(material->info.name) && (mat.surfaceFlags == surfFlagsSimple))
-                return matIdx;
-        }
-
-        BSPMaterial bspMaterial;
-        bspMaterial.materialName = material->info.name;
-        bspMaterial.materialType = MATERIAL_TYPE_TEXTURE;
-        bspMaterial.materialColour = whiteColour;
-        bspMaterial.surfaceFlags = surfFlagsSimple;
-        bspMaterial.contentFlags = surfFlagsSimple;
-        size_t matIndex = dumpData.gfxWorld.materials.size();
-        dumpData.gfxWorld.materials.emplace_back(bspMaterial);
-        return matIndex;
-    }
-
     std::shared_ptr<size_t[]>
         simplifyVertexBuffer(std::vector<BSPVertex>& in_vertexBuffer, std::unique_ptr<bool[]>& in_isVertUsedMap, std::vector<BSPVertex>& out_vertexBuffer)
     {
@@ -1078,8 +1171,10 @@ namespace
             auto gfxModel = &gfxWorld->dpvs.smodelDrawInsts[modelIdx];
             BSPXModel model{};
 
+            bool isReference = gfxModel->model->name[0] == ',';
+
             assert(gfxModel->model != nullptr);
-            model.name = gfxModel->model->name[0] == ',' ? &gfxModel->model->name[1] : gfxModel->model->name;
+            model.name = isReference ? &gfxModel->model->name[1] : gfxModel->model->name;
             model.origin = gfxModel->placement.origin;
             LhcToRhcCoordinates(model.origin.v);
             model.rotationQuaternion = BSPUtil::convertAxisToQuat(gfxModel->placement.axis);
@@ -1088,6 +1183,25 @@ namespace
             model.scale.y = gfxModel->placement.scale;
             model.scale.z = gfxModel->placement.scale;
             model.doesCastShadow = gfxWorld->dpvs.smodelCastsShadow[modelIdx];
+
+            if (!isReference)
+            {
+                if (xmodelToSurfMapGfx.contains(model.name))
+                {
+                    model.surfaceStart = xmodelToSurfMapGfx.at(model.name).first;
+                    model.surfaceCount = xmodelToSurfMapGfx.at(model.name).second;
+                }
+                else
+                {
+                    model.surfaceStart = dumpData.gfxWorld.surfaces.size();
+                    addXmodelSurfaces(dumpData, gfxModel->model, true);
+                    model.surfaceCount = dumpData.gfxWorld.surfaces.size() - model.surfaceStart;
+
+                    std::pair<size_t, size_t> pair(model.surfaceStart, model.surfaceCount);
+                    xmodelToSurfMapGfx[model.name] = pair;
+                }
+            }
+
             dumpData.gfxWorld.xmodels.emplace_back(model);
         }
     }
