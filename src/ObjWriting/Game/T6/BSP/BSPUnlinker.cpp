@@ -345,7 +345,7 @@ namespace
             if (matIndex == -1)
             {
                 con::warn("Coulndn't determine material idx from flags");
-                BSPMaterial bspMaterial;
+                BSPMaterial bspMaterial{};
                 bspMaterial.materialName = std::format("unknown_material_{}", dumpData.colWorld.materials.size());
                 bspMaterial.materialType = MATERIAL_TYPE_TEXTURE;
                 bspMaterial.materialColour = whiteColour;
@@ -433,17 +433,87 @@ namespace
         }
     }
 
+    GfxImage* GetImageFromTextureDef(const MaterialTextureDef& textureDef)
+    {
+        return textureDef.image;
+    }
+
+    GfxImage* GetMaterialColorMap(const Material* material)
+    {
+        std::vector<MaterialTextureDef*> potentialTextureDefs;
+
+        for (auto textureIndex = 0u; textureIndex < material->textureCount; textureIndex++)
+        {
+            MaterialTextureDef* def = &material->textureTable[textureIndex];
+
+            if (def->semantic == TS_COLOR_MAP || def->semantic >= TS_COLOR0_MAP && def->semantic <= TS_COLOR15_MAP)
+                potentialTextureDefs.push_back(def);
+        }
+
+        if (potentialTextureDefs.empty())
+            return nullptr;
+        if (potentialTextureDefs.size() == 1)
+            return GetImageFromTextureDef(*potentialTextureDefs[0]);
+
+        for (const auto* def : potentialTextureDefs)
+        {
+            if (tolower(def->nameStart) == 'c' && tolower(def->nameEnd) == 'p')
+                return GetImageFromTextureDef(*def);
+        }
+
+        for (const auto* def : potentialTextureDefs)
+        {
+            if (tolower(def->nameStart) == 'r' && tolower(def->nameEnd) == 'k')
+                return GetImageFromTextureDef(*def);
+        }
+
+        for (const auto* def : potentialTextureDefs)
+        {
+            if (tolower(def->nameStart) == 'd' && tolower(def->nameEnd) == 'p')
+                return GetImageFromTextureDef(*def);
+        }
+
+        return GetImageFromTextureDef(*potentialTextureDefs[0]);
+    }
+
+    GfxImage* GetMaterialNormalMap(const Material* material)
+    {
+        std::vector<MaterialTextureDef*> potentialTextureDefs;
+
+        for (auto textureIndex = 0u; textureIndex < material->textureCount; textureIndex++)
+        {
+            MaterialTextureDef* def = &material->textureTable[textureIndex];
+
+            if (def->semantic == TS_NORMAL_MAP)
+                potentialTextureDefs.push_back(def);
+        }
+
+        if (potentialTextureDefs.empty())
+            return nullptr;
+        if (potentialTextureDefs.size() == 1)
+            return GetImageFromTextureDef(*potentialTextureDefs[0]);
+
+        for (const auto* def : potentialTextureDefs)
+        {
+            if (def->nameStart == 'n' && def->nameEnd == 'p')
+                return GetImageFromTextureDef(*def);
+        }
+
+        return GetImageFromTextureDef(*potentialTextureDefs[0]);
+    }
+
     size_t createColMaterial(BSPData& dumpData, Material* material)
     {
+        const char* matName = BSPUtil::trueAssetName(material->info.name);
         for (size_t matIdx = 0; matIdx < dumpData.colWorld.materials.size(); matIdx++)
         {
             auto& mat = dumpData.colWorld.materials.at(matIdx);
-            if (!mat.materialName.compare(material->info.name))
+            if (!mat.materialName.compare(matName))
                 return matIdx;
         }
 
         BSPMaterial bspMaterial{};
-        bspMaterial.materialName = material->info.name;
+        bspMaterial.materialName = matName;
         bspMaterial.materialType = MATERIAL_TYPE_TEXTURE;
         bspMaterial.materialColour = whiteColour;
         size_t matIndex = dumpData.colWorld.materials.size();
@@ -453,6 +523,7 @@ namespace
 
     size_t createBspMaterial(BSPData& dumpData, Material* material, GfxSurfaceFlags surfFlags)
     {
+        const char* matName = BSPUtil::trueAssetName(material->info.name);
         // these 3 flags are the only relevant flags
         // GFX_SURFACE_CASTS_SHADOW is actually ignored and all surfaces are forced to have it set to true
         constexpr int matFlagMask = GFX_SURFACE_CASTS_SUN_SHADOW | GFX_SURFACE_IS_SKY | GFX_SURFACE_NO_DRAW;
@@ -460,16 +531,25 @@ namespace
         for (size_t matIdx = 0; matIdx < dumpData.gfxWorld.materials.size(); matIdx++)
         {
             auto& mat = dumpData.gfxWorld.materials.at(matIdx);
-            if (!mat.materialName.compare(material->info.name) && (mat.surfaceFlags == surfFlagsSimple))
+            if (!mat.materialName.compare(matName) && (mat.surfaceFlags == surfFlagsSimple))
                 return matIdx;
         }
 
-        BSPMaterial bspMaterial;
-        bspMaterial.materialName = material->info.name;
+        BSPMaterial bspMaterial{};
+        bspMaterial.materialName = BSPUtil::trueAssetName(matName);
         bspMaterial.materialType = MATERIAL_TYPE_TEXTURE;
         bspMaterial.materialColour = whiteColour;
         bspMaterial.surfaceFlags = surfFlagsSimple;
         bspMaterial.contentFlags = surfFlagsSimple;
+
+        const auto* colorMap = GetMaterialColorMap(material);
+        if (colorMap)
+            bspMaterial.imageName = BSPUtil::trueAssetName(colorMap->name);
+
+        const auto* normalMap = GetMaterialNormalMap(material);
+        if (normalMap)
+            bspMaterial.normalName = BSPUtil::trueAssetName(normalMap->name);
+
         size_t matIndex = dumpData.gfxWorld.materials.size();
         dumpData.gfxWorld.materials.emplace_back(bspMaterial);
         return matIndex;
@@ -514,7 +594,8 @@ namespace
                 Common::Vec3UnpackUnitVec(vertex->normal, outVertex.normal.v);
                 LhcToRhcCoordinates(outVertex.normal.v);
                 Common::Vec2UnpackTexCoords(vertex->texCoord, outVertex.texCoord.v);
-                Common::Vec4UnpackGfxColor(vertex->color, outVertex.color.v);
+                //Common::Vec4UnpackGfxColor(vertex->color, outVertex.color.v);
+                outVertex.color = {1.0f, 1.0f, 1.0f, 1.0f};
                 world->vertices.emplace_back(outVertex);
             }
 
@@ -529,6 +610,24 @@ namespace
         }
     }
 
+    XModel* getXmodelAssetNoRefrence(AssetDumpingContext& context, std::string name)
+    {
+        const auto& maybeAsset = context.m_zone.m_pools.GetAsset<AssetXModel>(name);
+        if (maybeAsset != nullptr && !maybeAsset->IsReference())
+            return maybeAsset->Asset();
+
+        for (const auto& zone : context.m_loaded_zones)
+        {
+            const auto& maybeAsset2 = zone->GetZone().m_pools.GetAsset<AssetXModel>(name);
+            if (maybeAsset2 != nullptr && !maybeAsset2->IsReference())
+                return maybeAsset2->Asset();
+        }
+
+        con::warn("Unable to find non-reference asset data for xmodel {}", name);
+
+        return nullptr;
+    }
+
     float lengthOfVector(float x, float y, float z)
     {
         return sqrtf(x * x + y * y + z * z);
@@ -539,7 +638,7 @@ namespace
         return fabs(one - two) < 1.0f;
     }
 
-    void dumpClipmapXModels(BSPData& dumpData, const clipMap_t* clipmap)
+    void dumpClipmapXModels(BSPData& dumpData, const clipMap_t* clipmap, AssetDumpingContext& context)
     {
         // int ii = 0;
         for (size_t modelIdx = 0; modelIdx < clipmap->numStaticModels; modelIdx++)
@@ -571,18 +670,19 @@ namespace
             origAxis[2].y = outOrig[2].y * forcedScale3;
             origAxis[2].z = outOrig[2].z * forcedScale3;
 
-            bool isReference = colModel->xmodel->name[0] == ',';
+            const char* xmodelName = BSPUtil::trueAssetName(colModel->xmodel->name);
 
             BSPXModel model{};
             assert(colModel->xmodel != nullptr);
-            model.name = isReference ? &colModel->xmodel->name[1] : colModel->xmodel->name;
+            model.name = xmodelName;
             model.origin = colModel->origin;
             LhcToRhcCoordinates(model.origin.v);
             model.rotationQuaternion = BSPUtil::convertAxisToQuat(origAxis);
             LhcToRhcQuaternion(model.rotationQuaternion.v);
             model.scale = {forcedScale1, forcedScale2, forcedScale3};
 
-            if (!isReference)
+            XModel* xmodel = getXmodelAssetNoRefrence(context, model.name);
+            if (xmodel != nullptr)
             {
                 if (xmodelToSurfMapCol.contains(model.name))
                 {
@@ -592,7 +692,7 @@ namespace
                 else
                 {
                     model.surfaceStart = dumpData.colWorld.surfaces.size();
-                    addXmodelSurfaces(dumpData, colModel->xmodel, false);
+                    addXmodelSurfaces(dumpData, xmodel, false);
                     model.surfaceCount = dumpData.colWorld.surfaces.size() - model.surfaceStart;
 
                     std::pair<size_t, size_t> pair(model.surfaceStart, model.surfaceCount);
@@ -671,12 +771,17 @@ namespace
         for (size_t ropeIdx = 0; ropeIdx < clipMap->num_constraints; ropeIdx++)
         {
             PhysConstraint* constraint = &clipMap->constraints[ropeIdx];
-            if (constraint->type != CONSTRAINT_ROPE || constraint->attach_point_type1 != ATTACH_POINT_WORLD
-                || constraint->attach_point_type2 != ATTACH_POINT_WORLD)
+            if (constraint->type != CONSTRAINT_ROPE)
                 continue;
+            if (constraint->attach_point_type1 != ATTACH_POINT_WORLD || constraint->attach_point_type2 != ATTACH_POINT_WORLD)
+            {
+                con::warn("Ignoring rope not attached to the world");
+                continue;
+            }
 
             BSPRope rope{};
-            rope.material = constraint->material->info.name;
+            if (constraint->material)
+                rope.material = BSPUtil::trueAssetName(constraint->material->info.name);
             rope.startPoint = constraint->pos;
             LhcToRhcCoordinates(rope.startPoint.v);
             rope.endPoint = constraint->pos2;
@@ -688,7 +793,7 @@ namespace
         }
     }
 
-    void dumpClipmapPhysModels(BSPData& dumpData, const clipMap_t* clipMap)
+    void dumpClipmapPhysModels(BSPData& dumpData, const clipMap_t* clipMap, AssetDumpingContext& context)
     {
         if (clipMap->dynEntCount[DYNENT_COLL_CLIENT_BRUSH] != 0 || clipMap->dynEntCount[DYNENT_COLL_SERVER_BRUSH] != 0)
             con::warn("(unimplemented) Ignoring some phys models that use brushes instead of xmodels");
@@ -697,11 +802,13 @@ namespace
         {
             DynEntityDef* dynDef = &clipMap->dynEntDefList[DYNENT_DRAW_MODEL][physIdx];
 
-            if (dynDef->type == DYNENT_TYPE_INVALID)
+            if (dynDef->type == DYNENT_TYPE_INVALID || dynDef->type == DYNENT_TYPE_DESTRUCT)
             {
-                con::warn("Ignoring invalid physmodel");
+                con::warn("Ignoring physmodel with invalid/dectruct type");
                 continue;
             }
+
+            const char* xmodelName = BSPUtil::trueAssetName(dynDef->xModel->name);
 
             // TODO: extra contents because its a destroy type
             // physconstrains need to be checked, not 511 == used for constraints somehow
@@ -713,19 +820,39 @@ namespace
             LhcToRhcQuaternion(model.rotationQuat.v);
             model.contentFlags = dynDef->contents;
             model.flags = dynDef->flags;
-            model.physPreset = dynDef->physPreset->name;
-            model.xmodel = dynDef->xModel->name;
+            model.physPreset = BSPUtil::trueAssetName(dynDef->physPreset->name);
+            model.xmodel = xmodelName;
+
+            auto xmodel = getXmodelAssetNoRefrence(context, model.xmodel);
+            if (xmodel != nullptr)
+            {
+                if (xmodelToSurfMapCol.contains(model.xmodel))
+                {
+                    model.surfaceStart = xmodelToSurfMapCol.at(model.xmodel).first;
+                    model.surfaceCount = xmodelToSurfMapCol.at(model.xmodel).second;
+                }
+                else
+                {
+                    model.surfaceStart = dumpData.colWorld.surfaces.size();
+                    addXmodelSurfaces(dumpData, xmodel, false);
+                    model.surfaceCount = dumpData.colWorld.surfaces.size() - model.surfaceStart;
+
+                    std::pair<size_t, size_t> pair(model.surfaceStart, model.surfaceCount);
+                    xmodelToSurfMapCol[model.xmodel] = pair;
+                }
+            }
+
             dumpData.physModels.emplace_back(model);
         }
     }
 
-    void dumpClipmap(BSPData& dumpData, const clipMap_t* clipmap)
+    void dumpClipmap(BSPData& dumpData, const clipMap_t* clipmap, AssetDumpingContext& context)
     {
         for (unsigned int i = 0; i < clipmap->info.numMaterials; i++)
         {
             auto colMaterial = &clipmap->info.materials[i];
-            BSPMaterial bspMaterial;
-            bspMaterial.materialName = colMaterial->name;
+            BSPMaterial bspMaterial{};
+            bspMaterial.materialName = BSPUtil::trueAssetName(colMaterial->name);
             bspMaterial.materialType = MATERIAL_TYPE_TEXTURE;
             bspMaterial.materialColour = whiteColour;
             bspMaterial.surfaceFlags = colMaterial->surfaceFlags;
@@ -733,11 +860,11 @@ namespace
             dumpData.colWorld.materials.emplace_back(bspMaterial);
         }
 
-        dumpClipmapXModels(dumpData, clipmap);
+        dumpClipmapXModels(dumpData, clipmap, context);
 
         dumpClipmapRopes(dumpData, clipmap);
 
-        dumpClipmapPhysModels(dumpData, clipmap);
+        dumpClipmapPhysModels(dumpData, clipmap, context);
 
         std::vector<PartitionData> partitionList;
         std::vector<size_t> brushList;
@@ -809,12 +936,13 @@ namespace
         return modelIdx;
     }
 
+
     bool starts_with(const char* str, const char* pre)
     {
         return strncmp(pre, str, strlen(pre)) == 0;
     }
 
-    void dumpMapEnts(BSPData& dumpData, const MapEnts* mapEnts, const GfxWorld* gfxworld, const clipMap_t* clipmap)
+    void dumpMapEnts(BSPData& dumpData, const MapEnts* mapEnts, const GfxWorld* gfxworld, const clipMap_t* clipmap, AssetDumpingContext& context)
     {
         std::unique_ptr<char[]> origEntStrPtr = std::make_unique<char[]>(strlen(mapEnts->entityString) + 1);
         strcpy(origEntStrPtr.get(), mapEnts->entityString);
@@ -909,12 +1037,40 @@ namespace
                     entity.rotationQuaternion = BSPUtil::convertAnglesToQuat(angles);
                     LhcToRhcQuaternion(entity.rotationQuaternion.v);
                 }
-                else if (!strcmp(keyStrPtr, "model") && *valueStrPtr == '*')
+                else if (!strcmp(keyStrPtr, "model"))
                 {
-                    entity.hasModel = true;
-                    int modelIdx = atol(valueStrPtr + 1);
-                    assert(modelIdx > 0);
-                    entity.modelIndex = createModelFromIndex(static_cast<size_t>(modelIdx), dumpData, gfxworld, clipmap);
+                    if (*valueStrPtr == '*')
+                    {
+                        entity.hasModel = true;
+                        int modelIdx = atol(valueStrPtr + 1);
+                        assert(modelIdx > 0);
+                        entity.modelIndex = createModelFromIndex(static_cast<size_t>(modelIdx), dumpData, gfxworld, clipmap);
+                    }
+                    else
+                    {
+                        const char* xmodelName = BSPUtil::trueAssetName(valueStrPtr);
+                        if (xmodelToSurfMapCol.contains(xmodelName))
+                        {
+                            entity.surfaceStart = xmodelToSurfMapCol.at(xmodelName).first;
+                            entity.surfaceCount = xmodelToSurfMapCol.at(xmodelName).second;
+                        }
+                        else
+                        {
+                            auto xmodel = getXmodelAssetNoRefrence(context, xmodelName);
+                            if (xmodel != nullptr)
+                            {
+                                entity.surfaceStart = dumpData.colWorld.surfaces.size();
+                                addXmodelSurfaces(dumpData, xmodel, false);
+                                entity.surfaceCount = dumpData.colWorld.surfaces.size() - entity.surfaceStart;
+
+                                std::pair<size_t, size_t> pair(entity.surfaceStart, entity.surfaceCount);
+                                xmodelToSurfMapCol[xmodelName] = pair;
+                            }
+                        }
+
+                        BSPEntityEntry entry = {keyStrPtr, xmodelName};
+                        entity.entries.emplace_back(entry);
+                    }
                 }
                 else
                 {
@@ -1112,7 +1268,8 @@ namespace
                 Common::Vec3UnpackUnitVec(inVertex->normal, outVertex.normal.v);
                 LhcToRhcCoordinates(outVertex.normal.v);
                 Common::Vec2UnpackTexCoords(inVertex->texCoord, outVertex.texCoord.v);
-                Common::Vec4UnpackGfxColor(inVertex->color, outVertex.color.v);
+                //Common::Vec4UnpackGfxColor(inVertex->color, outVertex.color.v);
+                outVertex.color = {1.0f, 1.0f, 1.0f, 1.0f};
                 allVertices.emplace_back(outVertex);
             }
 
@@ -1164,17 +1321,17 @@ namespace
         addSurfacesFromMaterialMap(dumpData, gfxWorld, allVertices, vd0OffsetToGltf, scriptSurfs);
     }
 
-    void dumpGfxWorldXModels(BSPData& dumpData, const GfxWorld* gfxWorld)
+    void dumpGfxWorldXModels(BSPData& dumpData, const GfxWorld* gfxWorld, AssetDumpingContext& context)
     {
         for (size_t modelIdx = 0; modelIdx < gfxWorld->dpvs.smodelCount; modelIdx++)
         {
             auto gfxModel = &gfxWorld->dpvs.smodelDrawInsts[modelIdx];
             BSPXModel model{};
 
-            bool isReference = gfxModel->model->name[0] == ',';
+            const char* xmodelName = BSPUtil::trueAssetName(gfxModel->model->name);
 
             assert(gfxModel->model != nullptr);
-            model.name = isReference ? &gfxModel->model->name[1] : gfxModel->model->name;
+            model.name = xmodelName;
             model.origin = gfxModel->placement.origin;
             LhcToRhcCoordinates(model.origin.v);
             model.rotationQuaternion = BSPUtil::convertAxisToQuat(gfxModel->placement.axis);
@@ -1184,7 +1341,8 @@ namespace
             model.scale.z = gfxModel->placement.scale;
             model.doesCastShadow = gfxWorld->dpvs.smodelCastsShadow[modelIdx];
 
-            if (!isReference)
+            auto xmodel = getXmodelAssetNoRefrence(context, model.name);
+            if (xmodel != nullptr)
             {
                 if (xmodelToSurfMapGfx.contains(model.name))
                 {
@@ -1194,7 +1352,7 @@ namespace
                 else
                 {
                     model.surfaceStart = dumpData.gfxWorld.surfaces.size();
-                    addXmodelSurfaces(dumpData, gfxModel->model, true);
+                    addXmodelSurfaces(dumpData, xmodel, true);
                     model.surfaceCount = dumpData.gfxWorld.surfaces.size() - model.surfaceStart;
 
                     std::pair<size_t, size_t> pair(model.surfaceStart, model.surfaceCount);
@@ -1276,17 +1434,17 @@ namespace
 
             outProbe.origin = probe->origin;
             LhcToRhcCoordinates(outProbe.origin.v);
-            outProbe.image = probe->reflectionImage->name;
+            outProbe.image = BSPUtil::trueAssetName(probe->reflectionImage->name);
 
             dumpData.rProbes.emplace_back(outProbe);
         }
     }
 
-    void dumpGfxWorld(BSPData& dumpData, const GfxWorld* gfxWorld)
+    void dumpGfxWorld(BSPData& dumpData, const GfxWorld* gfxWorld, AssetDumpingContext& context)
     {
         dumpGfxWorldSun(dumpData, gfxWorld);
         dumpGfxWorldSurfaces(dumpData, gfxWorld);
-        dumpGfxWorldXModels(dumpData, gfxWorld);
+        dumpGfxWorldXModels(dumpData, gfxWorld, context);
         dumpGfxWorldHeroLights(dumpData, gfxWorld);
         dumpGfxWorldRProbes(dumpData, gfxWorld);
     }
@@ -1343,7 +1501,7 @@ namespace
             {
                 if (!strcmp(inLight->defName, lightDef->name))
                 {
-                    outLight.image = lightDef->attenuation.image->name;
+                    outLight.image = BSPUtil::trueAssetName(lightDef->attenuation.image->name);
                     foundLightDef = true;
                     break;
                 }
@@ -1356,12 +1514,12 @@ namespace
     }
 } // namespace
 
-void T6::BSP::dumpBSPData(BSPData& dumpData, std::string zoneName, BSPAssetPtrs& assetPtrs)
+void T6::BSP::dumpBSPData(BSPData& dumpData, std::string zoneName, BSPAssetPtrs& assetPtrs, AssetDumpingContext& context)
 {
     dumpData.name = zoneName;
 
     dumpComWorld(dumpData, assetPtrs.comworld, assetPtrs.lightDefs);
-    dumpGfxWorld(dumpData, assetPtrs.gfxworld);
-    dumpClipmap(dumpData, assetPtrs.clipmap);
-    dumpMapEnts(dumpData, assetPtrs.mapEnts, assetPtrs.gfxworld, assetPtrs.clipmap); // requires colworld materials
+    dumpGfxWorld(dumpData, assetPtrs.gfxworld, context);
+    dumpClipmap(dumpData, assetPtrs.clipmap, context);
+    dumpMapEnts(dumpData, assetPtrs.mapEnts, assetPtrs.gfxworld, assetPtrs.clipmap, context); // requires colworld materials
 }

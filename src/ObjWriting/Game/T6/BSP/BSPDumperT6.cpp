@@ -46,7 +46,7 @@ void DumperT6::Dump(AssetDumpingContext& context)
     assetPtrs.skinnedverts = skinnedvertsInfo->Asset();
     for (const auto& lightDef : lightDefPool)
         assetPtrs.lightDefs.emplace_back(lightDef->Asset());
-    dumpBSPData(dumpData, context.m_zone.m_name, assetPtrs);
+    dumpBSPData(dumpData, context.m_zone.m_name, assetPtrs, context);
 
     con::info("BSP Writing Started");
 

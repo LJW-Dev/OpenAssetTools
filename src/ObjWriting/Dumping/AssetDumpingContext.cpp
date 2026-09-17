@@ -6,13 +6,15 @@ AssetDumpingContext::AssetDumpingContext(const Zone& zone,
                                          const std::string& basePath,
                                          IOutputPath& outputPath,
                                          ISearchPath& objSearchPath,
-                                         std::optional<std::unique_ptr<ProgressCallback>> progressCallback)
+                                         std::optional<std::unique_ptr<ProgressCallback>> progressCallback,
+                                         const std::vector<std::unique_ptr<LoadedZoneInformation>>& loaded_zones)
     : m_zone(zone),
       m_base_path(basePath),
       m_output_path(outputPath),
       m_obj_search_path(objSearchPath),
       m_current_progress(0uz),
-      m_total_progress(0uz)
+      m_total_progress(0uz),
+      m_loaded_zones(loaded_zones)
 {
     if (progressCallback)
         m_progress_callback = *std::move(progressCallback);

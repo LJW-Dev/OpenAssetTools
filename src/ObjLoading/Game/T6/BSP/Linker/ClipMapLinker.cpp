@@ -1429,8 +1429,8 @@ namespace
             }
 
             // todo:
-            // dynents load/write to gltf
-            // ropes load/write to gltf
+            // dynents load gltf
+            // ropes load gltf
 
             return clipMap;
         }

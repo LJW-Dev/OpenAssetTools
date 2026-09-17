@@ -371,7 +371,7 @@ namespace
                     continue;
             }
 
-            JsonNode node;
+            JsonNode node{};
             node.name = std::format("entity_{}_{}", entity.classname, entIdx++);
             node.children.emplace();
             node.translation.emplace();
@@ -383,6 +383,8 @@ namespace
             (*node.rotation)[1] = entity.rotationQuaternion.y;
             (*node.rotation)[2] = entity.rotationQuaternion.z;
             (*node.rotation)[3] = entity.rotationQuaternion.w;
+            if (entity.surfaceCount != 0)
+                node.mesh = (unsigned)addMeshFromSurface(root, dumpData, entity.surfaceStart, entity.surfaceCount, false);
             nlohmann::json js;
             for (const auto& entityEntry : entity.entries)
             {
@@ -507,7 +509,7 @@ namespace
         (*node.scale)[2] = xmodel.scale.z;
 
         if (xmodel.surfaceCount != 0)
-            node.mesh = addMeshFromSurface(root, dumpData, xmodel.surfaceStart, xmodel.surfaceCount, isGfxWorld);
+            node.mesh = (unsigned)addMeshFromSurface(root, dumpData, xmodel.surfaceStart, xmodel.surfaceCount, isGfxWorld);
 
         nlohmann::json extrasJs;
         extrasJs["xmodel"] = xmodel.name;
@@ -855,6 +857,40 @@ namespace
         }
     }
 
+    static unsigned CreateTexture(JsonRoot& gltf, const std::string& textureName)
+    {
+        if (!gltf.textures.has_value())
+            gltf.textures.emplace();
+        if (!gltf.images.has_value())
+            gltf.images.emplace();
+
+        auto uri = std::format("../images/{}.dds", textureName);
+
+        auto existingTexIndex = 0u;
+        for (const auto& existingTex : gltf.textures.value())
+        {
+            const auto& existingImage = gltf.images.value()[existingTex.source];
+
+            if (existingImage.uri == uri)
+                return existingTexIndex;
+
+            existingTexIndex++;
+        }
+
+        JsonImage image;
+        image.uri = std::move(uri);
+        image.mimeType = "image/dds";
+        const auto imageIndex = static_cast<unsigned>(gltf.images->size());
+        gltf.images->emplace_back(std::move(image));
+
+        JsonTexture texture;
+        texture.source = imageIndex;
+        const auto textureIndex = static_cast<unsigned>(gltf.textures->size());
+        gltf.textures->emplace_back(texture);
+
+        return textureIndex;
+    }
+
     int getSurfaceTypeFromFlags(int surfaceFlags)
     {
         return ((surfaceFlags >> 20) & 0x3F);
@@ -875,6 +911,15 @@ namespace
             material.name = mat.materialName;
             material.pbrMetallicRoughness.emplace();
             material.pbrMetallicRoughness->baseColorFactor = {mat.materialColour.x, mat.materialColour.y, mat.materialColour.z, mat.materialColour.w};
+
+            if (!mat.imageName.empty())
+            {
+                material.pbrMetallicRoughness->baseColorTexture.emplace();
+                material.pbrMetallicRoughness->baseColorTexture->index = CreateTexture(root, mat.imageName);
+            }
+
+            if (!mat.normalName.empty())
+                material.normalTexture.emplace().index = CreateTexture(root, mat.normalName);
 
             std::string surfaceFlags;
             std::string contentFlags;

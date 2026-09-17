@@ -5,6 +5,7 @@
 #include "SearchPath/IOutputPath.h"
 #include "SearchPath/ISearchPath.h"
 #include "Utils/ProgressCallback.h"
+#include "Zone/LoadedZoneInformation.h"
 #include "Zone/Zone.h"
 
 #include <memory>
@@ -19,7 +20,8 @@ public:
                         const std::string& basePath,
                         IOutputPath& outputPath,
                         ISearchPath& objSearchPath,
-                        std::optional<std::unique_ptr<ProgressCallback>> progressCallback);
+                        std::optional<std::unique_ptr<ProgressCallback>> progressCallback,
+                        const std::vector<std::unique_ptr<LoadedZoneInformation>>& loaded_zones);
 
     [[nodiscard]] std::unique_ptr<std::ostream> OpenAssetFile(const std::string& fileName) const;
 
@@ -48,6 +50,7 @@ public:
     IOutputPath& m_output_path;
     ISearchPath& m_obj_search_path;
     std::unique_ptr<GdtOutputStream> m_gdt;
+    const std::vector<std::unique_ptr<LoadedZoneInformation>>& m_loaded_zones;
 
 private:
     std::unordered_map<std::type_index, std::unique_ptr<IZoneAssetDumperState>> m_zone_asset_dumper_states;

@@ -1291,10 +1291,11 @@ namespace
 
             loadDynEntData(bsp, gfxWorld); // requires cells and lights
 
-            // hero light gltf load/store
+            // hero light gltf load
+            // probe gltf load
 
             // refection probes post processing
-            // probe gltf load/store
+            
             // use plutonium to create the rprobes (similar to pathing data)
             // load back in (posibly could hardcode rprobe image names based on how pluto loads them and load like how pathing is done)
 

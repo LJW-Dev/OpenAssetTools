@@ -9,6 +9,14 @@
 using namespace T6;
 using namespace BSP;
 
+const char* BSPUtil::trueAssetName(const char* input)
+{
+    if (input && input[0] == ',')
+        return &input[1];
+
+    return input;
+}
+
 std::string BSPUtil::getFileNameForBSPAsset(const std::string& assetName)
 {
     return std::format("BSP/{}", assetName);

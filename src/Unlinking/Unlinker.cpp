@@ -234,7 +234,7 @@ namespace
                     return false;
 
                 OutputPathFilesystem outputFolderOutputPath(outputFolderPath);
-                AssetDumpingContext context(zone, outputFolderPathStr, outputFolderOutputPath, searchPath, std::nullopt);
+                AssetDumpingContext context(zone, outputFolderPathStr, outputFolderOutputPath, searchPath, std::nullopt, m_loaded_zones);
 
                 std::ofstream gdtStream;
                 if (m_args.m_use_gdt)

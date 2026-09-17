@@ -2,6 +2,7 @@
 
 #include "BSP/BSP.h"
 #include "Game/T6/T6.h"
+#include "Dumping/AssetDumpingContext.h"
 
 #include <string>
 #include <vector>
@@ -21,6 +22,6 @@ namespace T6
             std::vector<T6::GfxLightDef*> lightDefs;
         };
 
-        void dumpBSPData(BSPData& dumpData, std::string zoneName, BSPAssetPtrs& assetPtrs);
+        void dumpBSPData(BSPData& dumpData, std::string zoneName, BSPAssetPtrs& assetPtrs, AssetDumpingContext& context);
     } // namespace BSP
 } // namespace T6

@@ -9,6 +9,7 @@ namespace T6
         class BSPUtil
         {
         public:
+            static const char* trueAssetName(const char* input);
             static std::string getFileNameForBSPAsset(const std::string& assetName);
             static void updateAABB(vec3_t& newAABBMins, vec3_t& newAABBMaxs, vec3_t& AABBMins, vec3_t& AABBMaxs);
             static void updateAABBWithPoint(vec3_t& point, vec3_t& AABBMins, vec3_t& AABBMaxs);

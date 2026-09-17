@@ -37,6 +37,9 @@ namespace T6
 
             int surfaceFlags;
             int contentFlags;
+
+            std::string imageName;
+            std::string normalName;
         };
 
         struct BSPSurface
@@ -219,6 +222,10 @@ namespace T6
             bspEntityType type;
             std::string classname;
             std::vector<BSPEntityEntry> entries;
+
+            //unlinker only
+            size_t surfaceStart;
+            size_t surfaceCount;
         };
 
         struct BSPRope
@@ -243,6 +250,10 @@ namespace T6
             
             std::string physPreset;
             std::string xmodel;
+
+            // unlinker only
+            size_t surfaceStart;
+            size_t surfaceCount;
         };
 
         struct BSPRPRobe
