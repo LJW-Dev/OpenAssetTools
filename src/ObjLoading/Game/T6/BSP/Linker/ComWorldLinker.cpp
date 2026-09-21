@@ -1,3 +1,4 @@
+#include <cmath>
 #include "ComWorldLinker.h"
 
 #include <numbers>
