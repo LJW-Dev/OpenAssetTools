@@ -1,3 +1,6 @@
+#include <cmath>
+#include <cstdint>
+#include <cstring>
 #include "GfxWorldLinker.h"
 
 #include "../BSPCalculation.h"
@@ -534,8 +537,8 @@ namespace BSP
 
     struct mnode_t
     {
-        unsigned __int16 cellIndex;
-        unsigned __int16 rightChildOffset;
+        uint16_t cellIndex;
+        uint16_t rightChildOffset;
     };
 
     void GfxWorldLinker::loadGfxCells(GfxWorld* gfxWorld)

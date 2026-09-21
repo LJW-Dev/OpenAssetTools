@@ -1,3 +1,4 @@
+#include <cstring>
 #include "BSPLinker.h"
 
 #include "ClipMapLinker.h"
