@@ -18,9 +18,6 @@ using namespace gltf;
 
 namespace
 {
-    unsigned m_vertex_buffer_view = 0u;
-    unsigned m_index_buffer_view = 0u;
-
     constexpr vec4_t whiteColour = {1.0f, 1.0f, 1.0f, 1.0f};
 
     void writeGltf(JsonRoot& root, std::vector<uint8_t>& bufferData, std::ostream* stream)
@@ -40,14 +37,13 @@ namespace
         output->Finalize();
     }
 
-    void CreateBufferViews(JsonRoot& gltf, BSPData& dumpData, std::vector<uint8_t>& bufferData, bool isGfxWorld)
+    void CreateBufferViews(JsonRoot& root, BSPData& dumpData, std::vector<uint8_t>& bufferData, bool isGfxWorld)
     {
-        gltf.bufferViews.emplace();
+        root.bufferViews.emplace();
 
         if (isGfxWorld)
         {
             unsigned bufferOffset = 0u;
-            m_vertex_buffer_view = static_cast<unsigned>(gltf.bufferViews->size());
             JsonBufferView vertexBufferView;
             vertexBufferView.buffer = 0u;
             vertexBufferView.byteOffset = bufferOffset;
@@ -55,16 +51,15 @@ namespace
             vertexBufferView.byteLength = static_cast<unsigned>(sizeof(BSPVertex) * dumpData.gfxWorld.vertices.size());
             vertexBufferView.target = JsonBufferViewTarget::ARRAY_BUFFER;
             bufferOffset += vertexBufferView.byteLength;
-            gltf.bufferViews->emplace_back(vertexBufferView);
+            root.bufferViews->emplace_back(vertexBufferView);
 
-            m_index_buffer_view = static_cast<unsigned>(gltf.bufferViews->size());
             JsonBufferView indicesBufferView;
             indicesBufferView.buffer = 0u;
             indicesBufferView.byteOffset = bufferOffset;
             indicesBufferView.byteLength = static_cast<unsigned>(sizeof(uint16_t) * dumpData.gfxWorld.indices.size());
             indicesBufferView.target = JsonBufferViewTarget::ELEMENT_ARRAY_BUFFER;
             bufferOffset += indicesBufferView.byteLength;
-            gltf.bufferViews->emplace_back(indicesBufferView);
+            root.bufferViews->emplace_back(indicesBufferView);
 
             size_t vertexBufferSize = dumpData.gfxWorld.vertices.size() * sizeof(BSPVertex);
             size_t indexBufferSize = dumpData.gfxWorld.indices.size() * sizeof(uint16_t);
@@ -85,7 +80,6 @@ namespace
         else
         {
             unsigned bufferOffset = 0u;
-            m_vertex_buffer_view = static_cast<unsigned>(gltf.bufferViews->size());
             JsonBufferView vertexBufferView;
             vertexBufferView.buffer = 0u;
             vertexBufferView.byteOffset = bufferOffset;
@@ -93,16 +87,15 @@ namespace
             vertexBufferView.byteLength = static_cast<unsigned>(sizeof(BSPVertex) * dumpData.colWorld.vertices.size());
             vertexBufferView.target = JsonBufferViewTarget::ARRAY_BUFFER;
             bufferOffset += vertexBufferView.byteLength;
-            gltf.bufferViews->emplace_back(vertexBufferView);
+            root.bufferViews->emplace_back(vertexBufferView);
 
-            m_index_buffer_view = static_cast<unsigned>(gltf.bufferViews->size());
             JsonBufferView indicesBufferView;
             indicesBufferView.buffer = 0u;
             indicesBufferView.byteOffset = bufferOffset;
             indicesBufferView.byteLength = static_cast<unsigned>(sizeof(unsigned short) * dumpData.colWorld.indices.size());
             indicesBufferView.target = JsonBufferViewTarget::ELEMENT_ARRAY_BUFFER;
             bufferOffset += indicesBufferView.byteLength;
-            gltf.bufferViews->emplace_back(indicesBufferView);
+            root.bufferViews->emplace_back(indicesBufferView);
 
             size_t vertexBufferSize = dumpData.colWorld.vertices.size() * sizeof(BSPVertex);
             size_t indexBufferSize = dumpData.colWorld.indices.size() * sizeof(uint16_t);
@@ -143,7 +136,7 @@ namespace
         primitive.mode = JsonMeshPrimitivesMode::TRIANGLES;
 
         JsonAccessor positionAccessor;
-        positionAccessor.bufferView = m_vertex_buffer_view;
+        positionAccessor.bufferView = 0;
         positionAccessor.byteOffset = (unsigned)surface.indexOfFirstVertex * (unsigned)sizeof(BSPVertex) + static_cast<unsigned>(offsetof(BSPVertex, pos));
         positionAccessor.componentType = JsonAccessorComponentType::FLOAT;
         positionAccessor.count = (unsigned int)surface.vertexCount;
@@ -152,7 +145,7 @@ namespace
         gltf.accessors->emplace_back(positionAccessor);
 
         JsonAccessor normalAccessor;
-        normalAccessor.bufferView = m_vertex_buffer_view;
+        normalAccessor.bufferView = 0;
         normalAccessor.byteOffset = (unsigned)surface.indexOfFirstVertex * (unsigned)sizeof(BSPVertex) + static_cast<unsigned>(offsetof(BSPVertex, normal));
         normalAccessor.componentType = JsonAccessorComponentType::FLOAT;
         normalAccessor.count = (unsigned int)surface.vertexCount;
@@ -161,7 +154,7 @@ namespace
         gltf.accessors->emplace_back(normalAccessor);
 
         JsonAccessor uvAccessor;
-        uvAccessor.bufferView = m_vertex_buffer_view;
+        uvAccessor.bufferView = 0;
         uvAccessor.byteOffset = (unsigned)surface.indexOfFirstVertex * (unsigned)sizeof(BSPVertex) + static_cast<unsigned>(offsetof(BSPVertex, texCoord));
         uvAccessor.componentType = JsonAccessorComponentType::FLOAT;
         uvAccessor.count = (unsigned int)surface.vertexCount;
@@ -170,7 +163,7 @@ namespace
         gltf.accessors->emplace_back(uvAccessor);
 
         JsonAccessor colorAccessor;
-        colorAccessor.bufferView = m_vertex_buffer_view;
+        colorAccessor.bufferView = 0;
         colorAccessor.byteOffset = (unsigned)surface.indexOfFirstVertex * (unsigned)sizeof(BSPVertex) + static_cast<unsigned>(offsetof(BSPVertex, color));
         colorAccessor.componentType = JsonAccessorComponentType::FLOAT;
         colorAccessor.count = (unsigned int)surface.vertexCount;
@@ -179,7 +172,7 @@ namespace
         gltf.accessors->emplace_back(colorAccessor);
 
         JsonAccessor indicesAccessor;
-        indicesAccessor.bufferView = m_index_buffer_view;
+        indicesAccessor.bufferView = 1;
         indicesAccessor.byteOffset = (unsigned)surface.indexOfFirstIndex * (unsigned)sizeof(uint16_t);
         indicesAccessor.componentType = JsonAccessorComponentType::UNSIGNED_SHORT;
         indicesAccessor.count = (unsigned int)surface.triCount * 3;
