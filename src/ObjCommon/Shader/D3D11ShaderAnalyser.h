@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <cstdint>
 #include <vector>
 
 namespace d3d11
